@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/diagnose-restore.yml'
       - 'agent6.zip'
+      - 'ci/patch_agent_source.py'
   workflow_dispatch:
 
 permissions:
@@ -24,6 +25,14 @@ jobs:
           if (!(Test-Path 'agent6.zip')) { throw 'agent6.zip missing' }
           Remove-Item agent-src -Recurse -Force -ErrorAction SilentlyContinue
           Expand-Archive agent6.zip agent-src -Force
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Apply audited Agent source fixes
+        run: python ci/patch_agent_source.py agent-src
 
       - name: Setup .NET from global.json
         uses: actions/setup-dotnet@v5
@@ -69,7 +78,6 @@ jobs:
             "`n=== POWERSHELL EXCEPTION ===" | Out-File ../diagnostics/build-exception.txt -Append
             $_ | Format-List * -Force | Out-String | Out-File ../diagnostics/build-exception.txt -Append
             "ScriptStackTrace:`n$($_.ScriptStackTrace)" | Out-File ../diagnostics/build-exception.txt -Append
-            "Invocation:`n$($_.InvocationInfo | Format-List * -Force | Out-String)" | Out-File ../diagnostics/build-exception.txt -Append
             throw
           }
 
@@ -100,27 +108,9 @@ jobs:
             $p="diagnostics/$f"
             if(Test-Path $p){
               "`n=== $f ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
-              Get-Content $p | Select-Object -Last 260 | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+              Get-Content $p | Select-Object -Last 300 | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
             }
           }
-
-          "`n=== PUBLISHED COLLISION CHECK ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
-          $roots=@('agent-src/artifacts/Sokna.PrintAgent.Service','agent-src/artifacts/Sokna.PrintAgent.Worker','agent-src/artifacts/Sokna.PrintAgent.Control')
-          $rows=@()
-          foreach($r in $roots){
-            if(Test-Path $r){ Get-ChildItem $r -File | ForEach-Object { $rows += [pscustomobject]@{Root=$r;Name=$_.Name;Hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash} } }
-          }
-          $groups=$rows | Group-Object Name | Where-Object Count -gt 1
-          foreach($g in $groups){
-            $unique=@($g.Group.Hash | Select-Object -Unique)
-            if($unique.Count -gt 1){
-              "DIFFERENT HASH COLLISION: $($g.Name)" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
-              $g.Group | Format-Table -AutoSize | Out-String | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
-            }
-          }
-
-          "`n=== PACKAGE INPUT EXISTENCE ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
-          foreach($p in @('agent-src/installer/Install-SoknaPrintAgent.ps1','agent-src/installer/Uninstall-SoknaPrintAgent.ps1','agent-src/README_FA.md','agent-src/docs')){ "$p = $(Test-Path $p)" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append }
 
       - name: Commit diagnostics
         if: always()
@@ -130,7 +120,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add diagnostics
           if (git diff --cached --quiet) { exit 0 }
-          git commit -m 'Capture exact Agent packaging exception'
+          git commit -m 'Update patched Agent build diagnostics'
           git push
 
-# connector trigger: exact package exception
+# connector trigger audited-patch diagnostics
