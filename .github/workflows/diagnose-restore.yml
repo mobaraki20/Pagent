@@ -25,6 +25,8 @@ jobs:
           if (!(Test-Path 'agent6.zip')) { throw 'agent6.zip missing' }
           Remove-Item agent-src -Recurse -Force -ErrorAction SilentlyContinue
           Expand-Archive agent6.zip agent-src -Force
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          '=== PATCH DIAGNOSTIC ===' | Set-Content diagnostics/BUILD_DIAGNOSTIC.txt
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -32,18 +34,24 @@ jobs:
           python-version: '3.13'
 
       - name: Apply audited Agent source fixes
-        run: python ci/patch_agent_source.py agent-src
+        id: patch
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python ci/patch_agent_source.py agent-src *>&1 | Tee-Object -FilePath diagnostics/patch.log
+          exit $LASTEXITCODE
 
       - name: Setup .NET from global.json
+        if: steps.patch.outcome == 'success'
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: agent-src/global.json
 
-      - name: Initialize diagnostic
+      - name: Initialize build diagnostic
+        if: steps.patch.outcome == 'success'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force diagnostics | Out-Null
-          "=== dotnet --info ===" | Set-Content diagnostics/BUILD_DIAGNOSTIC.txt
+          "`n=== dotnet --info ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
           dotnet --info 2>&1 | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
           "`n=== global.json ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
           Get-Content agent-src/global.json | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
@@ -55,6 +63,7 @@ jobs:
 
       - name: Restore
         id: restore
+        if: steps.patch.outcome == 'success'
         continue-on-error: true
         shell: pwsh
         working-directory: agent-src
@@ -101,10 +110,11 @@ jobs:
         shell: pwsh
         run: |
           "`n=== OUTCOMES ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          "Patch: ${{ steps.patch.outcome }}" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
           "Restore: ${{ steps.restore.outcome }}" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
           "Build: ${{ steps.build.outcome }}" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
           "Smoke: ${{ steps.smoke.outcome }}" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
-          foreach($f in @('restore.log','build.log','build-exception.txt','smoke.log','smoke-exception.txt')){
+          foreach($f in @('patch.log','restore.log','build.log','build-exception.txt','smoke.log','smoke-exception.txt')){
             $p="diagnostics/$f"
             if(Test-Path $p){
               "`n=== $f ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
@@ -120,7 +130,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add diagnostics
           if (git diff --cached --quiet) { exit 0 }
-          git commit -m 'Update patched Agent build diagnostics'
+          git commit -m 'Capture Agent patch and build diagnostics'
           git push
 
-# connector trigger audited-patch diagnostics
+# connector trigger: patch capture
