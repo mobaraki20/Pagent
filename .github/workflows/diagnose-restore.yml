@@ -1,0 +1,79 @@
+name: Diagnose Sokna Agent Restore
+
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-restore.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Extract Agent source
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'agent6.zip')) { throw 'agent6.zip missing' }
+          Remove-Item agent-src -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive agent6.zip agent-src -Force
+          Get-ChildItem agent-src -Force | Format-Table -AutoSize
+
+      - name: Setup .NET from global.json
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent-src/global.json
+
+      - name: Capture project metadata
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+          "=== dotnet --info ===" | Set-Content diagnostics/RESTORE_DIAGNOSTIC.txt
+          dotnet --info 2>&1 | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          "`n=== global.json ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          Get-Content agent-src/global.json | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          "`n=== Directory.Packages.props ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          Get-Content agent-src/Directory.Packages.props | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          "`n=== Directory.Build.props ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          Get-Content agent-src/Directory.Build.props | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          "`n=== csproj files ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          Get-ChildItem agent-src -Recurse -Filter *.csproj | ForEach-Object {
+            "`n--- $($_.FullName) ---" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+            Get-Content $_.FullName | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          }
+
+      - name: Restore with full diagnostics
+        id: restore
+        continue-on-error: true
+        shell: pwsh
+        working-directory: agent-src
+        run: |
+          dotnet restore Sokna.PrintAgent.slnx --verbosity diagnostic 2>&1 | Tee-Object -FilePath ../diagnostics/restore-full.log
+          exit $LASTEXITCODE
+
+      - name: Append restore errors
+        if: always()
+        shell: pwsh
+        run: |
+          "`n=== RESTORE ERROR SUMMARY ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          if (Test-Path diagnostics/restore-full.log) {
+            Select-String -Path diagnostics/restore-full.log -Pattern 'error |NU[0-9]{4}|failed|exception' -CaseSensitive:$false | Select-Object -Last 120 | ForEach-Object { $_.Line } | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          }
+          "`nRestore outcome: ${{ steps.restore.outcome }}" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+
+      - name: Commit diagnostic result
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics/RESTORE_DIAGNOSTIC.txt diagnostics/restore-full.log
+          if (git diff --cached --quiet) { exit 0 }
+          git commit -m 'Add restore diagnostic output'
+          git push
