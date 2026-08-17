@@ -97,4 +97,4 @@ jobs:
           git commit -m 'Update Agent build diagnostic output'
           git push
 
-# connector trigger after SQLitePCLRaw 2.1.12 patch
+# connector trigger after transaction typing fix
