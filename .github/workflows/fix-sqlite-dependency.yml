@@ -1,0 +1,65 @@
+name: Fix Agent SQLite Dependency
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-sqlite-dependency.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Patch agent6.zip to SQLitePCLRaw 2.1.12
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if (!(Test-Path 'agent6.zip')) { throw 'agent6.zip missing' }
+          Remove-Item agent-src -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive agent6.zip agent-src -Force
+
+          $props='agent-src/Directory.Packages.props'
+          [xml]$xml=Get-Content $props
+          $group=$xml.Project.ItemGroup | Select-Object -First 1
+          $existing=$group.PackageVersion | Where-Object { $_.Include -eq 'SQLitePCLRaw.bundle_e_sqlite3' }
+          if($existing){ $existing.Version='2.1.12' }
+          else {
+            $n=$xml.CreateElement('PackageVersion')
+            $n.SetAttribute('Include','SQLitePCLRaw.bundle_e_sqlite3')
+            $n.SetAttribute('Version','2.1.12')
+            [void]$group.AppendChild($n)
+          }
+          $xml.Save((Resolve-Path $props))
+
+          $core='agent-src/src/Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj'
+          [xml]$cx=Get-Content $core
+          $ig=$cx.Project.ItemGroup | Select-Object -First 1
+          $pref=$ig.PackageReference | Where-Object { $_.Include -eq 'SQLitePCLRaw.bundle_e_sqlite3' }
+          if(-not $pref){
+            $n=$cx.CreateElement('PackageReference')
+            $n.SetAttribute('Include','SQLitePCLRaw.bundle_e_sqlite3')
+            [void]$ig.AppendChild($n)
+          }
+          $cx.Save((Resolve-Path $core))
+
+          Remove-Item agent6-new.zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path 'agent-src/*' -DestinationPath 'agent6-new.zip' -CompressionLevel Optimal
+          Move-Item agent6-new.zip agent6.zip -Force
+          Get-FileHash agent6.zip -Algorithm SHA256
+
+      - name: Commit patched agent archive
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add agent6.zip
+          if (git diff --cached --quiet) { Write-Host 'No archive change'; exit 0 }
+          git commit -m 'Fix vulnerable SQLitePCLRaw dependency'
+          git push
