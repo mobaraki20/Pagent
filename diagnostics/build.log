@@ -1,0 +1,20 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+C:\Program Files\dotnet\sdk\10.0.303\Sdks\Microsoft.NET.Sdk\targets\Microsoft.NET.Sdk.DefaultItems.targets(162,5): warning NETSDK1137: It is no longer necessary to use the Microsoft.NET.Sdk.WindowsDesktop SDK. Consider changing the Sdk attribute of the root Project element to 'Microsoft.NET.Sdk'. [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj]
+D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(96,29): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
+D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(109,29): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
+D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(151,61): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
+D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(152,61): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
+  Sokna.PrintAgent.Setup -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna-Print-Agent-6.0.0-Setup.dll
+
+Build FAILED.
+
+C:\Program Files\dotnet\sdk\10.0.303\Sdks\Microsoft.NET.Sdk\targets\Microsoft.NET.Sdk.DefaultItems.targets(162,5): warning NETSDK1137: It is no longer necessary to use the Microsoft.NET.Sdk.WindowsDesktop SDK. Consider changing the Sdk attribute of the root Project element to 'Microsoft.NET.Sdk'. [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj]
+D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(96,29): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
+D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(109,29): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
+D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(151,61): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
+D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(152,61): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
+    1 Warning(s)
+    4 Error(s)
+
+Time Elapsed 00:00:05.68
