@@ -1,20 +1,33 @@
   Determining projects to restore...
   All projects are up-to-date for restore.
-C:\Program Files\dotnet\sdk\10.0.303\Sdks\Microsoft.NET.Sdk\targets\Microsoft.NET.Sdk.DefaultItems.targets(162,5): warning NETSDK1137: It is no longer necessary to use the Microsoft.NET.Sdk.WindowsDesktop SDK. Consider changing the Sdk attribute of the root Project element to 'Microsoft.NET.Sdk'. [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj]
-D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(96,29): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
-D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(109,29): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
-D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(151,61): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
-D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(152,61): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
+  Sokna.PrintAgent.Core -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\bin\Release\net10.0\Sokna.PrintAgent.Core.dll
   Sokna.PrintAgent.Setup -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna-Print-Agent-6.0.0-Setup.dll
+  Sokna.PrintAgent.Worker -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Worker.dll
+  Sokna.PrintAgent.Tests -> D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\bin\Release\net10.0\Sokna.PrintAgent.Tests.dll
+  Sokna.PrintAgent.Control -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Control.dll
+  Sokna.PrintAgent.Service -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Service.dll
 
-Build FAILED.
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
 
-C:\Program Files\dotnet\sdk\10.0.303\Sdks\Microsoft.NET.Sdk\targets\Microsoft.NET.Sdk.DefaultItems.targets(162,5): warning NETSDK1137: It is no longer necessary to use the Microsoft.NET.Sdk.WindowsDesktop SDK. Consider changing the Sdk attribute of the root Project element to 'Microsoft.NET.Sdk'. [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj]
-D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(96,29): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
-D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(109,29): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
-D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(151,61): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
-D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\LocalQueueStore.cs(152,61): error CS0266: Cannot implicitly convert type 'System.Data.Common.DbTransaction' to 'Microsoft.Data.Sqlite.SqliteTransaction'. An explicit conversion exists (are you missing a cast?) [D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj]
-    1 Warning(s)
-    4 Error(s)
-
-Time Elapsed 00:00:05.68
+Time Elapsed 00:00:07.58
+PASS Sokna.PrintAgent.Tests
+  Determining projects to restore...
+  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj (in 354 ms).
+  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj (in 349 ms).
+  Sokna.PrintAgent.Core -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\bin\Release\net10.0\Sokna.PrintAgent.Core.dll
+  Sokna.PrintAgent.Service -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Service.dll
+  Sokna.PrintAgent.Service -> D:\a\Pagent\Pagent\agent-src\artifacts\Sokna.PrintAgent.Service\
+  Determining projects to restore...
+  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj (in 320 ms).
+  1 of 2 projects are up-to-date for restore.
+  Sokna.PrintAgent.Core -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\bin\Release\net10.0\Sokna.PrintAgent.Core.dll
+  Sokna.PrintAgent.Worker -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Worker.dll
+  Sokna.PrintAgent.Worker -> D:\a\Pagent\Pagent\agent-src\artifacts\Sokna.PrintAgent.Worker\
+  Determining projects to restore...
+  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj (in 292 ms).
+  1 of 2 projects are up-to-date for restore.
+  Sokna.PrintAgent.Core -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\bin\Release\net10.0\Sokna.PrintAgent.Core.dll
+  Sokna.PrintAgent.Control -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Control.dll
+  Sokna.PrintAgent.Control -> D:\a\Pagent\Pagent\agent-src\artifacts\Sokna.PrintAgent.Control\
