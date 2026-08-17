@@ -1,1 +1,74 @@
+name: Build Sokna Print Agent 6
 
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'agent6.zip'
+      - '.github/workflows/build-agent.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Extract Agent source
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'agent6.zip')) { throw 'agent6.zip not found in repository root.' }
+          New-Item -ItemType Directory -Force 'agent-src' | Out-Null
+          Expand-Archive -Path 'agent6.zip' -DestinationPath 'agent-src' -Force
+          if (!(Test-Path 'agent-src/global.json')) { throw 'global.json not found after extraction.' }
+          if (!(Test-Path 'agent-src/scripts/Build-Agent.ps1')) { throw 'Build-Agent.ps1 not found after extraction.' }
+
+      - name: Setup .NET SDK from global.json
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent-src/global.json
+
+      - name: Show SDK
+        shell: pwsh
+        working-directory: agent-src
+        run: dotnet --info
+
+      - name: Build, test and package Agent
+        shell: pwsh
+        working-directory: agent-src
+        run: ./scripts/Build-Agent.ps1
+
+      - name: Windows Setup + Service smoke test
+        shell: pwsh
+        working-directory: agent-src
+        run: ./scripts/Test-Windows-Install.ps1 -Artifacts "$PWD/artifacts"
+
+      - name: Verify expected artifacts
+        shell: pwsh
+        run: |
+          $required = @(
+            'agent-src/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe',
+            'agent-src/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip',
+            'agent-src/artifacts/SHA256SUMS-Agent-6.0.0.txt',
+            'agent-src/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json'
+          )
+          foreach ($f in $required) {
+            if (!(Test-Path $f -PathType Leaf)) { throw "Missing artifact: $f" }
+          }
+          Get-FileHash 'agent-src/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe' -Algorithm SHA256
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: Sokna-Print-Agent-6.0.0-Windows
+          path: |
+            agent-src/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe
+            agent-src/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip
+            agent-src/artifacts/SHA256SUMS-Agent-6.0.0.txt
+            agent-src/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json
+          if-no-files-found: error
