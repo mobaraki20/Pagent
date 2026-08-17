@@ -1,0 +1,319 @@
+=== dotnet --info ===
+.NET SDK:
+ Version:           10.0.303
+ Commit:            e730f1db75
+ Workload version:  10.0.300-manifests.714b12c0
+ MSBuild version:   18.6.14+e730f1db7
+
+Runtime Environment:
+ OS Name:     Windows
+ OS Version:  10.0.26100
+ OS Platform: Windows
+ RID:         win-x64
+ Base Path:   C:\Program Files\dotnet\sdk\10.0.303\
+
+.NET workloads installed:
+ [maui-windows]
+   Installation Source: VS 18.8.12023.21
+   Manifest Version:    10.0.20/10.0.100
+   Manifest Path:       C:\Program Files\dotnet\sdk-manifests\10.0.100\microsoft.net.sdk.maui\10.0.20\WorkloadManifest.json
+   Install Type:              Msi
+
+ [maccatalyst]
+   Installation Source: VS 18.8.12023.21
+   Manifest Version:    26.5.10284/10.0.100
+   Manifest Path:       C:\Program Files\dotnet\sdk-manifests\10.0.100\microsoft.net.sdk.maccatalyst\26.5.10284\WorkloadManifest.json
+   Install Type:              Msi
+
+ [ios]
+   Installation Source: VS 18.8.12023.21
+   Manifest Version:    26.5.10284/10.0.100
+   Manifest Path:       C:\Program Files\dotnet\sdk-manifests\10.0.100\microsoft.net.sdk.ios\26.5.10284\WorkloadManifest.json
+   Install Type:              Msi
+
+ [android]
+   Installation Source: VS 18.8.12023.21
+   Manifest Version:    36.1.43/10.0.100
+   Manifest Path:       C:\Program Files\dotnet\sdk-manifests\10.0.100\microsoft.net.sdk.android\36.1.43\WorkloadManifest.json
+   Install Type:              Msi
+
+ [wasm-tools]
+   Installation Source: VS 18.8.12023.21
+   Manifest Version:    10.0.110/10.0.100
+   Manifest Path:       C:\Program Files\dotnet\sdk-manifests\10.0.100\microsoft.net.workload.mono.toolchain.current\10.0.110\WorkloadManifest.json
+   Install Type:              Msi
+
+Configured to use workload sets when installing new manifests.
+No workload sets are installed. Run "dotnet workload restore" to install a workload set.
+
+Host:
+  Version:      10.0.11
+  Architecture: x64
+  Commit:       e2f47b0110
+
+.NET SDKs installed:
+  8.0.129 [C:\Program Files\dotnet\sdk]
+  8.0.206 [C:\Program Files\dotnet\sdk]
+  8.0.319 [C:\Program Files\dotnet\sdk]
+  8.0.423 [C:\Program Files\dotnet\sdk]
+  9.0.119 [C:\Program Files\dotnet\sdk]
+  9.0.205 [C:\Program Files\dotnet\sdk]
+  9.0.316 [C:\Program Files\dotnet\sdk]
+  10.0.110 [C:\Program Files\dotnet\sdk]
+  10.0.204 [C:\Program Files\dotnet\sdk]
+  10.0.302 [C:\Program Files\dotnet\sdk]
+  10.0.303 [C:\Program Files\dotnet\sdk]
+
+.NET runtimes installed:
+  Microsoft.AspNetCore.App 8.0.6 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]
+  Microsoft.AspNetCore.App 8.0.22 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]
+  Microsoft.AspNetCore.App 8.0.29 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]
+  Microsoft.AspNetCore.App 9.0.6 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]
+  Microsoft.AspNetCore.App 9.0.18 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]
+  Microsoft.AspNetCore.App 10.0.8 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]
+  Microsoft.AspNetCore.App 10.0.10 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]
+  Microsoft.AspNetCore.App 10.0.11 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]
+  Microsoft.NETCore.App 8.0.6 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]
+  Microsoft.NETCore.App 8.0.22 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]
+  Microsoft.NETCore.App 8.0.29 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]
+  Microsoft.NETCore.App 9.0.6 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]
+  Microsoft.NETCore.App 9.0.18 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]
+  Microsoft.NETCore.App 10.0.8 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]
+  Microsoft.NETCore.App 10.0.10 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]
+  Microsoft.NETCore.App 10.0.11 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]
+  Microsoft.WindowsDesktop.App 8.0.6 [C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App]
+  Microsoft.WindowsDesktop.App 8.0.22 [C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App]
+  Microsoft.WindowsDesktop.App 8.0.29 [C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App]
+  Microsoft.WindowsDesktop.App 9.0.6 [C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App]
+  Microsoft.WindowsDesktop.App 9.0.18 [C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App]
+  Microsoft.WindowsDesktop.App 10.0.8 [C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App]
+  Microsoft.WindowsDesktop.App 10.0.10 [C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App]
+  Microsoft.WindowsDesktop.App 10.0.11 [C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App]
+
+Other architectures found:
+  x86   [C:\Program Files (x86)\dotnet]
+    registered at [HKLM\SOFTWARE\dotnet\Setup\InstalledVersions\x86\InstallLocation]
+
+Environment variables:
+  DOTNET_MULTILEVEL_LOOKUP                 [0]
+  DOTNET_NOLOGO                            [1]
+  DOTNET_ROOT                              [C:\Program Files\dotnet]
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE        [1]
+
+global.json file:
+  Not found
+
+Learn more:
+  https://aka.ms/dotnet/info
+
+Download .NET:
+  https://aka.ms/dotnet/download
+
+=== global.json ===
+{
+  "sdk": {
+    "version": "10.0.302",
+    "rollForward": "latestPatch",
+    "allowPrerelease": false
+  }
+}
+
+=== Directory.Packages.props ===
+<Project>
+  <PropertyGroup><ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally></PropertyGroup>
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.10" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
+    <PackageVersion Include="System.ServiceProcess.ServiceController" Version="10.0.10" />
+  </ItemGroup>
+</Project>
+
+=== Directory.Build.props ===
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <LangVersion>14.0</LangVersion>
+    <Deterministic>true</Deterministic>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ContinuousIntegrationBuild Condition="'$(CI)'=='true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+</Project>
+
+=== csproj files ===
+
+--- D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj ---
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+  <PropertyGroup><TargetFramework>net10.0-windows10.0.19041.0</TargetFramework><OutputType>WinExe</OutputType><RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained><UseWindowsForms>true</UseWindowsForms><ApplicationManifest>app.manifest</ApplicationManifest></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj"/><PackageReference Include="System.ServiceProcess.ServiceController" /></ItemGroup>
+</Project>
+
+--- D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj ---
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+  </ItemGroup>
+</Project>
+
+--- D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj ---
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup><TargetFramework>net10.0-windows10.0.19041.0</TargetFramework><OutputType>Exe</OutputType><RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained><PublishSingleFile>false</PublishSingleFile></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj"/><PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" /></ItemGroup>
+</Project>
+
+--- D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj ---
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>Sokna-Print-Agent-6.0.0-Setup</AssemblyName>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(PayloadZip)' != ''">
+    <EmbeddedResource Include="$(PayloadZip)" LogicalName="Sokna.PrintAgent.Payload.zip" />
+  </ItemGroup>
+</Project>
+
+--- D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj ---
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0-windows10.0.19041.0</TargetFramework><OutputType>Exe</OutputType><RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained><UseWindowsForms>true</UseWindowsForms></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj"/></ItemGroup>
+</Project>
+
+--- D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj ---
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj"/></ItemGroup>
+</Project>
+
+=== RESTORE ERROR SUMMARY ===
+                   MSBuildWarningsAsErrors = ;NU1605
+                   RestoreContinueOnError = WarnAndContinue
+                   WarningsAsErrors = ;NU1605;SYSLIB0011
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:35)
+                     Task Parameter:LogCode=NU1504 (TaskId:35)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:44)
+                     Task Parameter:LogCode=NU1504 (TaskId:44)
+                     Task Parameter:LogCode=NU1504 (TaskId:17)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:17)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:11)
+                     Task Parameter:LogCode=NU1504 (TaskId:11)
+                     Task Parameter:LogCode=NU1504 (TaskId:14)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:14)
+                     Task Parameter:LogCode=NU1504 (TaskId:27)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:27)
+                                   WarningsAsErrors=;NU1605;SYSLIB0011
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:52)
+                     Task Parameter:LogCode=NU1505 (TaskId:52)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:53)
+                     Task Parameter:LogCode=NU1506 (TaskId:53)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:54)
+                     Task Parameter:LogCode=NU1508 (TaskId:54)
+                     Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead (TaskId:55)
+                     Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead (TaskId:55)
+                                   WarningsAsErrors=;NU1605;SYSLIB0011
+                                   WarningsAsErrors=;NU1605;SYSLIB0011
+                                   WarningsAsErrors=;NU1605;SYSLIB0011
+                     Task Parameter:LogCode=NU1505 (TaskId:34)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:34)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:18)
+                     Task Parameter:LogCode=NU1505 (TaskId:18)
+                     Task Parameter:LogCode=NU1505 (TaskId:21)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:21)
+                     Task Parameter:LogCode=NU1506 (TaskId:35)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:35)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:19)
+                     Task Parameter:LogCode=NU1506 (TaskId:19)
+                     Task Parameter:LogCode=NU1506 (TaskId:22)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:22)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:56)
+                     Task Parameter:LogCode=NU1509 (TaskId:56)
+                     Task Parameter:LogCode=NU1508 (TaskId:36)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:36)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:20)
+                     Task Parameter:LogCode=NU1508 (TaskId:20)
+                     Task Parameter:LogCode=NU1508 (TaskId:23)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:23)
+                     Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead (TaskId:37)
+                     Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead (TaskId:24)
+                     Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead (TaskId:21)
+                     Task Parameter:LogCode=NU1509 (TaskId:25)
+                     Task Parameter:LogCode=NU1509 (TaskId:38)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:22)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:38)
+                     Task Parameter:LogCode=NU1509 (TaskId:22)
+                                   WarningsAsErrors=;NU1605;SYSLIB0011
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:25)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:66)
+                     Task Parameter:LogCode=NU1505 (TaskId:66)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:67)
+                     Task Parameter:LogCode=NU1506 (TaskId:67)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:68)
+                     Task Parameter:LogCode=NU1508 (TaskId:68)
+                     Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead (TaskId:69)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:70)
+                     Task Parameter:LogCode=NU1509 (TaskId:70)
+                                   WarningsAsErrors=;NU1605;SYSLIB0011
+                     Task Parameter:LogCode=NU1505 (TaskId:48)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:48)
+                     Task Parameter:LogCode=NU1506 (TaskId:49)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:49)
+                     Task Parameter:LogCode=NU1508 (TaskId:50)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:50)
+                     Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead (TaskId:51)
+                     Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead (TaskId:51)
+                     Task Parameter:LogCode=NU1509 (TaskId:52)
+                     Task Parameter:WarningsAsErrors=;NU1605;SYSLIB0011 (TaskId:52)
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+                                     WarningsAsErrors=;NU1605;SYSLIB0011
+23:12:50.720     1>D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+                     Failed to restore D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj (in 11.71 sec). (TaskId:79)
+23:12:53.645     1>D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+23:12:53.645     1>D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+23:12:53.646     1>D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+23:12:53.671     1>D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+                     Failed to restore D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj (in 14 ms). (TaskId:79)
+                     Failed to restore D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj (in 2.76 sec). (TaskId:79)
+                     Failed to restore D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj (in 14.54 sec). (TaskId:79)
+                     Failed to restore D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj (in 14.59 sec). (TaskId:79)
+                   Done executing task "RestoreTask" -- FAILED. (TaskId:79)
+23:12:53.729     1>Done building target "Restore" in project "Sokna.PrintAgent.slnx" -- FAILED.: (TargetId:84)
+23:12:53.730     1>Done Building Project "D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx" (Restore target(s)) -- FAILED.
+Build FAILED.
+                     D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+                     D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+                     D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+                     D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+                     D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj : error NU1903: Warning As Error: Package 'SQLitePCLRaw.lib.e_sqlite3' 2.1.11 has a known high severity vulnerability, https://github.com/advisories/GHSA-2m69-gcr7-jv3q [D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx]
+
+Restore outcome: failure
