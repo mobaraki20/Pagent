@@ -1,9 +1,10 @@
-name: Diagnose Sokna Agent Restore
+name: Diagnose Sokna Agent Build
 
 on:
   push:
     paths:
       - '.github/workflows/diagnose-restore.yml'
+      - 'agent6.zip'
   workflow_dispatch:
 
 permissions:
@@ -12,7 +13,7 @@ permissions:
 jobs:
   diagnose:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -23,57 +24,75 @@ jobs:
           if (!(Test-Path 'agent6.zip')) { throw 'agent6.zip missing' }
           Remove-Item agent-src -Recurse -Force -ErrorAction SilentlyContinue
           Expand-Archive agent6.zip agent-src -Force
-          Get-ChildItem agent-src -Force | Format-Table -AutoSize
 
       - name: Setup .NET from global.json
         uses: actions/setup-dotnet@v5
         with:
           global-json-file: agent-src/global.json
 
-      - name: Capture project metadata
+      - name: Initialize diagnostic
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force diagnostics | Out-Null
-          "=== dotnet --info ===" | Set-Content diagnostics/RESTORE_DIAGNOSTIC.txt
-          dotnet --info 2>&1 | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          "`n=== global.json ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          Get-Content agent-src/global.json | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          "`n=== Directory.Packages.props ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          Get-Content agent-src/Directory.Packages.props | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          "`n=== Directory.Build.props ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          Get-Content agent-src/Directory.Build.props | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          "`n=== csproj files ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          Get-ChildItem agent-src -Recurse -Filter *.csproj | ForEach-Object {
-            "`n--- $($_.FullName) ---" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-            Get-Content $_.FullName | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          }
+          "=== dotnet --info ===" | Set-Content diagnostics/BUILD_DIAGNOSTIC.txt
+          dotnet --info 2>&1 | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          "`n=== global.json ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          Get-Content agent-src/global.json | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          "`n=== Directory.Packages.props ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          Get-Content agent-src/Directory.Packages.props | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
 
-      - name: Restore with full diagnostics
+      - name: Restore
         id: restore
         continue-on-error: true
         shell: pwsh
         working-directory: agent-src
         run: |
-          dotnet restore Sokna.PrintAgent.slnx --verbosity diagnostic 2>&1 | Tee-Object -FilePath ../diagnostics/restore-full.log
+          dotnet restore Sokna.PrintAgent.slnx --verbosity normal 2>&1 | Tee-Object -FilePath ../diagnostics/restore.log
           exit $LASTEXITCODE
 
-      - name: Append restore errors
+      - name: Build, test and package
+        id: build
+        if: steps.restore.outcome == 'success'
+        continue-on-error: true
+        shell: pwsh
+        working-directory: agent-src
+        run: |
+          ./scripts/Build-Agent.ps1 2>&1 | Tee-Object -FilePath ../diagnostics/build.log
+          exit $LASTEXITCODE
+
+      - name: Windows installer smoke
+        id: smoke
+        if: steps.build.outcome == 'success'
+        continue-on-error: true
+        shell: pwsh
+        working-directory: agent-src
+        run: |
+          ./scripts/Test-Windows-Install.ps1 -Artifacts "$PWD/artifacts" 2>&1 | Tee-Object -FilePath ../diagnostics/smoke.log
+          exit $LASTEXITCODE
+
+      - name: Summarize
         if: always()
         shell: pwsh
         run: |
-          "`n=== RESTORE ERROR SUMMARY ===" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
-          if (Test-Path diagnostics/restore-full.log) {
-            Select-String -Path diagnostics/restore-full.log -Pattern 'error |NU[0-9]{4}|failed|exception' -CaseSensitive:$false | Select-Object -Last 120 | ForEach-Object { $_.Line } | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
+          "`n=== OUTCOMES ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          "Restore: ${{ steps.restore.outcome }}" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          "Build: ${{ steps.build.outcome }}" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          "Smoke: ${{ steps.smoke.outcome }}" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          foreach($f in @('restore.log','build.log','smoke.log')){
+            $p="diagnostics/$f"
+            if(Test-Path $p){
+              "`n=== $f ERROR SUMMARY ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+              Select-String -Path $p -Pattern 'error |NU[0-9]{4}|failed|exception|PASS|warning' -CaseSensitive:$false | Select-Object -Last 160 | ForEach-Object { $_.Line } | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+            }
           }
-          "`nRestore outcome: ${{ steps.restore.outcome }}" | Out-File diagnostics/RESTORE_DIAGNOSTIC.txt -Append
 
-      - name: Commit diagnostic result
+      - name: Commit diagnostics
         if: always()
         shell: pwsh
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add diagnostics/RESTORE_DIAGNOSTIC.txt diagnostics/restore-full.log
+          git add diagnostics/BUILD_DIAGNOSTIC.txt diagnostics/*.log
           if (git diff --cached --quiet) { exit 0 }
-          git commit -m 'Add restore diagnostic output'
+          git commit -m 'Update Agent build diagnostic output'
           git push
