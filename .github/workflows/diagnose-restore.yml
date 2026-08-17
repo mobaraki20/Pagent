@@ -41,6 +41,8 @@ jobs:
           "`n=== Directory.Packages.props ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
           Get-Content agent-src/Directory.Packages.props | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
           Copy-Item agent-src/scripts/Build-Agent.ps1 diagnostics/Build-Agent.ps1.txt -Force
+          Copy-Item agent-src/installer/Install-SoknaPrintAgent.ps1 diagnostics/Install-SoknaPrintAgent.ps1.txt -Force
+          Copy-Item agent-src/src/Sokna.PrintAgent.Setup/Program.cs diagnostics/Setup-Program.cs.txt -Force
 
       - name: Restore
         id: restore
@@ -83,9 +85,27 @@ jobs:
             $p="diagnostics/$f"
             if(Test-Path $p){
               "`n=== $f ERROR SUMMARY ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
-              Select-String -Path $p -Pattern 'error |NU[0-9]{4}|failed|exception|PASS|warning' -CaseSensitive:$false | Select-Object -Last 160 | ForEach-Object { $_.Line } | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+              Select-String -Path $p -Pattern 'error |NU[0-9]{4}|failed|exception|PASS|warning|collision|cannot|not found|Copy-Item|Compress-Archive' -CaseSensitive:$false | Select-Object -Last 240 | ForEach-Object { $_.Line } | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
             }
           }
+
+          "`n=== PUBLISHED COLLISION CHECK ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          $roots=@('agent-src/artifacts/Sokna.PrintAgent.Service','agent-src/artifacts/Sokna.PrintAgent.Worker','agent-src/artifacts/Sokna.PrintAgent.Control')
+          $rows=@()
+          foreach($r in $roots){
+            if(Test-Path $r){ Get-ChildItem $r -File | ForEach-Object { $rows += [pscustomobject]@{Root=$r;Name=$_.Name;Hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash} } }
+          }
+          $groups=$rows | Group-Object Name | Where-Object Count -gt 1
+          foreach($g in $groups){
+            $unique=@($g.Group.Hash | Select-Object -Unique)
+            if($unique.Count -gt 1){
+              "DIFFERENT HASH COLLISION: $($g.Name)" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+              $g.Group | Format-Table -AutoSize | Out-String | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+            }
+          }
+
+          "`n=== PACKAGE INPUT EXISTENCE ===" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append
+          foreach($p in @('agent-src/installer/Install-SoknaPrintAgent.ps1','agent-src/installer/Uninstall-SoknaPrintAgent.ps1','agent-src/README_FA.md','agent-src/docs')){ "$p = $(Test-Path $p)" | Out-File diagnostics/BUILD_DIAGNOSTIC.txt -Append }
 
       - name: Commit diagnostics
         if: always()
@@ -93,9 +113,9 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add diagnostics/BUILD_DIAGNOSTIC.txt diagnostics/Build-Agent.ps1.txt diagnostics/*.log
+          git add diagnostics/BUILD_DIAGNOSTIC.txt diagnostics/Build-Agent.ps1.txt diagnostics/Install-SoknaPrintAgent.ps1.txt diagnostics/Setup-Program.cs.txt diagnostics/*.log
           if (git diff --cached --quiet) { exit 0 }
-          git commit -m 'Update Agent build diagnostic output'
+          git commit -m 'Update Agent packaging diagnostic output'
           git push
 
-# connector trigger: capture packaging script
+# connector trigger: packaging diagnostics
