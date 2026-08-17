@@ -1,0 +1,55 @@
+param(
+  [Parameter(Mandatory=$true)][string]$Artifacts,
+  [string]$Version='6.0.0'
+)
+$ErrorActionPreference='Stop'
+$setup=Join-Path $Artifacts "Sokna-Print-Agent-$Version-Setup.exe"
+if(-not (Test-Path $setup -PathType Leaf)){throw "Setup.exe missing: $setup"}
+$service='SoknaPrintAgent6'
+$installRoot=Join-Path $env:ProgramFiles 'Sokna\PrintAgent'
+$dataRoot=Join-Path $env:ProgramData 'Sokna\PrintAgent'
+$health=Join-Path $dataRoot 'health.json'
+
+# Hosted Windows runners are disposable; make the smoke test deterministic.
+if(Get-Service $service -ErrorAction SilentlyContinue){
+  try{Stop-Service $service -Force -ErrorAction SilentlyContinue}catch{}
+  & sc.exe delete $service | Out-Null
+  Start-Sleep -Seconds 2
+}
+Remove-Item $installRoot -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
+
+Write-Host '== Install through the real embedded Setup.exe =='
+$proc=Start-Process -FilePath $setup -ArgumentList '/quiet' -Wait -PassThru
+if($proc.ExitCode -ne 0){throw "Setup.exe returned $($proc.ExitCode)"}
+
+$svc=Get-Service $service -ErrorAction Stop
+if($svc.Status -ne 'Running'){throw "Service not running after install: $($svc.Status)"}
+if(-not (Test-Path $health -PathType Leaf)){throw 'Fresh health.json not produced.'}
+$h=Get-Content $health -Raw | ConvertFrom-Json
+if(-not $h.updated_at){throw 'health.json missing updated_at.'}
+if(-not $h.service_account_context){throw 'Service is not reporting LocalSystem/service-account context.'}
+if(-not (Test-Path (Join-Path $installRoot 'Sokna.PrintAgent.Service.exe'))){throw 'Installed Service executable missing.'}
+if(-not (Test-Path (Join-Path $installRoot 'Sokna.PrintAgent.Worker.exe'))){throw 'Installed Worker executable missing.'}
+if(-not (Test-Path (Join-Path $installRoot 'Sokna.PrintAgent.Control.exe'))){throw 'Installed Control executable missing.'}
+
+$cfg=& sc.exe qc $service | Out-String
+if($cfg -notmatch 'AUTO_START'){throw 'Service start mode is not automatic/delayed-auto.'}
+$failure=& sc.exe qfailure $service | Out-String
+if($failure -notmatch 'RESTART'){throw 'Service Recovery restart action is missing.'}
+
+# Create a durable sentinel that must survive uninstall by default.
+$sentinel=Join-Path $dataRoot 'ci-preserve-sentinel.txt'
+Set-Content $sentinel 'preserve-me' -Encoding ascii
+
+Write-Host '== Uninstall; ProgramData must be preserved by default =='
+$uninstall=Join-Path $installRoot 'Uninstall-SoknaPrintAgent.ps1'
+if(-not (Test-Path $uninstall)){throw 'Installed uninstaller missing.'}
+& powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $uninstall
+if($LASTEXITCODE -ne 0){throw "Uninstaller returned $LASTEXITCODE"}
+if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service still exists after uninstall.'}
+if(-not (Test-Path $sentinel -PathType Leaf)){throw 'ProgramData was deleted by default uninstall.'}
+
+# CI cleanup only, after preservation has been proven.
+Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host 'PASS Windows Setup/Service/Uninstall smoke test' -ForegroundColor Green
