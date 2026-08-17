@@ -1,4 +1,4 @@
-name: Fix Agent SQLite Dependency
+name: Fix Agent Source Compatibility
 
 on:
   push:
@@ -17,7 +17,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Patch agent6.zip to SQLitePCLRaw 2.1.12
+      - name: Patch agent6.zip
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -25,29 +25,36 @@ jobs:
           Remove-Item agent-src -Recurse -Force -ErrorAction SilentlyContinue
           Expand-Archive agent6.zip agent-src -Force
 
+          # Security: keep the safe native SQLite bundle explicitly pinned.
           $props='agent-src/Directory.Packages.props'
           [xml]$xml=Get-Content $props
           $group=$xml.Project.ItemGroup | Select-Object -First 1
           $existing=$group.PackageVersion | Where-Object { $_.Include -eq 'SQLitePCLRaw.bundle_e_sqlite3' }
           if($existing){ $existing.Version='2.1.12' }
           else {
-            $n=$xml.CreateElement('PackageVersion')
-            $n.SetAttribute('Include','SQLitePCLRaw.bundle_e_sqlite3')
-            $n.SetAttribute('Version','2.1.12')
-            [void]$group.AppendChild($n)
+            $n=$xml.CreateElement('PackageVersion'); $n.SetAttribute('Include','SQLitePCLRaw.bundle_e_sqlite3'); $n.SetAttribute('Version','2.1.12'); [void]$group.AppendChild($n)
           }
           $xml.Save((Resolve-Path $props))
 
           $core='agent-src/src/Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj'
           [xml]$cx=Get-Content $core
           $ig=$cx.Project.ItemGroup | Select-Object -First 1
-          $pref=$ig.PackageReference | Where-Object { $_.Include -eq 'SQLitePCLRaw.bundle_e_sqlite3' }
-          if(-not $pref){
-            $n=$cx.CreateElement('PackageReference')
-            $n.SetAttribute('Include','SQLitePCLRaw.bundle_e_sqlite3')
-            [void]$ig.AppendChild($n)
+          if(-not ($ig.PackageReference | Where-Object { $_.Include -eq 'SQLitePCLRaw.bundle_e_sqlite3' })){
+            $n=$cx.CreateElement('PackageReference'); $n.SetAttribute('Include','SQLitePCLRaw.bundle_e_sqlite3'); [void]$ig.AppendChild($n)
           }
           $cx.Save((Resolve-Path $core))
+
+          # .NET 10: DbConnection.BeginTransactionAsync returns DbTransaction; SqliteCommand requires SqliteTransaction.
+          $store='agent-src/src/Sokna.PrintAgent.Core/LocalQueueStore.cs'
+          $text=Get-Content $store -Raw
+          $text=[regex]::Replace($text,'await using var (\w+)\s*=\s*await (\w+)\.BeginTransactionAsync\(ct\);','await using var $1=(SqliteTransaction)await $2.BeginTransactionAsync(ct);')
+          Set-Content -Path $store -Value $text -Encoding utf8
+
+          # Remove obsolete SDK choice while preserving WinForms via UseWindowsForms=true.
+          $control='agent-src/src/Sokna.PrintAgent.Control/Sokna.PrintAgent.Control.csproj'
+          $controlText=Get-Content $control -Raw
+          $controlText=$controlText.Replace('Project Sdk="Microsoft.NET.Sdk.WindowsDesktop"','Project Sdk="Microsoft.NET.Sdk"')
+          Set-Content -Path $control -Value $controlText -Encoding utf8
 
           Remove-Item agent6-new.zip -Force -ErrorAction SilentlyContinue
           Compress-Archive -Path 'agent-src/*' -DestinationPath 'agent6-new.zip' -CompressionLevel Optimal
@@ -61,7 +68,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add agent6.zip
           if (git diff --cached --quiet) { Write-Host 'No archive change'; exit 0 }
-          git commit -m 'Fix vulnerable SQLitePCLRaw dependency'
+          git commit -m 'Fix .NET 10 SQLite transaction typing'
           git push
 
-# trigger 2026-08-18
+# connector trigger transaction fix
