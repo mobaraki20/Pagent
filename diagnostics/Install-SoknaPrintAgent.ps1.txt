@@ -20,7 +20,7 @@ $DataRoot=[IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($Data
 
 $source=Join-Path $PSScriptRoot 'payload'
 $manifestPath=Join-Path $PSScriptRoot 'PAYLOAD_MANIFEST.json'
-if(-not (Test-Path (Join-Path $source 'Sokna.PrintAgent.Service.exe'))){throw 'Agent binaries are missing. Build the package first.'}
+if(-not (Test-Path (Join-Path $source 'Service\Sokna.PrintAgent.Service.exe'))){throw 'Agent binaries are missing. Build the package first.'}
 if(-not (Test-Path $manifestPath)){throw 'PAYLOAD_MANIFEST.json is missing.'}
 
 # Verify the complete payload before touching the live installation.
@@ -51,7 +51,7 @@ $registryChanged=$false
 try{
   New-Item $stage -ItemType Directory -Force|Out-Null
   Copy-Item (Join-Path $source '*') $stage -Recurse -Force
-  if(-not (Test-Path (Join-Path $stage 'Sokna.PrintAgent.Service.exe'))){throw 'Staged Service executable is missing.'}
+  if(-not (Test-Path (Join-Path $stage 'Service\Sokna.PrintAgent.Service.exe'))){throw 'Staged Service executable is missing.'}
   & icacls $stage /inheritance:r /grant:r 'SYSTEM:(OI)(CI)RX' 'Administrators:(OI)(CI)F' | Out-Null
 
   Get-Process 'Sokna.PrintAgent.Control' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
@@ -67,7 +67,7 @@ try{
   New-ItemProperty $regPath -Name DataRoot -Value $DataRoot -PropertyType String -Force|Out-Null
   $registryChanged=$true
 
-  $exe=Join-Path $InstallRoot 'Sokna.PrintAgent.Service.exe'
+  $exe=Join-Path $InstallRoot 'Service\Sokna.PrintAgent.Service.exe'
   if(-not (Get-Service $service -ErrorAction SilentlyContinue)){
     & sc.exe create $service binPath= "`"$exe`"" start= delayed-auto obj= LocalSystem DisplayName= "Sokna Print Agent 6" | Out-Null
     if($LASTEXITCODE -ne 0){throw "sc create failed: $LASTEXITCODE"}
@@ -109,7 +109,7 @@ try{
 
   if(Test-Path $backup){Remove-Item $backup -Recurse -Force}
   Write-Host "Installed/Upgraded. Durable data preserved at: $DataRoot" -ForegroundColor Green
-  Write-Host 'Open Sokna.PrintAgent.Control.exe as Administrator to save URL/token and test API v4. Service reload is automatic; restart is not required.'
+  Write-Host 'Open Control\Sokna.PrintAgent.Control.exe as Administrator to save URL/token and test API v4. Service reload is automatic; restart is not required.'
 }
 catch{
   $failure=$_
@@ -125,9 +125,12 @@ catch{
       if($null -ne $oldDataRoot){New-ItemProperty $regPath -Name DataRoot -Value ([string]$oldDataRoot) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name DataRoot -ErrorAction SilentlyContinue}
     }else{Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue}
   }
-  if($hadPrevious -and (Test-Path (Join-Path $InstallRoot 'Sokna.PrintAgent.Service.exe'))){
-    $oldExe=Join-Path $InstallRoot 'Sokna.PrintAgent.Service.exe'
-    try{& sc.exe config $service binPath= "`"$oldExe`"" start= delayed-auto obj= LocalSystem | Out-Null;Start-Service $service -ErrorAction SilentlyContinue}catch{}
+  if($hadPrevious){
+    $oldExe=Join-Path $InstallRoot 'Service\Sokna.PrintAgent.Service.exe'
+    if(-not (Test-Path $oldExe -PathType Leaf)){$oldExe=Join-Path $InstallRoot 'Sokna.PrintAgent.Service.exe'}
+    if(Test-Path $oldExe -PathType Leaf){
+      try{& sc.exe config $service binPath= "`"$oldExe`"" start= delayed-auto obj= LocalSystem | Out-Null;Start-Service $service -ErrorAction SilentlyContinue}catch{}
+    }
   }
   throw $failure
 }

@@ -40,17 +40,19 @@ New-Item $docs -ItemType Directory -Force|Out-Null
 # The installed uninstaller is part of the verified payload and survives Setup extraction.
 Copy-Item (Join-Path $root 'installer\Uninstall-SoknaPrintAgent.ps1') (Join-Path $payload 'Uninstall-SoknaPrintAgent.ps1') -Force
 
-# All executables deliberately share one install directory. File names are project-qualified; common
-# runtime dependencies must be byte-identical when overwritten by another published project.
-$collisionHashes=@{}
-foreach($project in @('Sokna.PrintAgent.Service','Sokna.PrintAgent.Worker','Sokna.PrintAgent.Control')){
+# Each self-contained process owns its runtime dependency set. Do not flatten these outputs:
+# Service uses the base runtime while Worker/Control use WindowsDesktop; same-named framework DLLs may
+# legitimately contain different bytes. Isolating each process prevents runtime assembly overwrite.
+$layout=[ordered]@{
+  'Sokna.PrintAgent.Service'='Service'
+  'Sokna.PrintAgent.Worker'='Worker'
+  'Sokna.PrintAgent.Control'='Control'
+}
+foreach($project in $layout.Keys){
   $src=Join-Path $Output $project
-  Get-ChildItem $src -File | ForEach-Object {
-    $name=$_.Name;$hash=(Get-FileHash $_.FullName -Algorithm SHA256).Hash
-    if($collisionHashes.ContainsKey($name) -and $collisionHashes[$name] -ne $hash){throw "Published file collision with different content: $name"}
-    $collisionHashes[$name]=$hash
-    Copy-Item $_.FullName (Join-Path $payload $name) -Force
-  }
+  $dest=Join-Path $payload $layout[$project]
+  New-Item $dest -ItemType Directory -Force|Out-Null
+  Copy-Item (Join-Path $src '*') $dest -Recurse -Force
 }
 
 Copy-Item (Join-Path $root 'installer\Install-SoknaPrintAgent.ps1') $package
