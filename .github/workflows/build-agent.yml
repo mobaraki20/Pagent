@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - 'agent6.zip'
+      - 'ci/patch_agent_source.py'
       - '.github/workflows/build-agent.yml'
 
 permissions:
@@ -23,10 +24,19 @@ jobs:
         shell: pwsh
         run: |
           if (!(Test-Path 'agent6.zip')) { throw 'agent6.zip not found in repository root.' }
+          Remove-Item 'agent-src' -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force 'agent-src' | Out-Null
           Expand-Archive -Path 'agent6.zip' -DestinationPath 'agent-src' -Force
           if (!(Test-Path 'agent-src/global.json')) { throw 'global.json not found after extraction.' }
           if (!(Test-Path 'agent-src/scripts/Build-Agent.ps1')) { throw 'Build-Agent.ps1 not found after extraction.' }
+
+      - name: Setup Python for deterministic source patch
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Apply audited Agent source fixes
+        run: python ci/patch_agent_source.py agent-src
 
       - name: Setup .NET SDK from global.json
         uses: actions/setup-dotnet@v5
@@ -48,12 +58,18 @@ jobs:
         working-directory: agent-src
         run: ./scripts/Test-Windows-Install.ps1 -Artifacts "$PWD/artifacts"
 
+      - name: Package corrected source snapshot
+        shell: pwsh
+        run: |
+          Compress-Archive -Path 'agent-src/*' -DestinationPath 'agent-src/artifacts/Sokna-Print-Agent-6.0.0-source-corrected.zip' -CompressionLevel Optimal
+
       - name: Verify expected artifacts
         shell: pwsh
         run: |
           $required = @(
             'agent-src/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe',
             'agent-src/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip',
+            'agent-src/artifacts/Sokna-Print-Agent-6.0.0-source-corrected.zip',
             'agent-src/artifacts/SHA256SUMS-Agent-6.0.0.txt',
             'agent-src/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json'
           )
@@ -69,6 +85,7 @@ jobs:
           path: |
             agent-src/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe
             agent-src/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip
+            agent-src/artifacts/Sokna-Print-Agent-6.0.0-source-corrected.zip
             agent-src/artifacts/SHA256SUMS-Agent-6.0.0.txt
             agent-src/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json
           if-no-files-found: error
