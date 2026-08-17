@@ -1,4 +1,4 @@
-Build started 8/17/2026 11:21:23 PM.
+Build started 8/17/2026 11:24:02 PM.
      1>Project "D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx" on node 1 (Restore target(s)).
      1>ValidateSolutionConfiguration:
          Building solution configuration "Debug|Any CPU".
@@ -15,33 +15,30 @@ Build started 8/17/2026 11:21:23 PM.
      1>Project "D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx" (1) is building "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj" (2:9) on node 4 (_GenerateProjectRestoreGraph target(s)).
      2>AddPrunePackageReferences:
          Loading prune package data from PrunePackageData folder
-     1>Project "D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx" (1) is building "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj" (7:5) on node 3 (_GenerateProjectRestoreGraph target(s)).
+     1>Project "D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx" (1) is building "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj" (7:5) on node 2 (_GenerateProjectRestoreGraph target(s)).
      7>AddPrunePackageReferences:
          Loading prune package data from PrunePackageData folder
-     1>Project "D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx" (1) is building "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj" (6:5) on node 2 (_GenerateProjectRestoreGraph target(s)).
+         Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
+     2>AddPrunePackageReferences:
+         Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
+     7>AddPrunePackageReferences:
+         Looking for targeting packs in C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref
+     2>AddPrunePackageReferences:
+         Looking for targeting packs in C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref
+     1>Project "D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx" (1) is building "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj" (6:5) on node 3 (_GenerateProjectRestoreGraph target(s)).
      6>AddPrunePackageReferences:
          Loading prune package data from PrunePackageData folder
-     2>AddPrunePackageReferences:
-         Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
-     6>AddPrunePackageReferences:
-         Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
-     7>AddPrunePackageReferences:
-         Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
-     2>AddPrunePackageReferences:
-         Looking for targeting packs in C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref
-     6>AddPrunePackageReferences:
-         Looking for targeting packs in C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref
-     7>AddPrunePackageReferences:
-         Looking for targeting packs in C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref
      2>AddPrunePackageReferences:
          Pack directories found: C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.10
          C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.11
          C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.8
-     6>AddPrunePackageReferences:
+     7>AddPrunePackageReferences:
          Pack directories found: C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.10
          C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.11
          C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.8
-     7>AddPrunePackageReferences:
+     6>AddPrunePackageReferences:
+         Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
+         Looking for targeting packs in C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref
          Pack directories found: C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.10
          C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.11
          C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.8
@@ -53,17 +50,18 @@ Build started 8/17/2026 11:21:23 PM.
          Pack directories found: C:\Program Files\dotnet\packs\Microsoft.WindowsDesktop.App.Ref\10.0.10
          C:\Program Files\dotnet\packs\Microsoft.WindowsDesktop.App.Ref\10.0.11
          C:\Program Files\dotnet\packs\Microsoft.WindowsDesktop.App.Ref\10.0.8
-     2>AddPrunePackageReferences:
+     7>AddPrunePackageReferences:
          Found package overrides file C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.11\data\PackageOverrides.txt
      6>AddPrunePackageReferences:
          Found package overrides file C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.11\data\PackageOverrides.txt
-     7>AddPrunePackageReferences:
+     2>AddPrunePackageReferences:
          Found package overrides file C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.11\data\PackageOverrides.txt
-     2>Done Building Project "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj" (_GenerateProjectRestoreGraph target(s)).
-     7>Done Building Project "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj" (_GenerateProjectRestoreGraph target(s)).
-     6>Done Building Project "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj" (_GenerateProjectRestoreGraph target(s)).
      5>AddPrunePackageReferences:
          Found package overrides file C:\Program Files\dotnet\packs\Microsoft.WindowsDesktop.App.Ref\10.0.11\data\PackageOverrides.txt
+     2>Done Building Project "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj" (_GenerateProjectRestoreGraph target(s)).
+     7>Done Building Project "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj" (_GenerateProjectRestoreGraph target(s)).
+     5>Done Building Project "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj" (_GenerateProjectRestoreGraph target(s)).
+     6>Done Building Project "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj" (_GenerateProjectRestoreGraph target(s)).
      1>Project "D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx" (1) is building "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj" (3:5) on node 4 (_GenerateProjectRestoreGraph target(s)).
      3>AddPrunePackageReferences:
          Loading prune package data from PrunePackageData folder
@@ -74,8 +72,6 @@ Build started 8/17/2026 11:21:23 PM.
          C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.8
          Found package overrides file C:\Program Files\dotnet\packs\Microsoft.NETCore.App.Ref\10.0.11\data\PackageOverrides.txt
          Loading prune package data from PrunePackageData folder
-     5>Done Building Project "D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj" (_GenerateProjectRestoreGraph target(s)).
-     3>AddPrunePackageReferences:
          Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
          Looking for targeting packs in C:\Program Files\dotnet\packs\Microsoft.WindowsDesktop.App.Ref
          Pack directories found: C:\Program Files\dotnet\packs\Microsoft.WindowsDesktop.App.Ref\10.0.10
@@ -86,264 +82,264 @@ Build started 8/17/2026 11:21:23 PM.
      1>Restore:
          X.509 certificate chain validation will use the default trust store selected by .NET for code signing.
          X.509 certificate chain validation will use the default trust store selected by .NET for timestamping.
-         Restoring packages for D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj...
-         Restoring packages for D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj...
-         Restoring packages for D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj...
-         Restoring packages for D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj...
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.net.illink.tasks/index.json
-           GET https://api.nuget.org/v3-flatcontainer/system.serviceprocess.servicecontroller/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.net.illink.tasks/index.json 4ms
-           GET https://api.nuget.org/v3-flatcontainer/system.security.cryptography.protecteddata/index.json
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite/index.json
-           OK https://api.nuget.org/v3-flatcontainer/system.serviceprocess.servicecontroller/index.json 18ms
-           OK https://api.nuget.org/v3-flatcontainer/system.security.cryptography.protecteddata/index.json 20ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.net.illink.tasks/10.0.11/microsoft.net.illink.tasks.10.0.11.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite/index.json 36ms
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/index.json 38ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.net.illink.tasks/10.0.11/microsoft.net.illink.tasks.10.0.11.nupkg 4ms
-           GET https://api.nuget.org/v3-flatcontainer/system.serviceprocess.servicecontroller/10.0.10/system.serviceprocess.servicecontroller.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/2.1.12/sqlitepclraw.bundle_e_sqlite3.2.1.12.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/system.security.cryptography.protecteddata/10.0.10/system.security.cryptography.protecteddata.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/system.serviceprocess.servicecontroller/10.0.10/system.serviceprocess.servicecontroller.10.0.10.nupkg 2ms
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/2.1.12/sqlitepclraw.bundle_e_sqlite3.2.1.12.nupkg 2ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite/10.0.10/microsoft.data.sqlite.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/system.security.cryptography.protecteddata/10.0.10/system.security.cryptography.protecteddata.10.0.10.nupkg 6ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite/10.0.10/microsoft.data.sqlite.10.0.10.nupkg 5ms
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/2.1.11/sqlitepclraw.bundle_e_sqlite3.2.1.11.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/index.json
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.lib.e_sqlite3/index.json
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.provider.e_sqlite3/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite.core/index.json
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/2.1.11/sqlitepclraw.bundle_e_sqlite3.2.1.11.nupkg 2ms
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/index.json 3ms
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/2.1.11/sqlitepclraw.core.2.1.11.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.windowsdesktop.app.runtime.win-x64/index.json
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.lib.e_sqlite3/index.json 21ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.net.ref/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.win-x64/index.json
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.lib.e_sqlite3/2.1.12/sqlitepclraw.lib.e_sqlite3.2.1.12.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/2.1.11/sqlitepclraw.core.2.1.11.nupkg 21ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/index.json 11ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite.core/index.json 32ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite.core/10.0.10/microsoft.data.sqlite.core.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.provider.e_sqlite3/index.json 37ms
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.lib.e_sqlite3/2.1.12/sqlitepclraw.lib.e_sqlite3.2.1.12.nupkg 13ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite.core/10.0.10/microsoft.data.sqlite.core.10.0.10.nupkg 7ms
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.provider.e_sqlite3/2.1.12/sqlitepclraw.provider.e_sqlite3.2.1.12.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.windowsdesktop.app.runtime.win-x64/index.json 33ms
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.provider.e_sqlite3/2.1.12/sqlitepclraw.provider.e_sqlite3.2.1.12.nupkg 3ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.net.ref/index.json 30ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.win-x64/index.json 33ms
-           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/2.1.12/sqlitepclraw.core.2.1.12.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/2.1.12/sqlitepclraw.core.2.1.12.nupkg 7ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.net.ref/10.0.19041.57/microsoft.windows.sdk.net.ref.10.0.19041.57.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.net.ref/10.0.19041.57/microsoft.windows.sdk.net.ref.10.0.19041.57.nupkg 4ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.win-x64/10.0.11/microsoft.aspnetcore.app.runtime.win-x64.10.0.11.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.windowsdesktop.app.runtime.win-x64/10.0.11/microsoft.windowsdesktop.app.runtime.win-x64.10.0.11.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.win-x64/10.0.11/microsoft.aspnetcore.app.runtime.win-x64.10.0.11.nupkg 10ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/10.0.11/microsoft.netcore.app.runtime.win-x64.10.0.11.nupkg
-         Installed System.Security.Cryptography.ProtectedData 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\system.security.cryptography.protecteddata\10.0.10 with content hash BKt0SQgq2lq3ESE68jkeLwv95ypANrPDtkTOIFGcnhg2aRUeUUBDrQlkVDZctrg1WenVcvn5P5XZnuYI7q6rFQ==.
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/10.0.11/microsoft.netcore.app.runtime.win-x64.10.0.11.nupkg 1097ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.windowsdesktop.app.runtime.win-x64/10.0.11/microsoft.windowsdesktop.app.runtime.win-x64.10.0.11.nupkg 1121ms
-         Installed Microsoft.Data.Sqlite 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.data.sqlite\10.0.10 with content hash 58JwZ39lCvRXHfV5O6RQfbHEDu8ZsXI7weRoVRR4jrGRxxkS+qyeuGrN2xD+9VYEICApYr0iTSL6PuU+DdsvPg==.
-         Installed SQLitePCLRaw.bundle_e_sqlite3 2.1.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.bundle_e_sqlite3\2.1.11 with content hash DC4nA7yWnf4UZdgJDF+9Mus4/cb0Y3Sfgi3gDnAoKNAIBwzkskNAbNbyu+u4atT0ruVlZNJfwZmwiEwE5oz9LQ==.
-         Installed Microsoft.NET.ILLink.Tasks 10.0.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.net.illink.tasks\10.0.11 with content hash IBf7lbovvjGWVWXZX5cJ/cO0WXbId0Zq4BuSeT94mGZuOAP66oMeH9PTBZ9Jpp3Jb6jtK0qm/NyUbPRo1gC/wQ==.
-         Installed System.ServiceProcess.ServiceController 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\system.serviceprocess.servicecontroller\10.0.10 with content hash 9tI/EtlMimwJn9EEtbqFrVqGCD98VfVdnW6UekC7/YHO5Ky/LMUfXibBv9+AV8g9u7uim20oHgiOqzaeEWAhqg==.
-         Installed SQLitePCLRaw.core 2.1.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.core\2.1.11 with content hash PK0GLFkfhZzLQeR3PJf71FmhtHox+U3vcY6ZtswoMjrefkB9k6ErNJEnwXqc5KgXDSjige2XXrezqS39gkpQKA==.
-         Installed SQLitePCLRaw.core 2.1.12 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.core\2.1.12 with content hash ETpNw9DY3ckWLgRRAeCHj+GKOuPi61aeczkXhgHexUvqoZBAYg8RYESE2J7O1M7+o6QbdSEZwrw9bfqztUVWXg==.
-         Installed SQLitePCLRaw.provider.e_sqlite3 2.1.12 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.provider.e_sqlite3\2.1.12 with content hash W3oH4XIfCzFrgUSDKHhN6N+dgzA5YHOR2VxX8GB6Qy7CyrJJgxPEG8NirgYWlPQC5P2jz2knSsexWu4tDUL33g==.
-         Installed Microsoft.Data.Sqlite.Core 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.data.sqlite.core\10.0.10 with content hash TPCs0ldm7AWqcKmp6f/Xr+14sat7hx4rHfRlS4RgCURBH2thEWbAKEyX7cCWr63zVJVOJIJZTg2cBiUXa8ys6g==.
-         Installed SQLitePCLRaw.bundle_e_sqlite3 2.1.12 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.bundle_e_sqlite3\2.1.12 with content hash mAgscpQMLw5/nfA1Q5oJVAT29yROUo1ifZGbbTpx/lwZpSxMUGoYbKfmvdm8oXER+RzxqBmmQzeBEVKfeHv2nw==.
-         Installed SQLitePCLRaw.lib.e_sqlite3 2.1.12 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.lib.e_sqlite3\2.1.12 with content hash fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w==.
-           GET https://api.nuget.org/v3/vulnerabilities/index.json
-           OK https://api.nuget.org/v3/vulnerabilities/index.json 2ms
-           GET https://api.nuget.org/v3-vulnerabilities/2026.08.12.00.01.06/vulnerability.base.json
-           GET https://api.nuget.org/v3-vulnerabilities/2026.08.12.00.01.06/2026.08.17.11.32.13/vulnerability.update.json
-           OK https://api.nuget.org/v3-vulnerabilities/2026.08.12.00.01.06/vulnerability.base.json 2ms
-           OK https://api.nuget.org/v3-vulnerabilities/2026.08.12.00.01.06/2026.08.17.11.32.13/vulnerability.update.json 2ms
-         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\obj\Sokna.PrintAgent.Core.csproj.nuget.g.props.
-         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\obj\Sokna.PrintAgent.Core.csproj.nuget.g.targets.
-         Writing assets file to disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\obj\project.assets.json
-         Writing packages lock file at disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\packages.lock.json
-         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj (in 5.08 sec).
-         Restoring packages for D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj...
-         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\obj\Sokna.PrintAgent.Tests.csproj.nuget.g.props.
-         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\obj\Sokna.PrintAgent.Tests.csproj.nuget.g.targets.
-         Writing assets file to disk. Path: D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\obj\project.assets.json
-         Writing packages lock file at disk. Path: D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\packages.lock.json
-         Restored D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj (in 12 ms).
          Restoring packages for D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj...
+         Restoring packages for D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj...
+         Restoring packages for D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj...
+         Restoring packages for D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj...
+           GET https://api.nuget.org/v3-flatcontainer/system.serviceprocess.servicecontroller/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite/index.json
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.windowsservices/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.windowsservices/index.json 21ms
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/index.json
+           GET https://api.nuget.org/v3-flatcontainer/system.security.cryptography.protecteddata/index.json
+           OK https://api.nuget.org/v3-flatcontainer/system.serviceprocess.servicecontroller/index.json 11ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite/index.json 24ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.windowsservices/index.json 43ms
+           GET https://api.nuget.org/v3-flatcontainer/system.serviceprocess.servicecontroller/10.0.10/system.serviceprocess.servicecontroller.10.0.10.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite/10.0.10/microsoft.data.sqlite.10.0.10.nupkg
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.windowsservices/10.0.10/microsoft.extensions.hosting.windowsservices.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.windowsservices/10.0.10/microsoft.extensions.hosting.windowsservices.10.0.10.nupkg 2ms
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/index.json 44ms
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/2.1.12/sqlitepclraw.bundle_e_sqlite3.2.1.12.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/system.security.cryptography.protecteddata/index.json 46ms
+           GET https://api.nuget.org/v3-flatcontainer/system.security.cryptography.protecteddata/10.0.10/system.security.cryptography.protecteddata.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite/10.0.10/microsoft.data.sqlite.10.0.10.nupkg 14ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.windowsservices/10.0.10/microsoft.extensions.hosting.windowsservices.10.0.10.nupkg 16ms
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/2.1.12/sqlitepclraw.bundle_e_sqlite3.2.1.12.nupkg 14ms
+           OK https://api.nuget.org/v3-flatcontainer/system.serviceprocess.servicecontroller/10.0.10/system.serviceprocess.servicecontroller.10.0.10.nupkg 25ms
+           OK https://api.nuget.org/v3-flatcontainer/system.security.cryptography.protecteddata/10.0.10/system.security.cryptography.protecteddata.10.0.10.nupkg 16ms
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite.core/index.json
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.lib.e_sqlite3/index.json
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting/index.json
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.provider.e_sqlite3/index.json
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/2.1.11/sqlitepclraw.bundle_e_sqlite3.2.1.11.nupkg
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventlog/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting/index.json 3ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventlog/index.json 3ms
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/index.json 14ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting/index.json 11ms
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.lib.e_sqlite3/index.json 14ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite.core/index.json 18ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting/10.0.10/microsoft.extensions.hosting.10.0.10.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/2.1.11/sqlitepclraw.core.2.1.11.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.lib.e_sqlite3/2.1.12/sqlitepclraw.lib.e_sqlite3.2.1.12.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite.core/10.0.10/microsoft.data.sqlite.core.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventlog/index.json 19ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventlog/10.0.10/microsoft.extensions.logging.eventlog.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventlog/10.0.10/microsoft.extensions.logging.eventlog.10.0.10.nupkg 2ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting/10.0.10/microsoft.extensions.hosting.10.0.10.nupkg 2ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.binder/index.json
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting/10.0.10/microsoft.extensions.hosting.10.0.10.nupkg 12ms
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/2.1.11/sqlitepclraw.core.2.1.11.nupkg 14ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.data.sqlite.core/10.0.10/microsoft.data.sqlite.core.10.0.10.nupkg 20ms
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.lib.e_sqlite3/2.1.12/sqlitepclraw.lib.e_sqlite3.2.1.12.nupkg 31ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventlog/10.0.10/microsoft.extensions.logging.eventlog.10.0.10.nupkg 22ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.abstractions/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.binder/index.json
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.commandline/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.binder/index.json 3ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.environmentvariables/index.json
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.provider.e_sqlite3/index.json 55ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.json/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.abstractions/index.json 4ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.fileextensions/index.json
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.provider.e_sqlite3/2.1.12/sqlitepclraw.provider.e_sqlite3.2.1.12.nupkg
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.usersecrets/index.json
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.abstractions/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.environmentvariables/index.json 2ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.fileextensions/index.json 3ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.abstractions/10.0.10/microsoft.extensions.configuration.abstractions.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.binder/10.0.10/microsoft.extensions.configuration.binder.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.json/index.json 4ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration/index.json 2ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.usersecrets/index.json 3ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.commandline/index.json 7ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.abstractions/index.json 8ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.binder/10.0.10/microsoft.extensions.configuration.binder.10.0.10.nupkg 6ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.abstractions/10.0.10/microsoft.extensions.configuration.abstractions.10.0.10.nupkg 7ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.environmentvariables/10.0.10/microsoft.extensions.configuration.environmentvariables.10.0.10.nupkg
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection.abstractions/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection/index.json
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.abstractions/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.console/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.abstractions/index.json
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.physical/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventsource/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.debug/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.environmentvariables/10.0.10/microsoft.extensions.configuration.environmentvariables.10.0.10.nupkg 4ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.fileextensions/10.0.10/microsoft.extensions.configuration.fileextensions.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.primitives/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection.abstractions/index.json 11ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection/index.json 12ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.physical/index.json 18ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.physical/10.0.10/microsoft.extensions.fileproviders.physical.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.commandline/10.0.10/microsoft.extensions.configuration.commandline.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/system.diagnostics.eventlog/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.debug/index.json 19ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.binder/index.json 11ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.abstractions/index.json 14ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options/index.json 21ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.fileextensions/10.0.10/microsoft.extensions.configuration.fileextensions.10.0.10.nupkg 18ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.usersecrets/10.0.10/microsoft.extensions.configuration.usersecrets.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration/10.0.10/microsoft.extensions.configuration.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventsource/index.json 25ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.abstractions/index.json 29ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.console/index.json 29ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics/index.json 30ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.primitives/index.json 20ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.configuration/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.console/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventsource/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.abstractions/10.0.10/microsoft.extensions.configuration.abstractions.10.0.10.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.debug/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.binder/10.0.10/microsoft.extensions.configuration.binder.10.0.10.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.abstractions/index.json
+           GET https://api.nuget.org/v3-flatcontainer/system.diagnostics.eventlog/index.json
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.commandline/index.json 30ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.environmentvariables/index.json 30ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.json/index.json 28ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.json/10.0.10/microsoft.extensions.configuration.json.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.fileextensions/index.json 31ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.fileextensions/10.0.10/microsoft.extensions.configuration.fileextensions.10.0.10.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.environmentvariables/10.0.10/microsoft.extensions.configuration.environmentvariables.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.provider.e_sqlite3/2.1.12/sqlitepclraw.provider.e_sqlite3.2.1.12.nupkg 37ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.commandline/10.0.10/microsoft.extensions.configuration.commandline.10.0.10.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/2.1.12/sqlitepclraw.core.2.1.12.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration/index.json 49ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection/index.json 48ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.usersecrets/index.json 52ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.configuration/index.json 42ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.physical/index.json 47ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection.abstractions/index.json 51ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.abstractions/index.json 47ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics/index.json 50ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/index.json 46ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options/index.json 45ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.debug/index.json 43ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/10.0.10/microsoft.extensions.logging.abstractions.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.console/index.json 48ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection/10.0.10/microsoft.extensions.dependencyinjection.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging/index.json 48ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.abstractions/10.0.10/microsoft.extensions.configuration.abstractions.10.0.10.nupkg 47ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.physical/10.0.10/microsoft.extensions.fileproviders.physical.10.0.10.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.configuration/10.0.10/microsoft.extensions.logging.configuration.10.0.10.nupkg
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.debug/10.0.10/microsoft.extensions.logging.debug.10.0.10.nupkg
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options/10.0.10/microsoft.extensions.options.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection/10.0.10/microsoft.extensions.dependencyinjection.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration/10.0.10/microsoft.extensions.configuration.10.0.10.nupkg 9ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.physical/10.0.10/microsoft.extensions.fileproviders.physical.10.0.10.nupkg 15ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventsource/10.0.10/microsoft.extensions.logging.eventsource.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection/10.0.10/microsoft.extensions.dependencyinjection.10.0.10.nupkg 3ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.abstractions/10.0.10/microsoft.extensions.hosting.abstractions.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.commandline/10.0.10/microsoft.extensions.configuration.commandline.10.0.10.nupkg 17ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics/10.0.10/microsoft.extensions.diagnostics.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options/10.0.10/microsoft.extensions.options.10.0.10.nupkg 6ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.usersecrets/10.0.10/microsoft.extensions.configuration.usersecrets.10.0.10.nupkg 16ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventsource/10.0.10/microsoft.extensions.logging.eventsource.10.0.10.nupkg 5ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.debug/10.0.10/microsoft.extensions.logging.debug.10.0.10.nupkg 13ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.abstractions/10.0.10/microsoft.extensions.hosting.abstractions.10.0.10.nupkg 4ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics/10.0.10/microsoft.extensions.diagnostics.10.0.10.nupkg 3ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/index.json 21ms
-           OK https://api.nuget.org/v3-flatcontainer/system.diagnostics.eventlog/index.json 31ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging/index.json
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.configuration/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.configuration/index.json 2ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging/index.json 2ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.console/10.0.10/microsoft.extensions.logging.console.10.0.10.nupkg
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging/10.0.10/microsoft.extensions.logging.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.configuration/10.0.10/microsoft.extensions.logging.configuration.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.console/10.0.10/microsoft.extensions.logging.console.10.0.10.nupkg 3ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.configuration/10.0.10/microsoft.extensions.logging.configuration.10.0.10.nupkg 3ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging/10.0.10/microsoft.extensions.logging.10.0.10.nupkg 4ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection.abstractions/10.0.10/microsoft.extensions.dependencyinjection.abstractions.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/10.0.10/microsoft.extensions.logging.abstractions.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.json/10.0.10/microsoft.extensions.configuration.json.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection.abstractions/10.0.10/microsoft.extensions.dependencyinjection.abstractions.10.0.10.nupkg 2ms
-           GET https://api.nuget.org/v3-flatcontainer/system.diagnostics.eventlog/10.0.10/system.diagnostics.eventlog.10.0.10.nupkg
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.abstractions/10.0.10/microsoft.extensions.fileproviders.abstractions.10.0.10.nupkg
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.primitives/10.0.10/microsoft.extensions.primitives.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/10.0.10/microsoft.extensions.logging.abstractions.10.0.10.nupkg 2ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.json/10.0.10/microsoft.extensions.configuration.json.10.0.10.nupkg 2ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.abstractions/10.0.10/microsoft.extensions.fileproviders.abstractions.10.0.10.nupkg 19ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.primitives/10.0.10/microsoft.extensions.primitives.10.0.10.nupkg 22ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection.abstractions/10.0.10/microsoft.extensions.dependencyinjection.abstractions.10.0.10.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration/10.0.10/microsoft.extensions.configuration.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.abstractions/index.json 64ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.json/10.0.10/microsoft.extensions.configuration.json.10.0.10.nupkg 54ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.usersecrets/10.0.10/microsoft.extensions.configuration.usersecrets.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.binder/10.0.10/microsoft.extensions.configuration.binder.10.0.10.nupkg 70ms
+           OK https://api.nuget.org/v3-flatcontainer/system.diagnostics.eventlog/index.json 102ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.environmentvariables/10.0.10/microsoft.extensions.configuration.environmentvariables.10.0.10.nupkg 92ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics/10.0.10/microsoft.extensions.diagnostics.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.core/2.1.12/sqlitepclraw.core.2.1.12.nupkg 86ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.commandline/10.0.10/microsoft.extensions.configuration.commandline.10.0.10.nupkg 92ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.fileextensions/10.0.10/microsoft.extensions.configuration.fileextensions.10.0.10.nupkg 96ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.abstractions/10.0.10/microsoft.extensions.hosting.abstractions.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.abstractions/10.0.10/microsoft.extensions.logging.abstractions.10.0.10.nupkg 73ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection/10.0.10/microsoft.extensions.dependencyinjection.10.0.10.nupkg 74ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.debug/10.0.10/microsoft.extensions.logging.debug.10.0.10.nupkg 69ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options/10.0.10/microsoft.extensions.options.10.0.10.nupkg 69ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.configuration/10.0.10/microsoft.extensions.logging.configuration.10.0.10.nupkg 72ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging/10.0.10/microsoft.extensions.logging.10.0.10.nupkg 70ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.console/10.0.10/microsoft.extensions.logging.console.10.0.10.nupkg 72ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.physical/10.0.10/microsoft.extensions.fileproviders.physical.10.0.10.nupkg 77ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.fileproviders.abstractions/10.0.10/microsoft.extensions.fileproviders.abstractions.10.0.10.nupkg 62ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.dependencyinjection.abstractions/10.0.10/microsoft.extensions.dependencyinjection.abstractions.10.0.10.nupkg 62ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration.usersecrets/10.0.10/microsoft.extensions.configuration.usersecrets.10.0.10.nupkg 60ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.configuration/10.0.10/microsoft.extensions.configuration.10.0.10.nupkg 65ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventsource/index.json 136ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventsource/10.0.10/microsoft.extensions.logging.eventsource.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics/10.0.10/microsoft.extensions.diagnostics.10.0.10.nupkg 24ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.hosting.abstractions/10.0.10/microsoft.extensions.hosting.abstractions.10.0.10.nupkg 19ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.primitives/index.json
+           GET https://api.nuget.org/v3-flatcontainer/system.diagnostics.eventlog/10.0.10/system.diagnostics.eventlog.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.logging.eventsource/10.0.10/microsoft.extensions.logging.eventsource.10.0.10.nupkg 18ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.filesystemglobbing/index.json
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.primitives/index.json 14ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options.configurationextensions/index.json
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics.abstractions/index.json
-           OK https://api.nuget.org/v3-flatcontainer/system.diagnostics.eventlog/10.0.10/system.diagnostics.eventlog.10.0.10.nupkg 25ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.filesystemglobbing/index.json
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options.configurationextensions/index.json 3ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics.abstractions/index.json 2ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options.configurationextensions/10.0.10/microsoft.extensions.options.configurationextensions.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.filesystemglobbing/index.json 4ms
-           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics.abstractions/10.0.10/microsoft.extensions.diagnostics.abstractions.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics.abstractions/10.0.10/microsoft.extensions.diagnostics.abstractions.10.0.10.nupkg 1ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.primitives/10.0.10/microsoft.extensions.primitives.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/system.diagnostics.eventlog/10.0.10/system.diagnostics.eventlog.10.0.10.nupkg 14ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.filesystemglobbing/index.json 12ms
            GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.filesystemglobbing/10.0.10/microsoft.extensions.filesystemglobbing.10.0.10.nupkg
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options.configurationextensions/10.0.10/microsoft.extensions.options.configurationextensions.10.0.10.nupkg 2ms
-           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.filesystemglobbing/10.0.10/microsoft.extensions.filesystemglobbing.10.0.10.nupkg 2ms
-         Installed Microsoft.Windows.SDK.NET.Ref 10.0.19041.57 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.windows.sdk.net.ref\10.0.19041.57 with content hash 5I8PT7WbBvGU7kq8caXQwxm8V4/+5DD6XKpg5TfRK8QyFoxr1xvpa7Q5o+rmrdJweLAh7Dm9TqKkLTym3klvDA==.
-         Installed Microsoft.Extensions.FileProviders.Abstractions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.fileproviders.abstractions\10.0.10 with content hash c5zqFCY9DiIpMovLd7/d/CTiEtrMOuQ639dhv3PABtKQIKNQikSHwQt8+N679uii9q+B55lgK28Uv64FOwEu8w==.
-         Installed Microsoft.Extensions.Logging.Debug 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.debug\10.0.10 with content hash 8+TZBnV5fgBXoVNJ5ROSErUwYogk4hOgV7c2HWK1u5cqKGmiUTUn7+KqZ35iQu8e/B7Ykccyz5OTjdXcidNZ9g==.
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.primitives/10.0.10/microsoft.extensions.primitives.10.0.10.nupkg 14ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options.configurationextensions/index.json 16ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics.abstractions/index.json 18ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options.configurationextensions/10.0.10/microsoft.extensions.options.configurationextensions.10.0.10.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics.abstractions/10.0.10/microsoft.extensions.diagnostics.abstractions.10.0.10.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.filesystemglobbing/10.0.10/microsoft.extensions.filesystemglobbing.10.0.10.nupkg 11ms
+           OK https://api.nuget.org/v3-flatcontainer/sqlitepclraw.bundle_e_sqlite3/2.1.11/sqlitepclraw.bundle_e_sqlite3.2.1.11.nupkg 263ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.options.configurationextensions/10.0.10/microsoft.extensions.options.configurationextensions.10.0.10.nupkg 13ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.extensions.diagnostics.abstractions/10.0.10/microsoft.extensions.diagnostics.abstractions.10.0.10.nupkg 15ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.windowsdesktop.app.runtime.win-x64/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.net.ref/index.json
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.win-x64/index.json
+         Installed SQLitePCLRaw.core 2.1.12 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.core\2.1.12 with content hash ETpNw9DY3ckWLgRRAeCHj+GKOuPi61aeczkXhgHexUvqoZBAYg8RYESE2J7O1M7+o6QbdSEZwrw9bfqztUVWXg==.
+         Installed Microsoft.Data.Sqlite 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.data.sqlite\10.0.10 with content hash 58JwZ39lCvRXHfV5O6RQfbHEDu8ZsXI7weRoVRR4jrGRxxkS+qyeuGrN2xD+9VYEICApYr0iTSL6PuU+DdsvPg==.
+         Installed SQLitePCLRaw.bundle_e_sqlite3 2.1.12 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.bundle_e_sqlite3\2.1.12 with content hash mAgscpQMLw5/nfA1Q5oJVAT29yROUo1ifZGbbTpx/lwZpSxMUGoYbKfmvdm8oXER+RzxqBmmQzeBEVKfeHv2nw==.
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/index.json 648ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.net.ref/index.json 663ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.windowsdesktop.app.runtime.win-x64/index.json 669ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.win-x64/index.json 669ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.net.ref/10.0.19041.57/microsoft.windows.sdk.net.ref.10.0.19041.57.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.win-x64/10.0.11/microsoft.aspnetcore.app.runtime.win-x64.10.0.11.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.windowsdesktop.app.runtime.win-x64/10.0.11/microsoft.windowsdesktop.app.runtime.win-x64.10.0.11.nupkg
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/10.0.11/microsoft.netcore.app.runtime.win-x64.10.0.11.nupkg
+         Installed SQLitePCLRaw.provider.e_sqlite3 2.1.12 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.provider.e_sqlite3\2.1.12 with content hash W3oH4XIfCzFrgUSDKHhN6N+dgzA5YHOR2VxX8GB6Qy7CyrJJgxPEG8NirgYWlPQC5P2jz2knSsexWu4tDUL33g==.
+         Installed System.Security.Cryptography.ProtectedData 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\system.security.cryptography.protecteddata\10.0.10 with content hash BKt0SQgq2lq3ESE68jkeLwv95ypANrPDtkTOIFGcnhg2aRUeUUBDrQlkVDZctrg1WenVcvn5P5XZnuYI7q6rFQ==.
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.aspnetcore.app.runtime.win-x64/10.0.11/microsoft.aspnetcore.app.runtime.win-x64.10.0.11.nupkg 175ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.windows.sdk.net.ref/10.0.19041.57/microsoft.windows.sdk.net.ref.10.0.19041.57.nupkg 182ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.windowsdesktop.app.runtime.win-x64/10.0.11/microsoft.windowsdesktop.app.runtime.win-x64.10.0.11.nupkg 180ms
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.netcore.app.runtime.win-x64/10.0.11/microsoft.netcore.app.runtime.win-x64.10.0.11.nupkg 182ms
+         Installed SQLitePCLRaw.bundle_e_sqlite3 2.1.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.bundle_e_sqlite3\2.1.11 with content hash DC4nA7yWnf4UZdgJDF+9Mus4/cb0Y3Sfgi3gDnAoKNAIBwzkskNAbNbyu+u4atT0ruVlZNJfwZmwiEwE5oz9LQ==.
+         Installed SQLitePCLRaw.core 2.1.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.core\2.1.11 with content hash PK0GLFkfhZzLQeR3PJf71FmhtHox+U3vcY6ZtswoMjrefkB9k6ErNJEnwXqc5KgXDSjige2XXrezqS39gkpQKA==.
+         Installed System.ServiceProcess.ServiceController 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\system.serviceprocess.servicecontroller\10.0.10 with content hash 9tI/EtlMimwJn9EEtbqFrVqGCD98VfVdnW6UekC7/YHO5Ky/LMUfXibBv9+AV8g9u7uim20oHgiOqzaeEWAhqg==.
+         Installed System.Diagnostics.EventLog 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\system.diagnostics.eventlog\10.0.10 with content hash OvGz3PrzuAI/Sj7LTcXcCe3FClRI1IyRMZjNONcZtFh+Ww7nAtSh4kh08r8KVe/xxkXJPjR0Y1jF7H+N42d4xQ==.
+         Installed SQLitePCLRaw.lib.e_sqlite3 2.1.12 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\sqlitepclraw.lib.e_sqlite3\2.1.12 with content hash fWi8Dbknuhgg72fWinIdjXVaqO1hHL4YBBwVLnr7e1c9TAZwJ0QE38j9syW1hwx6HaqEVTwI+O07WPdZn8Rp0w==.
+         Installed Microsoft.Data.Sqlite.Core 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.data.sqlite.core\10.0.10 with content hash TPCs0ldm7AWqcKmp6f/Xr+14sat7hx4rHfRlS4RgCURBH2thEWbAKEyX7cCWr63zVJVOJIJZTg2cBiUXa8ys6g==.
          Installed Microsoft.Extensions.Hosting.WindowsServices 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.hosting.windowsservices\10.0.10 with content hash qY7XhE2ljtqCwDKexJf3uG4E7r0teE/DU0eEUDbFqGN2HAIz0WK7P3u4RnnnqOy/3Jz5vdTfTuDMFsrwxrcmeg==.
-         Installed Microsoft.Extensions.Configuration.UserSecrets 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.usersecrets\10.0.10 with content hash 1s1sKFTk/Foam64JY6+m/diH8drL3Wx6V3gtSd5v1IEZtszZYyc1pW8uRnMblzpNiR0l0t8gGk7tXj3xHzFgdg==.
+           GET https://api.nuget.org/v3/vulnerabilities/index.json
+           OK https://api.nuget.org/v3/vulnerabilities/index.json 37ms
+           GET https://api.nuget.org/v3-vulnerabilities/2026.08.12.00.01.06/vulnerability.base.json
+           GET https://api.nuget.org/v3-vulnerabilities/2026.08.12.00.01.06/2026.08.17.11.32.13/vulnerability.update.json
+           OK https://api.nuget.org/v3-vulnerabilities/2026.08.12.00.01.06/2026.08.17.11.32.13/vulnerability.update.json 15ms
+           OK https://api.nuget.org/v3-vulnerabilities/2026.08.12.00.01.06/vulnerability.base.json 27ms
+         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\obj\Sokna.PrintAgent.Core.csproj.nuget.g.props.
+         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\obj\Sokna.PrintAgent.Tests.csproj.nuget.g.props.
+         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\obj\Sokna.PrintAgent.Tests.csproj.nuget.g.targets.
+         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\obj\Sokna.PrintAgent.Core.csproj.nuget.g.targets.
+         Writing assets file to disk. Path: D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\obj\project.assets.json
+         Writing assets file to disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\obj\project.assets.json
+         Writing packages lock file at disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\packages.lock.json
+         Writing packages lock file at disk. Path: D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\packages.lock.json
+         Restored D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj (in 3.55 sec).
+         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj (in 3.54 sec).
+         Restoring packages for D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj...
+         Restoring packages for D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj...
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.net.illink.tasks/index.json
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.net.illink.tasks/index.json 14ms
+           GET https://api.nuget.org/v3-flatcontainer/microsoft.net.illink.tasks/10.0.11/microsoft.net.illink.tasks.10.0.11.nupkg
+           OK https://api.nuget.org/v3-flatcontainer/microsoft.net.illink.tasks/10.0.11/microsoft.net.illink.tasks.10.0.11.nupkg 13ms
+         Installed Microsoft.Extensions.Diagnostics 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.diagnostics\10.0.10 with content hash Kr/e7lUf4+N8tacbqJ2Ctwe/HarKdAc9ZkgKVVqvtJDBKbez+T/KnUwu82KSlnBp/SrpBcxc7u7xkE2oUZT/5Q==.
          Installed Microsoft.Extensions.Logging.Configuration 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.configuration\10.0.10 with content hash cLrqxkuEfcilZ8SjK+9KAnpLk9lOoMPaOokF+wRUYie+iUEcdX4/p/+gJkt0BYgWLthjpBUCkVTBI6Kxg0nsOw==.
-         Installed Microsoft.Extensions.Hosting 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.hosting\10.0.10 with content hash tL9FkfV64GPUDSPvwrgyw42LVzsnVAnyrqJEuZVJbODgrQ3eL63zmzEcVWoCHzfgqUhWggzbgAyUCnz/zfI3Pg==.
-         Installed Microsoft.Extensions.Hosting.Abstractions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.hosting.abstractions\10.0.10 with content hash 5LugpYGHk+mkn0a8IZgcyfBca8PCTAU9RQFoMrTdtOOidq88M2SI5f3px6ugnzgxC+eTkvYYJi8pzlUnG5xdAQ==.
-         Installed Microsoft.Extensions.Options.ConfigurationExtensions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.options.configurationextensions\10.0.10 with content hash tnBmu/LwF25ZQK+HBNCu2xrwnkKoB/XEbJyooGGoYxHrhvxbSKi7eOFiJ4AXBy/QU4vtCvCJfoi8k9Ej72qzOQ==.
+         Installed Microsoft.Extensions.Logging.Console 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.console\10.0.10 with content hash VIlNzPwPS0GeQVSmCqqo36ugryX3LpE9ul6gEkks5VLET3weH/XMLeWmclwfoGn4Nxi2mwVibB+OZBVJ9tDqvg==.
+         Installed Microsoft.Extensions.Logging.Debug 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.debug\10.0.10 with content hash 8+TZBnV5fgBXoVNJ5ROSErUwYogk4hOgV7c2HWK1u5cqKGmiUTUn7+KqZ35iQu8e/B7Ykccyz5OTjdXcidNZ9g==.
          Installed Microsoft.Extensions.Primitives 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.primitives\10.0.10 with content hash 5wu/GrYVd8mG2DVUw3vFJzF+O336TyTGg/Kmcgw9bfwYhCoFiV5lR5QeEmKecJyrW4W54nMfD3p3589E8a7czQ==.
-         Installed Microsoft.Extensions.FileSystemGlobbing 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.filesystemglobbing\10.0.10 with content hash jSOCVxEwCd4Aq925kJVz1kSO1EpX2OHYKL04qVREXkDU7Ce3pVDdHPYm+fEy8y/th2kJf/DAstRHpJAqoNWP8w==.
+         Installed Microsoft.Extensions.Logging.EventSource 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.eventsource\10.0.10 with content hash 85SAPwXhJtdBInzN2k7SChiFiBGh3KOWay5AfoY+GREF6P7oZA98+ST2p7Z9384iLKYjkZSKIZ/FqIO5aojtNw==.
+         Installed Microsoft.Extensions.Configuration.CommandLine 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.commandline\10.0.10 with content hash 33cBeR2HRbzHUTtmcmLdNOApneNGcymwwL4arHuotgVK9Frba8kcDTrvVTj7cSCmF1R9OiSbZH0KxNOwab3HUg==.
+         Installed Microsoft.Extensions.FileProviders.Physical 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.fileproviders.physical\10.0.10 with content hash jhJAyo38kSrH3ARvWUk0h8itogVnQu2DCZuPo+s0Z+tXes0ugTxMPaHYzap85785eHQmPFqD9TYERqBbtGxn/w==.
+         Installed Microsoft.Extensions.Configuration.UserSecrets 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.usersecrets\10.0.10 with content hash 1s1sKFTk/Foam64JY6+m/diH8drL3Wx6V3gtSd5v1IEZtszZYyc1pW8uRnMblzpNiR0l0t8gGk7tXj3xHzFgdg==.
+         Installed Microsoft.Extensions.DependencyInjection 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.dependencyinjection\10.0.10 with content hash ANyvsgkNBRvcJh2XLgn8veGmajf+8m0AbKK+HPWdRL1yraSNVVSmQhFntLtdz/C795jxqqup+k05cs/3jZQPOA==.
+         Installed Microsoft.Extensions.Configuration.Json 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.json\10.0.10 with content hash uvJ6sHwjgrkMEJOgiC76G0mcZGXerwyyWkwX34EOjCbxKG6TCtfAoqDKAMsCvEBf9HxjlGQEgqsSMOGCmGBf+A==.
+         Installed Microsoft.Extensions.Configuration.Binder 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.binder\10.0.10 with content hash GqmN2o1CkJvk7uWp+p4CwBYW0w/zfoEbvsiFDbO2G8l1Uz+mrDAbAcZiXhU2lufKPby1cjAUdd5GTWpebYOkOA==.
+         Installed Microsoft.Extensions.Logging.EventLog 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.eventlog\10.0.10 with content hash 0RE4951AzQ+YD4gVrvbq0BhdsiBgSDo44yM7+QBZ2mrmMJeNjY+teCIYfUjqDPVYnKs0HR6SkkhgrX1YgXZq3Q==.
+         Installed Microsoft.Extensions.FileProviders.Abstractions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.fileproviders.abstractions\10.0.10 with content hash c5zqFCY9DiIpMovLd7/d/CTiEtrMOuQ639dhv3PABtKQIKNQikSHwQt8+N679uii9q+B55lgK28Uv64FOwEu8w==.
+         Installed Microsoft.Extensions.Configuration 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration\10.0.10 with content hash plJWK2zpWuuyxI8F8s2scx6Je7N1Ajjs6HvYUGKwRnDMWIVIz9FHwAkiT7ASgrvAOd10T0FPVlh9BzAJJME+jg==.
+         Installed Microsoft.Extensions.Configuration.EnvironmentVariables 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.environmentvariables\10.0.10 with content hash KRfFSSCV58vEdU7mPED/YMzeovIWF5P0g8s9K8n9HEfy0/WzMq37SrPdXdFN5/dFT/rPMHpF7AvpoXHckbcBFg==.
          Installed Microsoft.Extensions.Configuration.FileExtensions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.fileextensions\10.0.10 with content hash ZOhZYwvbXGTgGVRwswIirofEMVHuWdxjdh0JeUZXwaF9cgcjXdz/t0ELtgaevw7ezTyv47yPNCgGreWtLkn3IQ==.
          Installed Microsoft.Extensions.Diagnostics.Abstractions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.diagnostics.abstractions\10.0.10 with content hash 9uWiKpeOVac355STyChWR/pliFX/5CeLqChW9kKsaxyDH4EUTZxMkT4Jwp/J/peLm0GBFmSX5c0WCse3yCnq1Q==.
-         Installed Microsoft.Extensions.Configuration 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration\10.0.10 with content hash plJWK2zpWuuyxI8F8s2scx6Je7N1Ajjs6HvYUGKwRnDMWIVIz9FHwAkiT7ASgrvAOd10T0FPVlh9BzAJJME+jg==.
-         Installed Microsoft.AspNetCore.App.Runtime.win-x64 10.0.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.aspnetcore.app.runtime.win-x64\10.0.11 with content hash cWmSB4T/SUN4EbchZxJUi2H/euP8/WMfXMVAIb2DG9Vn/cTQiAGxN/t3SORDkIMPP9Sa6SLHWefKqAgj7qmIlw==.
-         Installed Microsoft.Extensions.Configuration.Json 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.json\10.0.10 with content hash uvJ6sHwjgrkMEJOgiC76G0mcZGXerwyyWkwX34EOjCbxKG6TCtfAoqDKAMsCvEBf9HxjlGQEgqsSMOGCmGBf+A==.
-         Installed Microsoft.Extensions.DependencyInjection 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.dependencyinjection\10.0.10 with content hash ANyvsgkNBRvcJh2XLgn8veGmajf+8m0AbKK+HPWdRL1yraSNVVSmQhFntLtdz/C795jxqqup+k05cs/3jZQPOA==.
-         Installed Microsoft.Extensions.DependencyInjection.Abstractions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.dependencyinjection.abstractions\10.0.10 with content hash z/2xXlFw2aLGjHyEm6E0tQ+In6VfzQzTrtArbQ2c0TQE16ZbyDCMGPvaUT9I0s8rgy9sRWlU2P9waW37qV04qA==.
-         Installed Microsoft.Extensions.Options 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.options\10.0.10 with content hash srnhnk7nE8krBiIXp71LvBmKBtraBONWSRzdjJgRv1Ko9Mp8IVNqv4vIS9hGeVteBig8aQkva9ZG+sC+o5sVcA==.
-         Installed Microsoft.Extensions.Configuration.CommandLine 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.commandline\10.0.10 with content hash 33cBeR2HRbzHUTtmcmLdNOApneNGcymwwL4arHuotgVK9Frba8kcDTrvVTj7cSCmF1R9OiSbZH0KxNOwab3HUg==.
-         Installed System.Diagnostics.EventLog 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\system.diagnostics.eventlog\10.0.10 with content hash OvGz3PrzuAI/Sj7LTcXcCe3FClRI1IyRMZjNONcZtFh+Ww7nAtSh4kh08r8KVe/xxkXJPjR0Y1jF7H+N42d4xQ==.
-         Installed Microsoft.Extensions.Configuration.Binder 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.binder\10.0.10 with content hash GqmN2o1CkJvk7uWp+p4CwBYW0w/zfoEbvsiFDbO2G8l1Uz+mrDAbAcZiXhU2lufKPby1cjAUdd5GTWpebYOkOA==.
+         Installed Microsoft.Extensions.Options.ConfigurationExtensions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.options.configurationextensions\10.0.10 with content hash tnBmu/LwF25ZQK+HBNCu2xrwnkKoB/XEbJyooGGoYxHrhvxbSKi7eOFiJ4AXBy/QU4vtCvCJfoi8k9Ej72qzOQ==.
+         Installed Microsoft.Extensions.FileSystemGlobbing 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.filesystemglobbing\10.0.10 with content hash jSOCVxEwCd4Aq925kJVz1kSO1EpX2OHYKL04qVREXkDU7Ce3pVDdHPYm+fEy8y/th2kJf/DAstRHpJAqoNWP8w==.
          Installed Microsoft.Extensions.Configuration.Abstractions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.abstractions\10.0.10 with content hash 5Vnd2I75DmZCVEjSynIdJ/0EGafgnLQwgR3t2C2/fkjx/nRG+cLwxLLdInoHeCEpkD5K4Ov/g9ZCRYrl4TRsaA==.
-         Installed Microsoft.Extensions.Logging.EventLog 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.eventlog\10.0.10 with content hash 0RE4951AzQ+YD4gVrvbq0BhdsiBgSDo44yM7+QBZ2mrmMJeNjY+teCIYfUjqDPVYnKs0HR6SkkhgrX1YgXZq3Q==.
-         Installed Microsoft.Extensions.Logging.Console 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.console\10.0.10 with content hash VIlNzPwPS0GeQVSmCqqo36ugryX3LpE9ul6gEkks5VLET3weH/XMLeWmclwfoGn4Nxi2mwVibB+OZBVJ9tDqvg==.
-         Installed Microsoft.Extensions.Configuration.EnvironmentVariables 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.configuration.environmentvariables\10.0.10 with content hash KRfFSSCV58vEdU7mPED/YMzeovIWF5P0g8s9K8n9HEfy0/WzMq37SrPdXdFN5/dFT/rPMHpF7AvpoXHckbcBFg==.
-         Installed Microsoft.Extensions.Diagnostics 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.diagnostics\10.0.10 with content hash Kr/e7lUf4+N8tacbqJ2Ctwe/HarKdAc9ZkgKVVqvtJDBKbez+T/KnUwu82KSlnBp/SrpBcxc7u7xkE2oUZT/5Q==.
-         Installed Microsoft.Extensions.Logging.EventSource 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.eventsource\10.0.10 with content hash 85SAPwXhJtdBInzN2k7SChiFiBGh3KOWay5AfoY+GREF6P7oZA98+ST2p7Z9384iLKYjkZSKIZ/FqIO5aojtNw==.
-         Installed Microsoft.Extensions.FileProviders.Physical 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.fileproviders.physical\10.0.10 with content hash jhJAyo38kSrH3ARvWUk0h8itogVnQu2DCZuPo+s0Z+tXes0ugTxMPaHYzap85785eHQmPFqD9TYERqBbtGxn/w==.
+         Installed Microsoft.Extensions.DependencyInjection.Abstractions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.dependencyinjection.abstractions\10.0.10 with content hash z/2xXlFw2aLGjHyEm6E0tQ+In6VfzQzTrtArbQ2c0TQE16ZbyDCMGPvaUT9I0s8rgy9sRWlU2P9waW37qV04qA==.
+         Installed Microsoft.NET.ILLink.Tasks 10.0.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.net.illink.tasks\10.0.11 with content hash IBf7lbovvjGWVWXZX5cJ/cO0WXbId0Zq4BuSeT94mGZuOAP66oMeH9PTBZ9Jpp3Jb6jtK0qm/NyUbPRo1gC/wQ==.
+         Installed Microsoft.Extensions.Hosting 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.hosting\10.0.10 with content hash tL9FkfV64GPUDSPvwrgyw42LVzsnVAnyrqJEuZVJbODgrQ3eL63zmzEcVWoCHzfgqUhWggzbgAyUCnz/zfI3Pg==.
          Installed Microsoft.Extensions.Logging 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging\10.0.10 with content hash Tf6z5HsL0VDYRTfvsoNrTGHGheCwkTsZBA2FFh5ATJUbkAwug+FFNISJK2gjpUNemlAOoWllAK52HOWCjto3EQ==.
+         Installed Microsoft.Extensions.Hosting.Abstractions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.hosting.abstractions\10.0.10 with content hash 5LugpYGHk+mkn0a8IZgcyfBca8PCTAU9RQFoMrTdtOOidq88M2SI5f3px6ugnzgxC+eTkvYYJi8pzlUnG5xdAQ==.
+         Installed Microsoft.Extensions.Options 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.options\10.0.10 with content hash srnhnk7nE8krBiIXp71LvBmKBtraBONWSRzdjJgRv1Ko9Mp8IVNqv4vIS9hGeVteBig8aQkva9ZG+sC+o5sVcA==.
          Installed Microsoft.Extensions.Logging.Abstractions 10.0.10 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.extensions.logging.abstractions\10.0.10 with content hash zkFxGYUvdxAvIKTyXHrmW+Sux53D4SezD9dMyZ6hrwwzPQJNuwCRy1f5W7AvYTqacEGhWF2XderRQG1OvbV8og==.
+         Installed Microsoft.Windows.SDK.NET.Ref 10.0.19041.57 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.windows.sdk.net.ref\10.0.19041.57 with content hash 5I8PT7WbBvGU7kq8caXQwxm8V4/+5DD6XKpg5TfRK8QyFoxr1xvpa7Q5o+rmrdJweLAh7Dm9TqKkLTym3klvDA==.
+         Installed Microsoft.AspNetCore.App.Runtime.win-x64 10.0.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.aspnetcore.app.runtime.win-x64\10.0.11 with content hash cWmSB4T/SUN4EbchZxJUi2H/euP8/WMfXMVAIb2DG9Vn/cTQiAGxN/t3SORDkIMPP9Sa6SLHWefKqAgj7qmIlw==.
          Installed Microsoft.NETCore.App.Runtime.win-x64 10.0.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.netcore.app.runtime.win-x64\10.0.11 with content hash AsqluTjZAgnSAbqh8qQ/mPOpkcuerdyhXsPYs4/iUfpBItGENdYI8g5IxLxVD3ztZG/5EbqSW8f60nz1D4VGOA==.
          Installed Microsoft.WindowsDesktop.App.Runtime.win-x64 10.0.11 from https://api.nuget.org/v3/index.json to C:\Users\runneradmin\.nuget\packages\microsoft.windowsdesktop.app.runtime.win-x64\10.0.11 with content hash BtcNcsjl6FgGHxnty0flaCdrEUkDbp27mdH+5FLQgaVUJdv5VuCELTu3jwfPe9iuL6gzGX5ChV77xVw5sTrn7g==.
          Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\obj\Sokna.PrintAgent.Setup.csproj.nuget.g.props.
          Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\obj\Sokna.PrintAgent.Setup.csproj.nuget.g.targets.
          Writing assets file to disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\obj\project.assets.json
          Writing packages lock file at disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\packages.lock.json
-         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj (in 14.59 sec).
-         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\obj\Sokna.PrintAgent.Control.csproj.nuget.g.props.
+         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj (in 18.42 sec).
          Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\obj\Sokna.PrintAgent.Worker.csproj.nuget.g.props.
+         Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\obj\Sokna.PrintAgent.Control.csproj.nuget.g.props.
          Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\obj\Sokna.PrintAgent.Worker.csproj.nuget.g.targets.
          Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\obj\Sokna.PrintAgent.Control.csproj.nuget.g.targets.
          Writing assets file to disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\obj\project.assets.json
          Writing assets file to disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\obj\project.assets.json
          Writing packages lock file at disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\packages.lock.json
          Writing packages lock file at disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\packages.lock.json
-         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj (in 14.6 sec).
-         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj (in 14.6 sec).
+         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj (in 18.43 sec).
+         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj (in 22.87 sec).
          Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\obj\Sokna.PrintAgent.Service.csproj.nuget.g.props.
          Generating MSBuild file D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\obj\Sokna.PrintAgent.Service.csproj.nuget.g.targets.
          Writing assets file to disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\obj\project.assets.json
          Writing packages lock file at disk. Path: D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\packages.lock.json
-         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj (in 9.51 sec).
+         Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj (in 22.92 sec).
          
          NuGet Config files used:
              C:\Users\runneradmin\AppData\Roaming\NuGet\NuGet.Config
@@ -356,16 +352,16 @@ Build started 8/17/2026 11:21:23 PM.
              C:\Program Files\dotnet\library-packs
          
          Installed:
-             8 package(s) to D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj
              9 package(s) to D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj
+             8 package(s) to D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj
              1 package(s) to D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj
-             9 package(s) to D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj
              8 package(s) to D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj
-             38 package(s) to D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj
+             9 package(s) to D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj
+             39 package(s) to D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj
      1>Done Building Project "D:\a\Pagent\Pagent\agent-src\Sokna.PrintAgent.slnx" (Restore target(s)).
 
 Build succeeded.
     0 Warning(s)
     0 Error(s)
 
-Time Elapsed 00:00:16.77
+Time Elapsed 00:00:25.27

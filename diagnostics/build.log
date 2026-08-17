@@ -2,31 +2,31 @@
   All projects are up-to-date for restore.
   Sokna.PrintAgent.Core -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\bin\Release\net10.0\Sokna.PrintAgent.Core.dll
   Sokna.PrintAgent.Setup -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Setup\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna-Print-Agent-6.0.0-Setup.dll
-  Sokna.PrintAgent.Worker -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Worker.dll
-  Sokna.PrintAgent.Tests -> D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\bin\Release\net10.0\Sokna.PrintAgent.Tests.dll
   Sokna.PrintAgent.Control -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Control.dll
+  Sokna.PrintAgent.Tests -> D:\a\Pagent\Pagent\agent-src\tests\Sokna.PrintAgent.Tests\bin\Release\net10.0\Sokna.PrintAgent.Tests.dll
   Sokna.PrintAgent.Service -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Service.dll
+  Sokna.PrintAgent.Worker -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Worker.dll
 
 Build succeeded.
     0 Warning(s)
     0 Error(s)
 
-Time Elapsed 00:00:07.58
+Time Elapsed 00:00:08.82
 PASS Sokna.PrintAgent.Tests
   Determining projects to restore...
-  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj (in 354 ms).
-  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj (in 349 ms).
+  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\Sokna.PrintAgent.Core.csproj (in 390 ms).
+  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\Sokna.PrintAgent.Service.csproj (in 398 ms).
   Sokna.PrintAgent.Core -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\bin\Release\net10.0\Sokna.PrintAgent.Core.dll
   Sokna.PrintAgent.Service -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Service\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Service.dll
   Sokna.PrintAgent.Service -> D:\a\Pagent\Pagent\agent-src\artifacts\Sokna.PrintAgent.Service\
   Determining projects to restore...
-  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj (in 320 ms).
+  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\Sokna.PrintAgent.Worker.csproj (in 344 ms).
   1 of 2 projects are up-to-date for restore.
   Sokna.PrintAgent.Core -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\bin\Release\net10.0\Sokna.PrintAgent.Core.dll
   Sokna.PrintAgent.Worker -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Worker\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Worker.dll
   Sokna.PrintAgent.Worker -> D:\a\Pagent\Pagent\agent-src\artifacts\Sokna.PrintAgent.Worker\
   Determining projects to restore...
-  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj (in 292 ms).
+  Restored D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\Sokna.PrintAgent.Control.csproj (in 321 ms).
   1 of 2 projects are up-to-date for restore.
   Sokna.PrintAgent.Core -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Core\bin\Release\net10.0\Sokna.PrintAgent.Core.dll
   Sokna.PrintAgent.Control -> D:\a\Pagent\Pagent\agent-src\src\Sokna.PrintAgent.Control\bin\Release\net10.0-windows10.0.19041.0\win-x64\Sokna.PrintAgent.Control.dll
