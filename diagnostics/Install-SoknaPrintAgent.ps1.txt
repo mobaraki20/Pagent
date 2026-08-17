@@ -1,0 +1,136 @@
+param(
+  [string]$InstallRoot='',
+  [string]$DataRoot='',
+  [switch]$SkipStart
+)
+$ErrorActionPreference='Stop'
+$service='SoknaPrintAgent6'
+$regPath='HKLM:\SOFTWARE\Sokna\PrintAgent'
+$id=[Security.Principal.WindowsIdentity]::GetCurrent()
+$p=New-Object Security.Principal.WindowsPrincipal($id)
+if(-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Installer must run as Administrator.'}
+
+$oldRegExists=Test-Path $regPath
+$oldInstallRoot=$null;$oldDataRoot=$null
+if($oldRegExists){$old=Get-ItemProperty $regPath -ErrorAction SilentlyContinue;$oldInstallRoot=$old.InstallRoot;$oldDataRoot=$old.DataRoot}
+if([string]::IsNullOrWhiteSpace($InstallRoot)){$InstallRoot=if($oldInstallRoot){[string]$oldInstallRoot}else{"$env:ProgramFiles\Sokna\PrintAgent"}}
+if([string]::IsNullOrWhiteSpace($DataRoot)){$DataRoot=if($oldDataRoot){[string]$oldDataRoot}else{"$env:ProgramData\Sokna\PrintAgent"}}
+$InstallRoot=[IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($InstallRoot))
+$DataRoot=[IO.Path]::GetFullPath([Environment]::ExpandEnvironmentVariables($DataRoot))
+
+$source=Join-Path $PSScriptRoot 'payload'
+$manifestPath=Join-Path $PSScriptRoot 'PAYLOAD_MANIFEST.json'
+if(-not (Test-Path (Join-Path $source 'Sokna.PrintAgent.Service.exe'))){throw 'Agent binaries are missing. Build the package first.'}
+if(-not (Test-Path $manifestPath)){throw 'PAYLOAD_MANIFEST.json is missing.'}
+
+# Verify the complete payload before touching the live installation.
+$manifest=Get-Content $manifestPath -Raw | ConvertFrom-Json
+foreach($entry in $manifest){
+  $rel=([string]$entry.path).Replace('/','\')
+  $file=Join-Path $PSScriptRoot $rel
+  if(-not (Test-Path $file -PathType Leaf)){throw "Payload file missing: $rel"}
+  if((Get-Item $file).Length -ne [int64]$entry.size){throw "Payload size mismatch: $rel"}
+  $actual=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+  if($actual -ne ([string]$entry.sha256).ToLowerInvariant()){throw "Payload SHA256 mismatch: $rel"}
+}
+
+$parent=Split-Path $InstallRoot -Parent
+New-Item $parent -ItemType Directory -Force|Out-Null
+New-Item $DataRoot -ItemType Directory -Force|Out-Null
+New-Item (Join-Path $DataRoot 'logs') -ItemType Directory -Force|Out-Null
+New-Item (Join-Path $DataRoot 'work') -ItemType Directory -Force|Out-Null
+& icacls $DataRoot /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null
+
+$stage="$InstallRoot.__stage_$([Guid]::NewGuid().ToString('N'))"
+$backup="$InstallRoot.__backup_$([Guid]::NewGuid().ToString('N'))"
+$hadPrevious=Test-Path $InstallRoot
+$previousService=Get-Service $service -ErrorAction SilentlyContinue
+$installedNew=$false
+$registryChanged=$false
+
+try{
+  New-Item $stage -ItemType Directory -Force|Out-Null
+  Copy-Item (Join-Path $source '*') $stage -Recurse -Force
+  if(-not (Test-Path (Join-Path $stage 'Sokna.PrintAgent.Service.exe'))){throw 'Staged Service executable is missing.'}
+  & icacls $stage /inheritance:r /grant:r 'SYSTEM:(OI)(CI)RX' 'Administrators:(OI)(CI)F' | Out-Null
+
+  Get-Process 'Sokna.PrintAgent.Control' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  if($previousService){Stop-Service $service -Force -ErrorAction Stop}
+
+  if($hadPrevious){Move-Item $InstallRoot $backup}
+  Move-Item $stage $InstallRoot
+  $installedNew=$true
+  & icacls $InstallRoot /inheritance:r /grant:r 'SYSTEM:(OI)(CI)RX' 'Administrators:(OI)(CI)F' | Out-Null
+
+  New-Item $regPath -Force|Out-Null
+  New-ItemProperty $regPath -Name InstallRoot -Value $InstallRoot -PropertyType String -Force|Out-Null
+  New-ItemProperty $regPath -Name DataRoot -Value $DataRoot -PropertyType String -Force|Out-Null
+  $registryChanged=$true
+
+  $exe=Join-Path $InstallRoot 'Sokna.PrintAgent.Service.exe'
+  if(-not (Get-Service $service -ErrorAction SilentlyContinue)){
+    & sc.exe create $service binPath= "`"$exe`"" start= delayed-auto obj= LocalSystem DisplayName= "Sokna Print Agent 6" | Out-Null
+    if($LASTEXITCODE -ne 0){throw "sc create failed: $LASTEXITCODE"}
+  }else{
+    & sc.exe config $service binPath= "`"$exe`"" start= delayed-auto obj= LocalSystem | Out-Null
+    if($LASTEXITCODE -ne 0){throw "sc config failed: $LASTEXITCODE"}
+  }
+  & sc.exe failure $service reset= 86400 actions= restart/5000/restart/15000/restart/60000 | Out-Null
+  if($LASTEXITCODE -ne 0){throw "sc failure failed: $LASTEXITCODE"}
+  & sc.exe failureflag $service 1 | Out-Null
+  if($LASTEXITCODE -ne 0){throw "sc failureflag failed: $LASTEXITCODE"}
+
+  # Machine-wide font only. The Service/Worker must not depend on the interactive user's profile.
+  $machineFont=$false
+  foreach($fontKey in @('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\Fonts')){
+    if(Test-Path $fontKey){$props=Get-ItemProperty $fontKey;foreach($name in $props.PSObject.Properties.Name){if($name -like 'Vazirmatn*'){$machineFont=$true;break}}}
+    if($machineFont){break}
+  }
+  if(-not $machineFont){Write-Warning 'Vazirmatn is not installed machine-wide; deterministic Tahoma/Segoe UI fallback will be used.'}
+
+  if(-not $SkipStart){
+    $health=Join-Path $DataRoot 'health.json'
+    Remove-Item $health -Force -ErrorAction SilentlyContinue # a stale health file must never satisfy this install check
+    Start-Service $service
+    $deadline=(Get-Date).AddSeconds(20)
+    do{
+      Start-Sleep -Milliseconds 500
+      $s=Get-Service $service
+      if($s.Status -ne 'Running'){throw "Service did not stay running: $($s.Status)"}
+    }while((-not (Test-Path $health)) -and (Get-Date) -lt $deadline)
+    if(-not (Test-Path $health)){throw 'Service is running but a fresh health.json was not produced within 20 seconds.'}
+    $snapshot=Get-Content $health -Raw | ConvertFrom-Json
+    if(-not $snapshot.updated_at){throw 'health.json is incomplete.'}
+    Write-Host "Service health: $($snapshot.state) | service-account-context=$($snapshot.service_account_context)"
+    Write-Host 'Printer queues visible to the Service account:'
+    if($null -eq $snapshot.printers -or $snapshot.printers.Count -eq 0){Write-Warning 'No printer queue is visible to LocalSystem. Install/map a machine-wide or Standard TCP/IP printer before Production use.'}
+    else{$snapshot.printers | Select-Object name,offline,paused,paper_out,error,jobs,driver,port | Format-Table -AutoSize}
+  }
+
+  if(Test-Path $backup){Remove-Item $backup -Recurse -Force}
+  Write-Host "Installed/Upgraded. Durable data preserved at: $DataRoot" -ForegroundColor Green
+  Write-Host 'Open Sokna.PrintAgent.Control.exe as Administrator to save URL/token and test API v4. Service reload is automatic; restart is not required.'
+}
+catch{
+  $failure=$_
+  Write-Warning "Install/upgrade failed; attempting binary/configuration-location rollback: $($failure.Exception.Message)"
+  try{Get-Service $service -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue}catch{}
+  if($installedNew -and (Test-Path $InstallRoot)){Remove-Item $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue}
+  if(Test-Path $backup){Move-Item $backup $InstallRoot -Force}
+  if(Test-Path $stage){Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue}
+  if($registryChanged){
+    if($oldRegExists){
+      New-Item $regPath -Force|Out-Null
+      if($null -ne $oldInstallRoot){New-ItemProperty $regPath -Name InstallRoot -Value ([string]$oldInstallRoot) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name InstallRoot -ErrorAction SilentlyContinue}
+      if($null -ne $oldDataRoot){New-ItemProperty $regPath -Name DataRoot -Value ([string]$oldDataRoot) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name DataRoot -ErrorAction SilentlyContinue}
+    }else{Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue}
+  }
+  if($hadPrevious -and (Test-Path (Join-Path $InstallRoot 'Sokna.PrintAgent.Service.exe'))){
+    $oldExe=Join-Path $InstallRoot 'Sokna.PrintAgent.Service.exe'
+    try{& sc.exe config $service binPath= "`"$oldExe`"" start= delayed-auto obj= LocalSystem | Out-Null;Start-Service $service -ErrorAction SilentlyContinue}catch{}
+  }
+  throw $failure
+}
+finally{
+  if(Test-Path $stage){Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue}
+}

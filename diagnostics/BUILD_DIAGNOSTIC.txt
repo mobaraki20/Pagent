@@ -144,9 +144,61 @@ Smoke: skipped
          Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
          Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
          Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
-         Failed to load prune package data from PrunePackageData folder, loading from targeting packs instead
     0 Warning(s)
 
 === build.log ERROR SUMMARY ===
     0 Warning(s)
 PASS Sokna.PrintAgent.Tests
+
+=== PUBLISHED COLLISION CHECK ===
+DIFFERENT HASH COLLISION: Microsoft.VisualBasic.dll
+
+Root                                         Name                      Hash
+----                                         ----                      ----
+agent-src/artifacts/Sokna.PrintAgent.Service Microsoft.VisualBasic.dll 6ADCDD16418823C4D27BC65C9EF07DF2EAC26215FAFC3D27…
+agent-src/artifacts/Sokna.PrintAgent.Worker  Microsoft.VisualBasic.dll A7AC7E8EA4A71DB42ADB99F55AF9BA270C3518652FE1A1F4…
+agent-src/artifacts/Sokna.PrintAgent.Control Microsoft.VisualBasic.dll A7AC7E8EA4A71DB42ADB99F55AF9BA270C3518652FE1A1F4…
+
+
+DIFFERENT HASH COLLISION: System.Diagnostics.EventLog.dll
+
+Root                                         Name                            Hash
+----                                         ----                            ----
+agent-src/artifacts/Sokna.PrintAgent.Service System.Diagnostics.EventLog.dll E4A0BB00CA9D5CF3C54CFF629680F54FF4A23CD933…
+agent-src/artifacts/Sokna.PrintAgent.Worker  System.Diagnostics.EventLog.dll 9D49F6A312B511677C6AA47FB50C5F8CA3F0041090…
+agent-src/artifacts/Sokna.PrintAgent.Control System.Diagnostics.EventLog.dll 9D49F6A312B511677C6AA47FB50C5F8CA3F0041090…
+
+
+DIFFERENT HASH COLLISION: System.Diagnostics.EventLog.Messages.dll
+
+Root                                         Name                                     Hash
+----                                         ----                                     ----
+agent-src/artifacts/Sokna.PrintAgent.Service System.Diagnostics.EventLog.Messages.dll D61A4474C6002FF132B4E7DCCF7D92FEE…
+agent-src/artifacts/Sokna.PrintAgent.Worker  System.Diagnostics.EventLog.Messages.dll 48B87F5F629D05588FA885628BF3FEBF9…
+agent-src/artifacts/Sokna.PrintAgent.Control System.Diagnostics.EventLog.Messages.dll 48B87F5F629D05588FA885628BF3FEBF9…
+
+
+DIFFERENT HASH COLLISION: System.Drawing.dll
+
+Root                                         Name               Hash
+----                                         ----               ----
+agent-src/artifacts/Sokna.PrintAgent.Service System.Drawing.dll 9F68761F68125E3596C7AF69D56799CF3E08DC2947661069B433D30…
+agent-src/artifacts/Sokna.PrintAgent.Worker  System.Drawing.dll E962E9CF231AB5D5D8DCA30EC1FBC1C2E22020E5A9451018EA50FF2…
+agent-src/artifacts/Sokna.PrintAgent.Control System.Drawing.dll E962E9CF231AB5D5D8DCA30EC1FBC1C2E22020E5A9451018EA50FF2…
+
+
+DIFFERENT HASH COLLISION: System.Security.Cryptography.ProtectedData.dll
+
+Root                                         Name                                           Hash
+----                                         ----                                           ----
+agent-src/artifacts/Sokna.PrintAgent.Service System.Security.Cryptography.ProtectedData.dll 13243B72B164865D604B99BF32D…
+agent-src/artifacts/Sokna.PrintAgent.Worker  System.Security.Cryptography.ProtectedData.dll 0DA76965A258FCF03CB1A605E19…
+agent-src/artifacts/Sokna.PrintAgent.Control System.Security.Cryptography.ProtectedData.dll 0DA76965A258FCF03CB1A605E19…
+
+
+
+=== PACKAGE INPUT EXISTENCE ===
+agent-src/installer/Install-SoknaPrintAgent.ps1 = True
+agent-src/installer/Uninstall-SoknaPrintAgent.ps1 = True
+agent-src/README_FA.md = True
+agent-src/docs = True
