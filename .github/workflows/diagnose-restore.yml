@@ -11,6 +11,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: sokna-agent-diagnostics
+  cancel-in-progress: true
+
 jobs:
   diagnose:
     runs-on: windows-latest
@@ -130,7 +134,8 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add diagnostics
           if (git diff --cached --quiet) { exit 0 }
-          git commit -m 'Capture Agent patch and build diagnostics'
-          git push
+          git commit -m 'Capture serialized Agent diagnostics'
+          git pull --rebase origin main
+          git push origin HEAD:main
 
-# connector trigger: patch capture
+# connector trigger: serialized clean diagnostic
