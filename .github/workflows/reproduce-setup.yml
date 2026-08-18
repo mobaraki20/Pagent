@@ -1,0 +1,122 @@
+name: Reproduce Sokna Setup Failure
+
+on:
+  push:
+    paths:
+      - '.github/workflows/reproduce-setup.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sokna-setup-reproduction
+  cancel-in-progress: false
+
+jobs:
+  reproduce:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+
+      - name: Build current normal source
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Build-Agent.ps1
+
+      - name: Execute Setup and capture streams
+        id: setup
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $report='diagnostics/SETUP_REPRODUCTION.txt'
+          $setup=(Resolve-Path 'agent/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe').Path
+          $stdout=Join-Path $env:RUNNER_TEMP 'sokna-setup.stdout.txt'
+          $stderr=Join-Path $env:RUNNER_TEMP 'sokna-setup.stderr.txt'
+          $started=Get-Date
+          @(
+            "run_id=${{ github.run_id }}",
+            "commit=${{ github.sha }}",
+            "started=$($started.ToUniversalTime().ToString('o'))",
+            "setup=$setup"
+          ) | Set-Content $report -Encoding utf8
+          $p=Start-Process -FilePath $setup -ArgumentList '/quiet' -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          "exit_code=$($p.ExitCode)" | Out-File $report -Append
+          Set-Content diagnostics/SETUP_REPRODUCTION_EXIT.txt $p.ExitCode -Encoding ascii
+          "`n=== STDOUT ===" | Out-File $report -Append
+          if(Test-Path $stdout){Get-Content $stdout | Out-File $report -Append}
+          "`n=== STDERR ===" | Out-File $report -Append
+          if(Test-Path $stderr){Get-Content $stderr | Out-File $report -Append}
+          if($p.ExitCode -ne 0){throw "Setup.exe returned $($p.ExitCode)"}
+
+      - name: Capture Windows evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue'
+          $report='diagnostics/SETUP_REPRODUCTION.txt'
+          if(!(Test-Path $report)){"report initialized after early failure" | Set-Content $report}
+          "`n=== SERVICE ===" | Out-File $report -Append
+          & sc.exe query SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          & sc.exe qc SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          & sc.exe qfailure SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          "`n=== SERVICE REGISTRY ===" | Out-File $report -Append
+          if(Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\SoknaPrintAgent6'){
+            Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\SoknaPrintAgent6' | Format-List * | Out-String -Width 300 | Out-File $report -Append
+          }
+          "`n=== APP REGISTRY ===" | Out-File $report -Append
+          if(Test-Path 'HKLM:\SOFTWARE\Sokna\PrintAgent'){
+            Get-ItemProperty 'HKLM:\SOFTWARE\Sokna\PrintAgent' | Format-List * | Out-String -Width 300 | Out-File $report -Append
+          }
+          "`n=== PROGRAM FILES ===" | Out-File $report -Append
+          $pf=Join-Path $env:ProgramFiles 'Sokna\PrintAgent'
+          if(Test-Path $pf){Get-ChildItem $pf -Recurse -Force | Select-Object FullName,Length,LastWriteTime | Format-Table -AutoSize | Out-String -Width 300 | Out-File $report -Append}else{'missing' | Out-File $report -Append}
+          "`n=== PROGRAMDATA ===" | Out-File $report -Append
+          $pd=Join-Path $env:ProgramData 'Sokna\PrintAgent'
+          if(Test-Path $pd){
+            Get-ChildItem $pd -Recurse -Force | Select-Object FullName,Length,LastWriteTime | Format-Table -AutoSize | Out-String -Width 300 | Out-File $report -Append
+            $health=Join-Path $pd 'health.json'; if(Test-Path $health){"`n=== HEALTH ===" | Out-File $report -Append; Get-Content $health -Raw | Out-File $report -Append}
+            "`n=== SANITIZED LOGS ===" | Out-File $report -Append
+            Get-ChildItem $pd -Recurse -File -Include *.log,*.txt -ErrorAction SilentlyContinue | ForEach-Object {
+              "--- $($_.FullName) ---" | Out-File $report -Append
+              Get-Content $_.FullName -ErrorAction SilentlyContinue | Where-Object {$_ -notmatch '(?i)authorization|bearer|token|secret|hmac'} | Select-Object -Last 160 | Out-File $report -Append
+            }
+          }else{'missing' | Out-File $report -Append}
+          "`n=== SYSTEM EVENT LOG ===" | Out-File $report -Append
+          $since=(Get-Date).AddMinutes(-20)
+          Get-WinEvent -FilterHashtable @{LogName='System';StartTime=$since} -ErrorAction SilentlyContinue | Where-Object {$_.ProviderName -eq 'Service Control Manager' -and $_.Message -match 'SoknaPrintAgent6|Sokna.PrintAgent'} | Select-Object TimeCreated,Id,LevelDisplayName,Message | Format-List | Out-String -Width 300 | Out-File $report -Append
+          "`n=== APPLICATION EVENT LOG ===" | Out-File $report -Append
+          Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=$since} -ErrorAction SilentlyContinue | Where-Object {$_.ProviderName -match '.NET Runtime|Application Error|Windows Error Reporting' -or $_.Message -match 'Sokna.PrintAgent'} | Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,Message | Format-List | Out-String -Width 300 | Out-File $report -Append
+          "`n=== TEMP SOKNA ===" | Out-File $report -Append
+          Get-ChildItem $env:TEMP -Force -ErrorAction SilentlyContinue | Where-Object {$_.Name -match '(?i)sokna|printagent'} | Select-Object FullName,LastWriteTime | Format-Table -AutoSize | Out-String -Width 300 | Out-File $report -Append
+
+      - name: Commit reproduction evidence
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics/SETUP_REPRODUCTION.txt diagnostics/SETUP_REPRODUCTION_EXIT.txt
+          if(!(git diff --cached --quiet)){
+            git commit -m 'Capture Setup reproduction evidence'
+            git pull --rebase origin main
+            git push
+          }
+
+      - name: Preserve failure as gate result
+        if: always()
+        shell: pwsh
+        run: |
+          if(!(Test-Path diagnostics/SETUP_REPRODUCTION_EXIT.txt)){throw 'Setup did not reach executable stage.'}
+          $code=[int](Get-Content diagnostics/SETUP_REPRODUCTION_EXIT.txt -Raw).Trim()
+          if($code -ne 0){throw "Reproduced Setup failure: exit $code"}
