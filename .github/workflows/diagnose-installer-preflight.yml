@@ -1,3 +1,4 @@
+# P0 diagnostic trigger: rerun after permanent installer/source-of-truth fixes
 name: Diagnose Installer Preflight
 
 on:
