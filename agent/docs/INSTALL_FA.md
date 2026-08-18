@@ -1,58 +1,57 @@
-# نصب و Upgrade Sokna Print Agent 6
+# نصب Sokna Print Agent 6.0.0
 
-## وضعیت این بسته
-Source و Build script آماده است؛ **ساخت و تأیید Installer نهایی باید روی Windows با .NET 10 SDK انجام شود.** فایل win-x64 تا زمانی که Build Gate پاس نشده نباید به‌عنوان Installer تأییدشده منتشر شود.
+## وضعیت
+Windows Build و Installer smoke در CI واقعی اجرا و PASS شده‌اند. این فقط Installation Gate است؛ چاپ فیزیکی واقعی، Printer/Spooler faultها، Windows restart و soak همچنان **PENDING / UAT_REQUIRED — PRODUCTION GATE** هستند.
 
 ## پیش‌نیاز Production
-- Windows پشتیبانی‌شده پروژه با آخرین Updateهای امنیتی.
-- Printer Queue قابل مشاهده توسط Account سرویس. نسخه اولیه Service با `LocalSystem` نصب می‌شود.
-- توصیه: Queue به‌صورت Machine-wide / Standard TCP/IP ایجاد شود؛ User-profile printer بدون تست Service Account مجاز نیست.
-- HTTPS معتبر برای Sokna.
-- برای ظاهر توافقی: `Vazirmatn` به‌صورت Machine-wide. در نبود آن Tahoma و سپس Segoe UI fallback می‌شوند.
+- Windows پشتیبانی‌شده و به‌روز.
+- Printer Queue قابل مشاهده توسط Account سرویس. Agent فعلی با `LocalSystem` نصب می‌شود.
+- ترجیحاً Machine-wide / Standard TCP/IP Queue؛ User-profile printer بدون verification مجاز نیست.
+- HTTPS معتبر برای Sokna production.
+- Agent credential معتبر و قابل revoke/rotate.
+- در صورت نیاز به Vazirmatn، فونت باید Machine-wide باشد؛ Agent به User Profile وابسته نیست.
 
-## Build روی Windows
-از ریشه `print-agent-v6` در PowerShell:
+## Artifactهای Windows
+Build رسمی باید این موارد را با SHA-256 همان Run تولید کند:
+- `Sokna-Print-Agent-6.0.0-Setup.exe`
+- `Sokna-Print-Agent-6.0.0-win-x64.zip`
+- `Sokna-Print-Agent-6.0.0-source.zip`
+- `SHA256SUMS-Agent-6.0.0.txt`
+- `BUILD_ARTIFACTS-Agent-6.0.0.json`
+
+## نصب پیشنهادی
+1. SHA-256 `Setup.exe` را با گزارش Build همان Run تطبیق دهید.
+2. `Sokna-Print-Agent-6.0.0-Setup.exe` را با دسترسی Administrator اجرا کنید. برای نصب silent: `/quiet`.
+3. Setup payload embedded را استخراج و SHA-256 همه فایل‌های Manifest را قبل از تغییر سیستم Verify می‌کند.
+4. Installer Service `SoknaPrintAgent6` را با `Automatic Delayed Start` و Windows Recovery Restart ایجاد می‌کند.
+5. Service باید حتی بدون Config/Token بالا بماند و `health.json` با حالت waiting/configuration state بنویسد.
+6. Control App را فقط برای تنظیم Server URL/credential و بررسی سلامت باز کنید. Control برای زنده‌ماندن Service لازم نیست.
+7. در پنل Sokna destinationها را assign کنید.
+8. قبل از Production، Test Print و checklist چاپگر واقعی را اجرا کنید.
+
+## Layout نصب
+- Service: `%ProgramFiles%\Sokna\PrintAgent\Service\`
+- Worker: `%ProgramFiles%\Sokna\PrintAgent\Worker\`
+- Control: `%ProgramFiles%\Sokna\PrintAgent\Control\`
+- Uninstaller: `%ProgramFiles%\Sokna\PrintAgent\Uninstall-SoknaPrintAgent.ps1`
+- Mutable state: `%ProgramData%\Sokna\PrintAgent\`
+- Setup diagnostics: `%ProgramData%\Sokna\PrintAgentSetup\logs\`
+
+Mutable state شامل config/secret/SQLite/logs/work/health است و Upgrade نباید آن را پاک کند.
+
+## Health نصب
+Installer پس از Service start منتظر health تازه می‌ماند. نبود Printer Queue قابل مشاهده توسط LocalSystem Warning/Production Blocker است، نه دلیل حذف Job Server.
+
+## Uninstall
+Uninstaller Service را stop/delete می‌کند و منتظر حذف واقعی SCM می‌ماند. Program Files حذف می‌شود اما ProgramData به‌صورت پیش‌فرض حفظ می‌شود.
+
+حذف داده فقط با `-RemoveData` و تأیید صریح `DELETE` مجاز است.
+
+## Build برای توسعه
+از ریشه `agent/` روی Windows:
 
 ```powershell
 .\scripts\Build-Agent.ps1 -Configuration Release -Runtime win-x64
 ```
 
-Script باید .NET 10 SDK را enforce، restore/build/test/publish، manifest و SHA بسازد و ZIP نهایی تولید کند. Build شکست‌خورده Package قابل انتشار محسوب نمی‌شود.
-
-## نصب
-1. ZIP build‌شده را در مسیر موقت Extract کنید؛ مسیر دارای Space یا کاراکتر فارسی مجاز است.
-2. PowerShell را Run as Administrator اجرا کنید.
-3. `./Install-SoknaPrintAgent.ps1`
-4. Installer Service را با Automatic Delayed Start، LocalSystem و Recovery Restart ایجاد می‌کند.
-5. Service **حتی بدون Config/Token باید Running بماند** و `health.json` با state `waiting_for_configuration` بسازد.
-6. `Sokna.PrintAgent.Control.exe` را Run as Administrator باز کنید و Server URL و Agent Token را ذخیره کنید.
-7. **Restart Service لازم نیست**؛ Service تغییر Config/Secret را خودکار reload می‌کند.
-8. در Control App تست API v4 و Service Health را بررسی کنید.
-9. در پنل Sokna مقصدها را به Agent v4 assign کنید.
-10. Test Print و سپس Production Gate واقعی را اجرا کنید.
-
-## محل فایل‌ها
-- Binary: `%ProgramFiles%\Sokna\PrintAgent`
-- Config/Secret/SQLite/Logs/Health/Work: `%ProgramData%\Sokna\PrintAgent`
-
-Installer در Upgrade داده‌های ProgramData را overwrite/delete نمی‌کند.
-
-## Health نصب
-Installer پس از Start حداکثر ۲۰ ثانیه منتظر `health.json` می‌ماند و Queueهای قابل مشاهده توسط **Service account** را گزارش می‌کند. نبود Queue Warning و Blocker برای Production Print است، نه دلیل حذف Job سرور.
-
-## Upgrade
-1. Backup از ProgramData توصیه می‌شود.
-2. Installer جدید Service را stop می‌کند.
-3. فقط Program Files replace می‌شود.
-4. Config/secret/SQLite/logs حفظ می‌شوند.
-5. Service start و Health verify می‌شود.
-6. SQLite schema upgrade باید forward-compatible و بدون حذف history باشد.
-
-## Uninstall
-```powershell
-.\Uninstall-SoknaPrintAgent.ps1
-```
-ProgramData به‌صورت پیش‌فرض حفظ می‌شود. `-RemoveData` فقط بعد از تایپ صریح `DELETE` داده‌ها را حذف می‌کند.
-
-## Gate اجباری
-تا قبل از تست Windows/Printer واقعی، این Source/Package را **Production-ready** ننامید. Checklist جداگانه `WINDOWS_PRINTER_PRODUCTION_GATE_FA.md` مرجع Promotion است.
+Release CI مستقیماً همین normal source tree را Build می‌کند؛ ZIP اولیه و patch-time mutation نباید در مسیر Release استفاده شوند.
