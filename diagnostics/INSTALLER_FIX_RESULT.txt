@@ -1,0 +1,39 @@
+run_id=32104309526
+commit=d3493477ea135a45098c6f0ffbae490ffc648aae
+build=success
+smoke=success
+timestamp=2026-08-18T05:50:43.4019354Z
+
+=== SERVICE ===
+[SC] EnumQueryServicesStatus:OpenService FAILED 1060:
+
+The specified service does not exist as an installed service.
+
+[SC] OpenService FAILED 1060:
+
+The specified service does not exist as an installed service.
+
+[SC] OpenService FAILED 1060:
+
+The specified service does not exist as an installed service.
+
+
+=== SETUP STDOUT/STDERR ===
+--- sokna-setup-smoke.stdout.log ---
+--- sokna-setup-smoke.stderr.log ---
+
+=== SETUP JSON ===
+{
+  "timestamp_utc": "2026-08-18T05:50:40.9508209\u002B00:00",
+  "reference_id": "9a676a42664e465d8b7335a98677fb03",
+  "stage": "completed",
+  "exit_code": 0,
+  "child_process_exit_code": 0,
+  "exception_type": null,
+  "exception_message": "",
+  "stdout": "",
+  "stderr": ""
+}
+program_files=False
+program_data=False
+health=False
