@@ -1,0 +1,79 @@
+name: Windows Reliability Gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recovery:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+
+      - name: Build Agent
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Build-Agent.ps1
+
+      - name: Service crash and recovery test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $service='SoknaPrintAgent6'
+          $setup=(Resolve-Path 'agent/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe').Path
+          $installRoot=Join-Path $env:ProgramFiles 'Sokna\PrintAgent'
+          $dataRoot=Join-Path $env:ProgramData 'Sokna\PrintAgent'
+          $health=Join-Path $dataRoot 'health.json'
+          $evidence='agent/artifacts/WINDOWS_RELIABILITY.txt'
+
+          if(Get-Service $service -ErrorAction SilentlyContinue){Stop-Service $service -Force -ErrorAction SilentlyContinue;& sc.exe delete $service | Out-Null;Start-Sleep 2}
+          Remove-Item $installRoot,$dataRoot -Recurse -Force -ErrorAction SilentlyContinue
+
+          $p=Start-Process -FilePath $setup -ArgumentList '/quiet' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw "Setup failed: $($p.ExitCode)"}
+
+          $svc=Get-CimInstance Win32_Service -Filter "Name='$service'"
+          if($null -eq $svc -or $svc.State -ne 'Running'){throw 'Service not running before fault.'}
+          $pidBefore=[int]$svc.ProcessId
+          $healthBefore=(Get-Item $health).LastWriteTimeUtc
+          Stop-Process -Id $pidBefore -Force
+
+          $deadline=(Get-Date).AddSeconds(40)
+          $pidAfter=0
+          do{
+            Start-Sleep -Milliseconds 500
+            $svc=Get-CimInstance Win32_Service -Filter "Name='$service'" -ErrorAction SilentlyContinue
+            if($svc -and $svc.State -eq 'Running' -and [int]$svc.ProcessId -gt 0 -and [int]$svc.ProcessId -ne $pidBefore){$pidAfter=[int]$svc.ProcessId;break}
+          }while((Get-Date) -lt $deadline)
+          if($pidAfter -le 0){throw 'Windows Service Recovery did not restart Agent.'}
+
+          $healthDeadline=(Get-Date).AddSeconds(15)
+          do{Start-Sleep -Milliseconds 500;$healthAfter=if(Test-Path $health){(Get-Item $health).LastWriteTimeUtc}else{[datetime]::MinValue}}while($healthAfter -le $healthBefore -and (Get-Date) -lt $healthDeadline)
+          if($healthAfter -le $healthBefore){throw 'health.json did not refresh after recovery.'}
+
+          "pid_before=$pidBefore`npid_after=$pidAfter`nhealth_before=$($healthBefore.ToString('o'))`nhealth_after=$($healthAfter.ToString('o'))" | Set-Content $evidence
+
+          $sentinel=Join-Path $dataRoot 'reliability-preserve.txt'
+          Set-Content $sentinel 'preserve'
+          & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File (Join-Path $installRoot 'Uninstall-SoknaPrintAgent.ps1')
+          if($LASTEXITCODE -ne 0){throw "Uninstall failed: $LASTEXITCODE"}
+          if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service remains after uninstall.'}
+          if(!(Test-Path $sentinel)){throw 'ProgramData was not preserved.'}
+          Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Sokna-Agent-Windows-Reliability
+          path: |
+            agent/artifacts/WINDOWS_RELIABILITY.txt
+            C:/ProgramData/Sokna/PrintAgentSetup/logs/**
+          if-no-files-found: warn
