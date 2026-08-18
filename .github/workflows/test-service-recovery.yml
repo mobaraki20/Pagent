@@ -1,0 +1,112 @@
+name: Test Agent Service Recovery
+
+on:
+  push:
+    paths:
+      - '.github/workflows/test-service-recovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  recovery:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Record run
+        shell: pwsh
+        run: |
+          "run_id=${{ github.run_id }}`ncommit=${{ github.sha }}" | Set-Content diagnostics/SERVICE_RECOVERY_RUN.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics/SERVICE_RECOVERY_RUN.txt
+          git commit -m 'Record service recovery fault run'
+          git pull --rebase origin main
+          git push
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+
+      - name: Build
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Build-Agent.ps1
+
+      - name: Install and kill service
+        id: fault
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $service='SoknaPrintAgent6'
+          $setup=(Resolve-Path 'agent/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe').Path
+          $data=Join-Path $env:ProgramData 'Sokna\PrintAgent'
+          $health=Join-Path $data 'health.json'
+
+          if(Get-Service $service -ErrorAction SilentlyContinue){Stop-Service $service -Force -ErrorAction SilentlyContinue;& sc.exe delete $service | Out-Null;Start-Sleep 2}
+          Remove-Item (Join-Path $env:ProgramFiles 'Sokna\PrintAgent') -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $data -Recurse -Force -ErrorAction SilentlyContinue
+
+          $p=Start-Process -FilePath $setup -ArgumentList '/quiet' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw "Setup failed: $($p.ExitCode)"}
+          $svc=Get-CimInstance Win32_Service -Filter "Name='$service'"
+          if($null -eq $svc -or $svc.State -ne 'Running'){throw 'Service not running before fault.'}
+          $pid1=[int]$svc.ProcessId
+          if($pid1 -le 0){throw 'Invalid initial service PID.'}
+          if(Get-Process 'Sokna.PrintAgent.Control' -ErrorAction SilentlyContinue){throw 'Control App is unexpectedly running.'}
+          if(!(Test-Path $health -PathType Leaf)){throw 'health.json missing before fault.'}
+          $health1=(Get-Item $health).LastWriteTimeUtc
+
+          Stop-Process -Id $pid1 -Force
+          $deadline=(Get-Date).AddSeconds(40)
+          $pid2=0
+          do{
+            Start-Sleep -Milliseconds 500
+            $svc=Get-CimInstance Win32_Service -Filter "Name='$service'" -ErrorAction SilentlyContinue
+            if($svc -and $svc.State -eq 'Running' -and [int]$svc.ProcessId -gt 0 -and [int]$svc.ProcessId -ne $pid1){$pid2=[int]$svc.ProcessId;break}
+          }while((Get-Date) -lt $deadline)
+          if($pid2 -le 0){throw 'Windows Service Recovery did not restart Agent with a new PID.'}
+
+          $healthDeadline=(Get-Date).AddSeconds(15)
+          do{Start-Sleep -Milliseconds 500;$health2=if(Test-Path $health){(Get-Item $health).LastWriteTimeUtc}else{[datetime]::MinValue}}while($health2 -le $health1 -and (Get-Date) -lt $healthDeadline)
+          if($health2 -le $health1){throw 'health.json did not refresh after Service Recovery.'}
+          if(Get-Process 'Sokna.PrintAgent.Control' -ErrorAction SilentlyContinue){throw 'Control App became required after recovery.'}
+
+          "pid_before=$pid1`npid_after=$pid2`nhealth_before=$($health1.ToString('o'))`nhealth_after=$($health2.ToString('o'))" | Set-Content diagnostics/SERVICE_RECOVERY_EVIDENCE.txt
+
+          $sentinel=Join-Path $data 'recovery-preserve.txt'
+          Set-Content $sentinel 'preserve'
+          $uninstall=Join-Path $env:ProgramFiles 'Sokna\PrintAgent\Uninstall-SoknaPrintAgent.ps1'
+          & powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $uninstall
+          if($LASTEXITCODE -ne 0){throw "Uninstall failed: $LASTEXITCODE"}
+          if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service remains after uninstall.'}
+          if(!(Test-Path $sentinel)){throw 'ProgramData not preserved after recovery test uninstall.'}
+          Remove-Item $data -Recurse -Force -ErrorAction SilentlyContinue
+          Write-Host 'PASS service kill/recovery fault test' -ForegroundColor Green
+
+      - name: Capture result
+        if: always()
+        shell: pwsh
+        run: |
+          $result="run_id=${{ github.run_id }}`ncommit=${{ github.sha }}`nfault_outcome=${{ steps.fault.outcome }}"
+          if(Test-Path diagnostics/SERVICE_RECOVERY_EVIDENCE.txt){$result += "`n"+(Get-Content diagnostics/SERVICE_RECOVERY_EVIDENCE.txt -Raw)}
+          $result | Set-Content diagnostics/SERVICE_RECOVERY_RESULT.txt
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main
+          git add diagnostics/SERVICE_RECOVERY_RESULT.txt diagnostics/SERVICE_RECOVERY_EVIDENCE.txt
+          if(!(git diff --cached --quiet)){git commit -m 'Capture service recovery fault result';git push}
+          $global:LASTEXITCODE=0
+
+      - name: Enforce fault gate
+        if: always()
+        shell: pwsh
+        run: |
+          if('${{ steps.fault.outcome }}' -ne 'success'){throw 'FAIL service recovery fault gate.'}
+          Write-Host 'PASS service recovery fault gate' -ForegroundColor Green
