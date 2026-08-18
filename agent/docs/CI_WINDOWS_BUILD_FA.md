@@ -1,18 +1,21 @@
 # Build واقعی Windows برای Sokna Print Agent 6
 
-این پروژه برای Build نهایی `win-x64` به .NET SDK **10.0.302** قفل شده است. Workflow رسمی پروژه در `../../.github/workflows/build-print-agent-v6.yml` روی `windows-latest` اجرا می‌شود.
+Source of Truth فقط normal source tree زیر `agent/` است. Workflow رسمی در `.github/workflows/build-agent.yml` روی `windows-latest` اجرا می‌شود و SDK مورد استفاده را از `agent/global.json` می‌گیرد؛ Runهای تأییدشده فعلی با .NET SDK `10.0.303` اجرا شده‌اند.
 
-Pipeline فقط Compile نیست. مراحل زیر Gate هستند:
+Pipeline فقط Compile نیست. Gateهای اصلی:
 
-1. نصب دقیق SDK 10.0.302 و تأیید `dotnet --version`.
-2. Restore/Build و اجرای تست‌های Agent.
-3. Publish مستقل Service، Worker و Control App به‌صورت self-contained `win-x64`.
-4. ساخت Payload manifest با SHA-256.
-5. ساخت Setup.exe تک‌فایلی با Payload embedded.
-6. بررسی PE/MZ بودن Setup.exe و وجود Manifestهای Build.
-7. اجرای خود **Setup.exe واقعی** روی Windows runner.
-8. تأیید ایجاد و Running شدن `SoknaPrintAgent6`، تولید تازه `health.json`، وجود Service/Worker/Control، و Recovery action.
-9. Uninstall واقعی و اثبات اینکه ProgramData به‌صورت پیش‌فرض حذف نمی‌شود.
-10. Upload خروجی‌های EXE/ZIP/SHA/Build metadata به‌عنوان Artifact.
+1. Verify اینکه `agent/` موجود است و `agent6.zip` / `ci/patch_agent_source.py` دوباره وارد مسیر Build نشده‌اند.
+2. Restore و dependency graph + NuGet vulnerability audit بدون suppress کردن Security warning.
+3. Build با TreatWarningsAsErrors و اجرای `Sokna.PrintAgent.Tests`.
+4. Publish مستقل Service، Worker و Control به‌صورت self-contained `win-x64`.
+5. Collision guard برای جلوگیری از flatten/overwrite Runtime DLLهای هم‌نام.
+6. ساخت Payload manifest با size/SHA-256 و Setup.exe تک‌فایلی با Payload embedded.
+7. اجرای خود `Setup.exe /quiet` روی Windows runner.
+8. تأیید Service `SoknaPrintAgent6`: Running، مسیر binary ایزوله، Automatic Delayed Start، Recovery Restart، health تازه و استقلال از Control App.
+9. Uninstall واقعی و اثبات حذف Service/Program Files و حفظ ProgramData به‌صورت پیش‌فرض.
+10. ساخت Source artifact فقط از tracked tree با `git archive HEAD:agent`.
+11. Verify Artifactهای اجباری و Upload Setup/Package/Source/SHA/Build metadata/Windows evidence.
 
-این Pipeline Gate چاپگر فیزیکی نیست. تست Queue واقعی، فارسی روی کاغذ، Paper Out، قطع Spooler، Restart ویندوز و Soak همچنان `PENDING — PRODUCTION GATE` باقی می‌مانند.
+Failure نصب باید Job را قرمز نگه دارد؛ Evidence collection مجاز است اما نباید Release Gate را سبز کند.
+
+این Pipeline Gate چاپگر فیزیکی نیست. Printer Queue واقعی، فارسی روی کاغذ، Paper Out، قطع Spooler، Windows restart، internet loss، upgrade preservation و soak همچنان `PENDING / UAT_REQUIRED — PRODUCTION GATE` باقی می‌مانند.
