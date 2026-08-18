@@ -4,88 +4,156 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'agent6.zip'
-      - 'ci/patch_agent_source.py'
+      - 'agent/**'
       - '.github/workflows/build-agent.yml'
 
 permissions:
   contents: read
 
+concurrency:
+  group: sokna-agent-6-windows-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
-      - name: Checkout
+      - name: Checkout normal source tree
         uses: actions/checkout@v7
 
-      - name: Extract Agent source
+      - name: Verify source of truth
         shell: pwsh
         run: |
-          if (!(Test-Path 'agent6.zip')) { throw 'agent6.zip not found in repository root.' }
-          Remove-Item 'agent-src' -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Force 'agent-src' | Out-Null
-          Expand-Archive -Path 'agent6.zip' -DestinationPath 'agent-src' -Force
-          if (!(Test-Path 'agent-src/global.json')) { throw 'global.json not found after extraction.' }
-          if (!(Test-Path 'agent-src/scripts/Build-Agent.ps1')) { throw 'Build-Agent.ps1 not found after extraction.' }
-
-      - name: Setup Python for deterministic source patch
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
-
-      - name: Apply audited Agent source fixes
-        run: python ci/patch_agent_source.py agent-src
+          $ErrorActionPreference='Stop'
+          if (!(Test-Path 'agent/global.json' -PathType Leaf)) { throw 'agent/global.json missing.' }
+          if (!(Test-Path 'agent/scripts/Build-Agent.ps1' -PathType Leaf)) { throw 'agent/scripts/Build-Agent.ps1 missing.' }
+          if (!(Test-Path 'agent/src/Sokna.PrintAgent.Setup/Program.cs' -PathType Leaf)) { throw 'Setup source missing.' }
+          Write-Host 'Source of truth: repository normal tree agent/'
 
       - name: Setup .NET SDK from global.json
         uses: actions/setup-dotnet@v5
         with:
-          global-json-file: agent-src/global.json
+          global-json-file: agent/global.json
 
       - name: Show SDK
         shell: pwsh
-        working-directory: agent-src
+        working-directory: agent
         run: dotnet --info
 
-      - name: Build, test and package Agent
+      - name: Build, unit test and package Agent
         shell: pwsh
-        working-directory: agent-src
+        working-directory: agent
         run: ./scripts/Build-Agent.ps1
 
       - name: Windows Setup + Service smoke test
+        id: smoke
+        continue-on-error: true
         shell: pwsh
-        working-directory: agent-src
+        working-directory: agent
         run: ./scripts/Test-Windows-Install.ps1 -Artifacts "$PWD/artifacts"
 
-      - name: Package corrected source snapshot
+      - name: Capture Windows smoke evidence
+        if: always()
         shell: pwsh
         run: |
-          Compress-Archive -Path 'agent-src/*' -DestinationPath 'agent-src/artifacts/Sokna-Print-Agent-6.0.0-source-corrected.zip' -CompressionLevel Optimal
+          $ErrorActionPreference='Continue'
+          $dest='agent/artifacts/windows-smoke-evidence'
+          New-Item $dest -ItemType Directory -Force | Out-Null
+          $report=Join-Path $dest 'WINDOWS_SMOKE_EVIDENCE.txt'
+          "commit=${{ github.sha }}`nrun_id=${{ github.run_id }}`nsmoke_outcome=${{ steps.smoke.outcome }}`ntimestamp=$((Get-Date).ToUniversalTime().ToString('o'))" | Set-Content $report
+
+          "`n=== SERVICE ===" | Out-File $report -Append
+          & sc.exe query SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          & sc.exe qc SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          & sc.exe qfailure SoknaPrintAgent6 2>&1 | Out-File $report -Append
+
+          "`n=== SERVICE REGISTRY ===" | Out-File $report -Append
+          if(Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\SoknaPrintAgent6'){
+            Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Services\SoknaPrintAgent6' | Format-List * | Out-String -Width 300 | Out-File $report -Append
+          }
+
+          "`n=== APP REGISTRY ===" | Out-File $report -Append
+          if(Test-Path 'HKLM:\SOFTWARE\Sokna\PrintAgent'){
+            Get-ItemProperty 'HKLM:\SOFTWARE\Sokna\PrintAgent' | Format-List InstallRoot,DataRoot | Out-String | Out-File $report -Append
+          }
+
+          foreach($pair in @(
+            @{Title='PROGRAM FILES';Path=(Join-Path $env:ProgramFiles 'Sokna\PrintAgent')},
+            @{Title='PROGRAMDATA';Path=(Join-Path $env:ProgramData 'Sokna\PrintAgent')},
+            @{Title='SETUP LOGS';Path=(Join-Path $env:ProgramData 'Sokna\PrintAgentSetup\logs')}
+          )){
+            "`n=== $($pair.Title) ===" | Out-File $report -Append
+            if(Test-Path $pair.Path){
+              Get-ChildItem $pair.Path -Recurse -Force | Select-Object FullName,Length,LastWriteTime | Format-Table -AutoSize | Out-String -Width 300 | Out-File $report -Append
+            }else{'missing' | Out-File $report -Append}
+          }
+
+          $health=Join-Path $env:ProgramData 'Sokna\PrintAgent\health.json'
+          if(Test-Path $health){"`n=== HEALTH.JSON ===" | Out-File $report -Append;Get-Content $health -Raw | Out-File $report -Append}
+
+          "`n=== EVENT LOGS ===" | Out-File $report -Append
+          $since=(Get-Date).AddMinutes(-20)
+          Get-WinEvent -FilterHashtable @{LogName='System';StartTime=$since} -ErrorAction SilentlyContinue |
+            Where-Object {$_.ProviderName -eq 'Service Control Manager' -and $_.Message -match 'SoknaPrintAgent6|Sokna.PrintAgent'} |
+            Select-Object TimeCreated,Id,LevelDisplayName,Message | Format-List | Out-String -Width 300 | Out-File $report -Append
+          Get-WinEvent -FilterHashtable @{LogName='Application';StartTime=$since} -ErrorAction SilentlyContinue |
+            Where-Object {$_.ProviderName -match '.NET Runtime|Application Error|Windows Error Reporting' -or $_.Message -match 'Sokna.PrintAgent'} |
+            Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,Message | Format-List | Out-String -Width 300 | Out-File $report -Append
+
+          foreach($name in @('sokna-setup-smoke.stdout.log','sokna-setup-smoke.stderr.log')){
+            $p=Join-Path $env:RUNNER_TEMP $name
+            if(Test-Path $p){Copy-Item $p (Join-Path $dest $name) -Force}
+          }
+          $setupLogs=Join-Path $env:ProgramData 'Sokna\PrintAgentSetup\logs'
+          if(Test-Path $setupLogs){Copy-Item $setupLogs (Join-Path $dest 'setup-logs') -Recurse -Force}
+
+      - name: Package clean source snapshot
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $tmp=Join-Path $env:RUNNER_TEMP 'sokna-agent-source'
+          Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item $tmp -ItemType Directory -Force | Out-Null
+          Get-ChildItem 'agent' -Force | Where-Object {$_.Name -ne 'artifacts'} | ForEach-Object {Copy-Item $_.FullName $tmp -Recurse -Force}
+          $zip='agent/artifacts/Sokna-Print-Agent-6.0.0-source.zip'
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $zip -CompressionLevel Optimal
 
       - name: Verify expected artifacts
+        if: always()
         shell: pwsh
         run: |
           $required = @(
-            'agent-src/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe',
-            'agent-src/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip',
-            'agent-src/artifacts/Sokna-Print-Agent-6.0.0-source-corrected.zip',
-            'agent-src/artifacts/SHA256SUMS-Agent-6.0.0.txt',
-            'agent-src/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json'
+            'agent/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe',
+            'agent/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip',
+            'agent/artifacts/Sokna-Print-Agent-6.0.0-source.zip',
+            'agent/artifacts/SHA256SUMS-Agent-6.0.0.txt',
+            'agent/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json',
+            'agent/artifacts/windows-smoke-evidence/WINDOWS_SMOKE_EVIDENCE.txt'
           )
-          foreach ($f in $required) {
-            if (!(Test-Path $f -PathType Leaf)) { throw "Missing artifact: $f" }
-          }
-          Get-FileHash 'agent-src/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe' -Algorithm SHA256
+          foreach ($f in $required) { if (!(Test-Path $f -PathType Leaf)) { throw "Missing artifact: $f" } }
+          Get-FileHash 'agent/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe' -Algorithm SHA256
 
-      - name: Upload Windows artifacts
+      - name: Upload Windows artifacts and evidence
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: Sokna-Print-Agent-6.0.0-Windows
           path: |
-            agent-src/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe
-            agent-src/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip
-            agent-src/artifacts/Sokna-Print-Agent-6.0.0-source-corrected.zip
-            agent-src/artifacts/SHA256SUMS-Agent-6.0.0.txt
-            agent-src/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json
+            agent/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe
+            agent/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip
+            agent/artifacts/Sokna-Print-Agent-6.0.0-source.zip
+            agent/artifacts/SHA256SUMS-Agent-6.0.0.txt
+            agent/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json
+            agent/artifacts/windows-smoke-evidence/**
           if-no-files-found: error
+
+      - name: Enforce Windows installation gate
+        if: always()
+        shell: pwsh
+        run: |
+          if ('${{ steps.smoke.outcome }}' -ne 'success') { throw 'FAIL — Windows Installer Gate. Evidence artifact was preserved.' }
+          Write-Host 'PASS — Windows Installer Gate' -ForegroundColor Green
