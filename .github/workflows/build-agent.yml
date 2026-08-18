@@ -114,13 +114,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          $tmp=Join-Path $env:RUNNER_TEMP 'sokna-agent-source'
-          Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item $tmp -ItemType Directory -Force | Out-Null
-          Get-ChildItem 'agent' -Force | Where-Object {$_.Name -ne 'artifacts'} | ForEach-Object {Copy-Item $_.FullName $tmp -Recurse -Force}
           $zip='agent/artifacts/Sokna-Print-Agent-6.0.0-source.zip'
           Remove-Item $zip -Force -ErrorAction SilentlyContinue
-          Compress-Archive -Path (Join-Path $tmp '*') -DestinationPath $zip -CompressionLevel Optimal
+          & git archive --format=zip --output=$zip HEAD:agent
+          if($LASTEXITCODE -ne 0){throw 'git archive of tracked Agent source failed.'}
+          if(!(Test-Path $zip -PathType Leaf)){throw 'Tracked source archive was not produced.'}
 
       - name: Verify expected artifacts
         if: always()
