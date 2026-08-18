@@ -11,13 +11,23 @@ Push-Location $root
 try {
 $sdk=& $dotnet --version
 if(-not $sdk.StartsWith('10.')){throw ".NET 10 SDK required; found $sdk"}
+$sourceCommit=(& git rev-parse HEAD).Trim()
+if($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sourceCommit)){throw 'Unable to resolve source commit.'}
 
 Remove-Item $Output -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $Output -ItemType Directory -Force|Out-Null
 
-& $dotnet restore (Join-Path $root 'Sokna.PrintAgent.slnx')
+$solution=Join-Path $root 'Sokna.PrintAgent.slnx'
+& $dotnet restore $solution
 if($LASTEXITCODE -ne 0){throw 'dotnet restore failed.'}
-& $dotnet build (Join-Path $root 'Sokna.PrintAgent.slnx') -c $Configuration --no-restore
+Write-Host '== NuGet dependency graph ==' -ForegroundColor Cyan
+& $dotnet list $solution package --include-transitive
+if($LASTEXITCODE -ne 0){throw 'dotnet package graph failed.'}
+Write-Host '== NuGet vulnerability audit ==' -ForegroundColor Cyan
+& $dotnet list $solution package --vulnerable --include-transitive
+if($LASTEXITCODE -ne 0){throw 'dotnet vulnerability audit command failed.'}
+
+& $dotnet build $solution -c $Configuration --no-restore
 if($LASTEXITCODE -ne 0){throw 'dotnet build failed.'}
 & $dotnet run --project (Join-Path $root 'tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj') -c $Configuration --no-build
 if($LASTEXITCODE -ne 0){throw 'Agent tests failed.'}
@@ -40,20 +50,34 @@ New-Item $docs -ItemType Directory -Force|Out-Null
 # The installed uninstaller is part of the verified payload and survives Setup extraction.
 Copy-Item (Join-Path $root 'installer\Uninstall-SoknaPrintAgent.ps1') (Join-Path $payload 'Uninstall-SoknaPrintAgent.ps1') -Force
 
-# Each self-contained process owns its runtime dependency set. Do not flatten these outputs:
-# Service uses the base runtime while Worker/Control use WindowsDesktop; same-named framework DLLs may
-# legitimately contain different bytes. Isolating each process prevents runtime assembly overwrite.
+# Each self-contained process owns its runtime dependency set. Do not flatten these outputs.
 $layout=[ordered]@{
   'Sokna.PrintAgent.Service'='Service'
   'Sokna.PrintAgent.Worker'='Worker'
   'Sokna.PrintAgent.Control'='Control'
 }
+if(($layout.Values | Select-Object -Unique).Count -ne $layout.Count){throw 'Packaging layout contains duplicate component directories.'}
 foreach($project in $layout.Keys){
   $src=Join-Path $Output $project
   $dest=Join-Path $payload $layout[$project]
   New-Item $dest -ItemType Directory -Force|Out-Null
   Copy-Item (Join-Path $src '*') $dest -Recurse -Force
 }
+
+# Collision guard: component binaries may share names and DIFFER by design, but they must never be flattened.
+$flatBinaries=Get-ChildItem $payload -File | Where-Object {$_.Extension -in @('.dll','.exe')}
+if($flatBinaries){throw "Packaging collision guard: component binary found at payload root: $($flatBinaries.Name -join ', ')"}
+$componentFiles=foreach($component in $layout.Values){
+  $dir=Join-Path $payload $component
+  Get-ChildItem $dir -File -Recurse | ForEach-Object {[pscustomobject]@{Component=$component;Name=$_.Name;Path=$_.FullName}}
+}
+$isolatedCollisions=@()
+$componentFiles | Group-Object Name | Where-Object {$_.Count -gt 1} | ForEach-Object {
+  $hashes=$_.Group | ForEach-Object {(Get-FileHash $_.Path -Algorithm SHA256).Hash} | Select-Object -Unique
+  if($hashes.Count -gt 1){$isolatedCollisions += $_.Name}
+}
+Write-Host "Packaging collision guard PASS; isolated differing-name collisions preserved: $($isolatedCollisions.Count)" -ForegroundColor Green
+if($isolatedCollisions.Count -gt 0){Write-Host ($isolatedCollisions | Sort-Object | Select-Object -First 20 | ForEach-Object {"  isolated: $_"})}
 
 Copy-Item (Join-Path $root 'installer\Install-SoknaPrintAgent.ps1') $package
 Copy-Item (Join-Path $root 'installer\Uninstall-SoknaPrintAgent.ps1') $package
@@ -63,7 +87,7 @@ Set-Content (Join-Path $package 'VERSION.txt') $version -Encoding utf8NoBOM
 
 $manifest=@()
 Get-ChildItem $payload -File -Recurse | Sort-Object FullName | ForEach-Object {
-  $relative=[IO.Path]::GetRelativePath($package,$_.FullName).Replace('\\','/')
+  $relative=[IO.Path]::GetRelativePath($package,$_.FullName).Replace('\','/')
   $manifest += [ordered]@{path=$relative;size=$_.Length;sha256=(Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
 }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $package 'PAYLOAD_MANIFEST.json') -Encoding utf8NoBOM
@@ -72,6 +96,7 @@ $buildInfo=[ordered]@{
   agent_version=$version;protocol_version=4;runtime=$Runtime;configuration=$Configuration
   dotnet_sdk=$sdk;built_at_utc=(Get-Date).ToUniversalTime().ToString('o')
   target_framework='net10.0-windows10.0.19041.0';self_contained=$true
+  source_commit=$sourceCommit;source_tree='agent/'
 }
 $buildInfo | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $package 'BUILD_INFO.json') -Encoding utf8NoBOM
 
