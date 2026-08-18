@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+  <PropertyGroup><TargetFramework>net10.0-windows10.0.19041.0</TargetFramework><OutputType>Exe</OutputType><RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained><PublishSingleFile>false</PublishSingleFile></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj"/><PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" /></ItemGroup>
+</Project>

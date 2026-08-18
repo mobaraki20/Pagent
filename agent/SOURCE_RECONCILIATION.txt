@@ -1,0 +1,4 @@
+materialized_from=agent6.zip
+agent6_zip_sha256=9147d03acbef05199d2aa8322722e09f18867ac119c4b7f7a8f92f0bf3a02cee
+patch_script_sha256=d217e628c587a27269aa324d35e01320eb6302df143a8d48db7bf63e952daee1
+materialized_at_utc=2026-08-18T05:08:49.2785656Z
