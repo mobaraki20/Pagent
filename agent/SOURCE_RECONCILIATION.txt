@@ -1,4 +1,12 @@
-materialized_from=agent6.zip
-agent6_zip_sha256=9147d03acbef05199d2aa8322722e09f18867ac119c4b7f7a8f92f0bf3a02cee
-patch_script_sha256=d217e628c587a27269aa324d35e01320eb6302df143a8d48db7bf63e952daee1
-materialized_at_utc=2026-08-18T05:08:49.2785656Z
+status=NORMAL_SOURCE_TREE_AUTHORITATIVE
+source_of_truth=agent/
+legacy_agent6_zip=REMOVED
+legacy_build_time_patch=REMOVED
+release_build_mutates_source=NO
+
+historical_materialization_from=agent6.zip
+historical_agent6_zip_sha256=9147d03acbef05199d2aa8322722e09f18867ac119c4b7f7a8f92f0bf3a02cee
+historical_patch_script_sha256=d217e628c587a27269aa324d35e01320eb6302df143a8d48db7bf63e952daee1
+historical_materialized_at_utc=2026-08-18T05:08:49.2785656Z
+
+note=Historical hashes are provenance only. They are not active build inputs. All maintained Agent code now lives as normal tracked files under agent/.
