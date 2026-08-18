@@ -1,0 +1,178 @@
+name: Diagnose Sokna Setup Failure
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sokna-agent-setup-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  diagnose-setup:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Extract Agent source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if (!(Test-Path 'agent6.zip')) { throw 'agent6.zip missing' }
+          Remove-Item agent-src -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive agent6.zip agent-src -Force
+          New-Item -ItemType Directory -Force diagnostics | Out-Null
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Apply audited source patch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if (Test-Path 'ci/patch_agent_source.py') {
+            python ci/patch_agent_source.py agent-src *>&1 | Tee-Object diagnostics/setup-patch.log
+            if ($LASTEXITCODE -ne 0) { throw "patch_agent_source.py returned $LASTEXITCODE" }
+          } else {
+            throw 'ci/patch_agent_source.py missing'
+          }
+
+      - name: Snapshot setup owners
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Copy-Item agent-src/src/Sokna.PrintAgent.Setup/Program.cs diagnostics/Setup-Program.cs.txt -Force
+          Copy-Item agent-src/installer/Install-SoknaPrintAgent.ps1 diagnostics/Install-SoknaPrintAgent.ps1.txt -Force
+          Copy-Item agent-src/scripts/Test-Windows-Install.ps1 diagnostics/Test-Windows-Install.ps1.txt -Force
+          Copy-Item agent-src/scripts/Build-Agent.ps1 diagnostics/Build-Agent.ps1.txt -Force
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent-src/global.json
+
+      - name: Build Agent
+        shell: pwsh
+        working-directory: agent-src
+        run: |
+          $ErrorActionPreference='Stop'
+          ./scripts/Build-Agent.ps1 *>&1 | Tee-Object ../diagnostics/setup-build.log
+          if ($LASTEXITCODE -ne 0) { throw "Build-Agent returned $LASTEXITCODE" }
+
+      - name: Execute Setup with forensic capture
+        id: setup
+        continue-on-error: true
+        shell: pwsh
+        working-directory: agent-src
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=Join-Path $PWD 'artifacts/Sokna-Print-Agent-6.0.0-Setup.exe'
+          if (!(Test-Path $setup -PathType Leaf)) { throw "Setup missing: $setup" }
+
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-setup.stdout.log'
+          $err=Join-Path $env:RUNNER_TEMP 'sokna-setup.stderr.log'
+          Remove-Item $out,$err -Force -ErrorAction SilentlyContinue
+
+          $started=Get-Date
+          "Started: $($started.ToString('o'))" | Set-Content ../diagnostics/SETUP_FORENSIC.txt
+          "Setup: $setup" | Out-File ../diagnostics/SETUP_FORENSIC.txt -Append
+
+          $proc=Start-Process -FilePath $setup -ArgumentList '/quiet' -Wait -PassThru `
+            -RedirectStandardOutput $out -RedirectStandardError $err
+
+          "ExitCode: $($proc.ExitCode)" | Out-File ../diagnostics/SETUP_FORENSIC.txt -Append
+          if(Test-Path $out){
+            "`n=== SETUP STDOUT ===" | Out-File ../diagnostics/SETUP_FORENSIC.txt -Append
+            Get-Content $out -ErrorAction SilentlyContinue | Out-File ../diagnostics/SETUP_FORENSIC.txt -Append
+          }
+          if(Test-Path $err){
+            "`n=== SETUP STDERR ===" | Out-File ../diagnostics/SETUP_FORENSIC.txt -Append
+            Get-Content $err -ErrorAction SilentlyContinue | Out-File ../diagnostics/SETUP_FORENSIC.txt -Append
+          }
+
+          if($proc.ExitCode -ne 0){ throw "Setup.exe returned $($proc.ExitCode)" }
+
+      - name: Capture Windows install state
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue'
+          $report='diagnostics/SETUP_FORENSIC.txt'
+          if(!(Test-Path $report)){ 'SETUP FORENSIC' | Set-Content $report }
+
+          "`n=== SERVICE ===" | Out-File $report -Append
+          Get-Service SoknaPrintAgent6 -ErrorAction SilentlyContinue | Format-List * | Out-String | Out-File $report -Append
+          & sc.exe query SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          & sc.exe qc SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          & sc.exe qfailure SoknaPrintAgent6 2>&1 | Out-File $report -Append
+
+          "`n=== REGISTRY ===" | Out-File $report -Append
+          if(Test-Path 'HKLM:\SOFTWARE\Sokna\PrintAgent'){
+            Get-ItemProperty 'HKLM:\SOFTWARE\Sokna\PrintAgent' | Format-List * | Out-String | Out-File $report -Append
+          } else {
+            'Registry key missing.' | Out-File $report -Append
+          }
+
+          "`n=== PROGRAM FILES TREE ===" | Out-File $report -Append
+          $pf=Join-Path $env:ProgramFiles 'Sokna\PrintAgent'
+          if(Test-Path $pf){
+            Get-ChildItem $pf -Recurse -Force | Select-Object FullName,Length,LastWriteTime |
+              Format-Table -AutoSize | Out-String -Width 300 | Out-File $report -Append
+          } else { 'InstallRoot missing.' | Out-File $report -Append }
+
+          "`n=== PROGRAMDATA TREE ===" | Out-File $report -Append
+          $pd=Join-Path $env:ProgramData 'Sokna\PrintAgent'
+          if(Test-Path $pd){
+            Get-ChildItem $pd -Recurse -Force | Select-Object FullName,Length,LastWriteTime |
+              Format-Table -AutoSize | Out-String -Width 300 | Out-File $report -Append
+            $health=Join-Path $pd 'health.json'
+            if(Test-Path $health){
+              "`n=== HEALTH.JSON ===" | Out-File $report -Append
+              Get-Content $health -Raw | Out-File $report -Append
+            }
+            "`n=== SANITIZED LOG TAILS ===" | Out-File $report -Append
+            Get-ChildItem $pd -Recurse -File -Include *.log,*.txt -ErrorAction SilentlyContinue | ForEach-Object {
+              "`n--- $($_.FullName) ---" | Out-File $report -Append
+              # Do not dump likely secret-bearing lines.
+              Get-Content $_.FullName -ErrorAction SilentlyContinue |
+                Where-Object { $_ -notmatch '(?i)authorization|bearer|token|secret|hmac' } |
+                Select-Object -Last 120 | Out-File $report -Append
+            }
+          } else { 'ProgramData root missing.' | Out-File $report -Append }
+
+          "`n=== RELEVANT EVENT LOGS ===" | Out-File $report -Append
+          $since=(Get-Date).AddMinutes(-15)
+          Get-WinEvent -FilterHashtable @{LogName='System'; StartTime=$since} -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -eq 'Service Control Manager' -and $_.Message -match 'SoknaPrintAgent6|Sokna.PrintAgent' } |
+            Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,Message |
+            Format-List | Out-String -Width 300 | Out-File $report -Append
+          Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=$since} -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -match '.NET Runtime|Application Error|Windows Error Reporting' -or $_.Message -match 'Sokna.PrintAgent' } |
+            Select-Object TimeCreated,Id,LevelDisplayName,ProviderName,Message |
+            Format-List | Out-String -Width 300 | Out-File $report -Append
+
+          "`n=== TEMP SOKNA ENTRIES ===" | Out-File $report -Append
+          Get-ChildItem $env:TEMP -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '(?i)sokna|printagent' } |
+            Select-Object FullName,LastWriteTime | Format-Table -AutoSize |
+            Out-String -Width 300 | Out-File $report -Append
+
+      - name: Commit forensic report
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics
+          if (git diff --cached --quiet) { exit 0 }
+          git commit -m 'Capture Setup.exe forensic failure'
+          git pull --rebase origin main
+          git push
