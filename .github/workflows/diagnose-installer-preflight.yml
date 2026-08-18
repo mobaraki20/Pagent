@@ -1,0 +1,90 @@
+name: Diagnose Installer Preflight
+
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-installer-preflight.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+      - name: Build
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Build-Agent.ps1
+      - name: Diagnose package and direct installer preflight
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue'
+          $report='diagnostics/INSTALLER_PREFLIGHT.txt'
+          "run_id=${{ github.run_id }}`ncommit=${{ github.sha }}`n" | Set-Content $report -Encoding utf8
+          $id=[Security.Principal.WindowsIdentity]::GetCurrent()
+          $p=New-Object Security.Principal.WindowsPrincipal($id)
+          "identity=$($id.Name)" | Out-File $report -Append
+          "is_admin=$($p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator))" | Out-File $report -Append
+          "elevation_type=$((whoami /groups | Select-String 'S-1-16-12288|High Mandatory Level' | Out-String).Trim())" | Out-File $report -Append
+          $zip=(Resolve-Path 'agent/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip').Path
+          $dir=Join-Path $env:RUNNER_TEMP 'sokna-direct-package'
+          Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive $zip $dir -Force
+          "zip=$zip" | Out-File $report -Append
+          "service_exists=$(Test-Path (Join-Path $dir 'payload\Service\Sokna.PrintAgent.Service.exe') -PathType Leaf)" | Out-File $report -Append
+          "manifest_exists=$(Test-Path (Join-Path $dir 'PAYLOAD_MANIFEST.json') -PathType Leaf)" | Out-File $report -Append
+          "installer_exists=$(Test-Path (Join-Path $dir 'Install-SoknaPrintAgent.ps1') -PathType Leaf)" | Out-File $report -Append
+          "`n=== MANIFEST VERIFY ===" | Out-File $report -Append
+          try {
+            $manifest=Get-Content (Join-Path $dir 'PAYLOAD_MANIFEST.json') -Raw | ConvertFrom-Json
+            "entries=$($manifest.Count)" | Out-File $report -Append
+            $n=0
+            foreach($entry in $manifest){
+              $n++
+              $rel=([string]$entry.path).Replace('/','\')
+              $file=Join-Path $dir $rel
+              if(-not (Test-Path $file -PathType Leaf)){throw "Payload file missing at entry $n: $rel"}
+              if((Get-Item $file).Length -ne [int64]$entry.size){throw "Payload size mismatch at entry $n: $rel"}
+              $actual=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+              if($actual -ne ([string]$entry.sha256).ToLowerInvariant()){throw "Payload SHA mismatch at entry $n: $rel"}
+            }
+            'manifest_verify=PASS' | Out-File $report -Append
+          } catch {
+            'manifest_verify=FAIL' | Out-File $report -Append
+            ($_ | Format-List * -Force | Out-String -Width 300) | Out-File $report -Append
+          }
+          "`n=== DIRECT INSTALLER ===" | Out-File $report -Append
+          $installer=Join-Path $dir 'Install-SoknaPrintAgent.ps1'
+          $out=Join-Path $env:RUNNER_TEMP 'direct-installer.out.txt'
+          $err=Join-Path $env:RUNNER_TEMP 'direct-installer.err.txt'
+          $proc=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-SkipStart') -WorkingDirectory $dir -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          "direct_exit=$($proc.ExitCode)" | Out-File $report -Append
+          "--- stdout ---" | Out-File $report -Append
+          if(Test-Path $out){Get-Content $out | Out-File $report -Append}
+          "--- stderr ---" | Out-File $report -Append
+          if(Test-Path $err){Get-Content $err | Out-File $report -Append}
+          "`n=== POST DIRECT STATE ===" | Out-File $report -Append
+          & sc.exe query SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          $pf=Join-Path $env:ProgramFiles 'Sokna\PrintAgent'; "program_files=$(Test-Path $pf)" | Out-File $report -Append
+          $pd=Join-Path $env:ProgramData 'Sokna\PrintAgent'; "program_data=$(Test-Path $pd)" | Out-File $report -Append
+          Set-Content diagnostics/INSTALLER_PREFLIGHT_EXIT.txt $proc.ExitCode -Encoding ascii
+      - name: Commit evidence
+        if: always()
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics/INSTALLER_PREFLIGHT.txt diagnostics/INSTALLER_PREFLIGHT_EXIT.txt
+          if(!(git diff --cached --quiet)){
+            git commit -m 'Capture installer preflight evidence'
+            git pull --rebase origin main
+            git push
+          }
