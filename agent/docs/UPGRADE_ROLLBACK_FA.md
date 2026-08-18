@@ -1,21 +1,50 @@
-# Upgrade و Rollback عملیاتی Agent 5 → Agent 6
+# Upgrade و Rollback — Sokna Print Agent 6 / Sokna 1.33.0-rc1
 
 ## اصل
-Migration DB افزایشی است و history چاپ را حذف نمی‌کند. Rollback عملیاتی به معنی برگشت destination به Agent legacy است؛ **حذف ستون‌ها یا print_attempts در Rollback توصیه و خودکار نمی‌شود** چون Audit history را تخریب می‌کند.
+Migration `migrations/1.33.0-print-agent-v4.sql` افزایشی است و history چاپ نباید حذف یا overwrite شود. Rollback عملیاتی به معنی بازگرداندن mapping/destination با رعایت ownership فعلی Jobهاست؛ پاک‌کردن `print_attempts` یا Audit برای rollback مجاز نیست.
 
-## rollout تدریجی
-1. Migration `1.33.0-print-agent-v4.sql` اجرا شود.
-2. Agent 6 روی Windows نصب ولی مقصدها هنوز به آن assign نشوند.
-3. API/heartbeat/queue health و Test Print بررسی شود.
-4. یک destination کم‌ریسک به Agent 6 assign شود.
-5. پس از assign، Agent protocol=4 می‌شود و Endpoint legacy برای همان مقصد دیگر fallback رقابتی نمی‌دهد.
-6. سپس مقصدهای دیگر یکی‌یکی مهاجرت کنند.
+## Rollout تدریجی
+1. Backup و recovery plan دیتابیس/ProgramData آماده شود.
+2. Migration `1.33.0-print-agent-v4.sql` روی staging واقعی MySQL/MariaDB تست و سپس طبق فرآیند Release اجرا شود.
+3. Agent 6 نصب شود ولی destinationهای Production هنوز به آن assign نشوند.
+4. Service/health/API v4 و Printer visibility تحت Service Account بررسی شود.
+5. یک destination کم‌ریسک assign و Test Print واقعی اجرا شود.
+6. پس از عبور UAT، destinationهای دیگر یکی‌یکی مهاجرت کنند.
 
-## Rollback قبل از Claim
-اگر destination هنوز Print Job `claimed/started/unknown/recovery_hold` v4 ندارد، Primary را به Agent 5 برگردانید. Jobهای `pending/blocked` می‌توانند بعد از mapping مجدد در مسیر legacy ادامه یابند.
+## Upgrade خود Agent 6
+Installer staged عمل می‌کند:
+- Service قبلی stop می‌شود.
+- Binaryهای جدید در layout ایزوله Service/Worker/Control جایگزین می‌شوند.
+- Registry locationها و Service config به نسخه جدید اشاره می‌کنند.
+- `%ProgramData%\Sokna\PrintAgent` حفظ می‌شود.
+- Service start و health تازه verify می‌شود.
+- در Failure، binary/config-location rollback تلاش می‌شود؛ durable data نباید حذف شود.
+
+قبل از Upgrade واقعی، preservation حداقل برای `config.json`, `secret.dat`, `queue.db`, logs و work state تست شود.
+
+## Rollback قبل از ownership مبهم
+Jobهای `pending/blocked` که هنوز ownership submission ندارند می‌توانند پس از اصلاح mapping در مسیر مجاز ادامه یابند.
 
 ## Rollback با Job پذیرفته‌شده v4
-`claimed/started/unknown/recovery_hold` را به Agent 5 یا Printer دیگر auto-reroute نکنید. ابتدا در پنل تعیین تکلیف انسانی انجام شود. فقط Job اثباتاً چاپ‌نشده مجاز به reroute/reprint است.
+Job/Attemptهای `claimed`, `unknown`, `recovery_hold` و هر موردی که Submission ambiguity دارد را به Agent/Printer دیگر auto-reroute نکنید. ابتدا human resolution لازم است. اگر Reprint لازم شد، Job/Attempt جدید و audited ایجاد شود؛ Attempt قبلی reset نشود.
+
+`submitted` فقط پذیرش Windows Spooler است و اثبات چاپ فیزیکی نیست.
+
+## Rollback Agent binary
+اگر Upgrade Agent جدید قبل از submission مشکل ایجاد کرد، از binary package تأییدشده قبلی استفاده کنید و ProgramData موجود را حفظ کنید. اگر SQLite schema نسخه جدید forward-only شده باشد، rollback binary بدون compatibility verification ممنوع است.
 
 ## Schema rollback
-Schema additive باقی می‌ماند. Downgrade کد به 1.32.20 با Schema اضافه باید قبل از Production به‌صورت staging تست شود؛ داده v4 حذف نمی‌شود. Destructive DROP فقط در محیط غیرتولیدی بدون history و با Backup مجاز است.
+Schema additive را صرفاً برای برگشت نسخه drop نکنید. Downgrade کد باید روی staging با همان Schema افزوده تست شود. Destructive DROP فقط در محیط غیرتولیدی بدون history موردنیاز و با Backup معتبر قابل‌قبول است.
+
+## Gate قبل از Production
+- upgrade preservation واقعی
+- rollback واقعی
+- Service kill/recovery
+- Windows restart
+- Printer offline/online و Paper Out
+- Spooler stop/start
+- ambiguity بدون auto duplicate
+- چاپ فارسی واقعی
+- soak
+
+تا اجرای این موارد، Rollout نهایی **PENDING / UAT_REQUIRED — PRODUCTION GATE** است.
