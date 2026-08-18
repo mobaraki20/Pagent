@@ -1,0 +1,25 @@
+run_id=32124637120
+job_status=failure
+target_sha=220a1d690a56cdb68f360910f8fef5f5e9c42c21
+release_visible=False
+recorded_at=2026-08-18T10:07:01.2236256Z
+Unknown JSON field: "title"
+Available fields:
+  apiUrl
+  assets
+  author
+  body
+  createdAt
+  databaseId
+  id
+  isDraft
+  isImmutable
+  isPrerelease
+  name
+  publishedAt
+  tagName
+  tarballUrl
+  targetCommitish
+  uploadUrl
+  url
+  zipballUrl
