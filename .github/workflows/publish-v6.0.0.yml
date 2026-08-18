@@ -12,6 +12,10 @@ env:
   TARGET_SHA: '220a1d690a56cdb68f360910f8fef5f5e9c42c21'
   VERSION: '6.0.0'
 
+concurrency:
+  group: one-time-publish-v6.0.0
+  cancel-in-progress: false
+
 jobs:
   validate-and-release:
     runs-on: windows-latest
@@ -45,6 +49,15 @@ jobs:
         shell: pwsh
         working-directory: agent
         run: ./scripts/Build-Agent.ps1
+
+      - name: Package tracked source archive
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out="agent/artifacts/Sokna-Print-Agent-$env:VERSION-source.zip"
+          Remove-Item $out -Force -ErrorAction SilentlyContinue
+          & git archive --format=zip --output=$out "$env:TARGET_SHA`:agent"
+          if($LASTEXITCODE -ne 0 -or !(Test-Path $out -PathType Leaf)){throw 'Tracked source archive failed.'}
 
       - name: Standard Windows install gate
         shell: pwsh
@@ -147,6 +160,7 @@ jobs:
             if($LASTEXITCODE -ne 0){throw 'Release creation failed.'}
           }
           git fetch origin "refs/tags/v$env:VERSION:refs/tags/v$env:VERSION" --force
+          if($LASTEXITCODE -ne 0){throw 'Release tag fetch failed.'}
           $tagSha=(git rev-list -n 1 "v$env:VERSION").Trim()
           if($tagSha -ne $env:TARGET_SHA){throw "Tag target mismatch: $tagSha"}
           $j=gh release view "v$env:VERSION" --repo $env:GITHUB_REPOSITORY --json assets,url,tagName,title
