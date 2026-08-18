@@ -1,0 +1,137 @@
+name: Corrected Final Publish Sokna Print Agent 6.0.0
+
+on:
+  push:
+    branches: ['main']
+    paths: ['.github/workflows/publish-v6.0.0-final.yml']
+
+permissions:
+  contents: write
+
+env:
+  TARGET_SHA: '220a1d690a56cdb68f360910f8fef5f5e9c42c21'
+  VERSION: '6.0.0'
+
+jobs:
+  validate-release:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        name: Checkout clean tagged source
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+
+      - name: Verify tagged source is clean
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if((git rev-parse HEAD).Trim() -ne $env:TARGET_SHA){throw 'Target SHA mismatch.'}
+          if(Test-Path agent6.zip){throw 'Legacy ZIP present.'}
+          if(Test-Path ci/patch_agent_source.py){throw 'Build-time patch present.'}
+          $wf=@(Get-ChildItem .github/workflows -File|Select-Object -ExpandProperty Name|Sort-Object)
+          if(($wf -join ',') -ne 'build-agent.yml,windows-reliability.yml'){throw "Tagged source workflow set is not clean: $($wf -join ',')"}
+          New-Item release-evidence -ItemType Directory -Force|Out-Null
+          "target_sha=$env:TARGET_SHA`nversion=$env:VERSION`nsource_of_truth=agent/"|Set-Content release-evidence/SOURCE.txt
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+
+      - name: Build dependency audit unit tests package
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Build-Agent.ps1
+
+      - name: Build tracked source ZIP
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $out="agent/artifacts/Sokna-Print-Agent-$env:VERSION-source.zip"
+          & git archive --format=zip --output=$out "$env:TARGET_SHA`:agent"
+          if($LASTEXITCODE -ne 0 -or !(Test-Path $out)){throw 'Source ZIP failed.'}
+
+      - name: Standard Windows Setup gate
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Test-Windows-Install.ps1 -Artifacts "$PWD/artifacts"
+
+      - name: Extended Windows gate
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=(Resolve-Path "agent/artifacts/Sokna-Print-Agent-$env:VERSION-Setup.exe").Path
+          $svc='SoknaPrintAgent6';$root=Join-Path $env:ProgramFiles 'Sokna\PrintAgent';$data=Join-Path $env:ProgramData 'Sokna\PrintAgent';$health=Join-Path $data 'health.json';$report='release-evidence/EXTENDED_WINDOWS_GATE.txt'
+          function InstallAgent{$p=Start-Process $setup -ArgumentList '/quiet' -Wait -PassThru;if($p.ExitCode-ne 0){throw "Setup exit $($p.ExitCode)"};if((Get-Service $svc).Status-ne'Running'){throw 'Service not running'};if(!(Test-Path $health)){throw 'health missing'}}
+          InstallAgent;'install=PASS'|Set-Content $report
+          $pid1=(Get-CimInstance Win32_Service -Filter "Name='$svc'").ProcessId;Restart-Service $svc -Force;Start-Sleep 3;$pid2=(Get-CimInstance Win32_Service -Filter "Name='$svc'").ProcessId;if((Get-Service $svc).Status-ne'Running'){throw 'restart failed'};"restart=PASS pid1=$pid1 pid2=$pid2"|Out-File $report -Append
+          Stop-Process -Id $pid2 -Force;$ok=$false;for($i=0;$i-lt30;$i++){Start-Sleep 2;$w=Get-CimInstance Win32_Service -Filter "Name='$svc'" -ErrorAction SilentlyContinue;if($w-and$w.State-eq'Running'-and$w.ProcessId-ne$pid2-and$w.ProcessId-gt0){$ok=$true;$pid3=$w.ProcessId;break}};if(!$ok){throw 'SCM recovery failed'};"kill_recovery=PASS pid=$pid3"|Out-File $report -Append
+          if((Get-Service Spooler).Status-ne'Running'){Start-Service Spooler};Stop-Service Spooler -Force;Start-Sleep 2;if((Get-Service Spooler).Status-ne'Stopped'){throw 'Spooler stop failed'};Start-Service Spooler;Start-Sleep 2;if((Get-Service Spooler).Status-ne'Running'){throw 'Spooler start failed'};if((Get-Service $svc).Status-ne'Running'){throw 'Agent died with Spooler'};'spooler=PASS'|Out-File $report -Append
+          $sentinel=Join-Path $data 'release-preserve.txt';Set-Content $sentinel preserve;$un=Join-Path $root 'Uninstall-SoknaPrintAgent.ps1';& powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $un;if($LASTEXITCODE-ne0){throw 'uninstall failed'};if(Get-Service $svc -ErrorAction SilentlyContinue){throw 'service remains'};if(Test-Path $root){throw 'binaries remain'};if(!(Test-Path $sentinel)){throw 'ProgramData lost'};'uninstall_preserve=PASS'|Out-File $report -Append
+          InstallAgent;'reinstall=PASS'|Out-File $report -Append;$un=Join-Path $root 'Uninstall-SoknaPrintAgent.ps1';& powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $un;if($LASTEXITCODE-ne0){throw 'cleanup uninstall failed'};Remove-Item $data -Recurse -Force -ErrorAction SilentlyContinue
+
+      - name: Verify source binding and artifact hashes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop';$art='agent/artifacts';$buildInfo=Join-Path $art 'package/BUILD_INFO.json'
+          foreach($n in @("Sokna-Print-Agent-$env:VERSION-Setup.exe","Sokna-Print-Agent-$env:VERSION-win-x64.zip","Sokna-Print-Agent-$env:VERSION-source.zip","SHA256SUMS-Agent-$env:VERSION.txt","BUILD_ARTIFACTS-Agent-$env:VERSION.json")){if(!(Test-Path (Join-Path $art $n))){throw "Missing $n"}}
+          if(!(Test-Path $buildInfo)){throw 'BUILD_INFO.json missing'};$bi=Get-Content $buildInfo -Raw|ConvertFrom-Json;if($bi.source_commit-ne$env:TARGET_SHA){throw "BUILD_INFO source_commit mismatch: $($bi.source_commit)"};if($bi.agent_version-ne$env:VERSION-or$bi.protocol_version-ne4){throw 'BUILD_INFO version/protocol mismatch'}
+          "name`tsize_bytes`tsha256"|Set-Content release-evidence/ARTIFACTS.tsv
+          foreach($n in @("Sokna-Print-Agent-$env:VERSION-Setup.exe","Sokna-Print-Agent-$env:VERSION-win-x64.zip","Sokna-Print-Agent-$env:VERSION-source.zip")){$p=Join-Path $art $n;$f=Get-Item $p;$h=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant();"$n`t$($f.Length)`t$h"|Out-File release-evidence/ARTIFACTS.tsv -Append}
+          Get-Content $buildInfo|Set-Content release-evidence/BUILD_INFO.json
+
+      - name: Write release notes
+        shell: pwsh
+        run: |
+          @'
+          # Sokna Print Agent 6.0.0
+
+          Official release for Sokna Café Print API v4.
+
+          Includes Windows Service orchestration independent of Control UI, SQLite durable local queue, isolated PrintWorker, Winspool integration, durable submission-fence ambiguity protection, Control UI, Setup installer/uninstaller and self-contained Windows x64 package.
+
+          Validated before release: restore/build with 0 warnings/0 errors, unit tests, NuGet vulnerability audit, collision/integrity guard, Setup.exe /quiet, Service start/health, Automatic Delayed Start and Recovery configuration, Service restart, process-kill recovery, Print Spooler stop/start, uninstall with ProgramData preservation, reinstall after uninstall, source binding and SHA-256 artifact generation.
+
+          Contract: `submitted` means accepted by Windows Spooler, not physical paper confirmation. `unknown` and `recovery_hold` require human resolution and are never automatically reprinted.
+
+          UAT_REQUIRED while Sokna Café remains in test/staging: real machine-wide printer visibility under Service account, Persian/RTL paper output, Kitchen/Bar/Customer receipts, paper-out, physical disconnect/reconnect, target-PC Windows reboot, 50 consecutive physical prints, operational internet disconnect/reconnect, and 24h/72h soak.
+
+          Target: Windows x64, self-contained .NET runtime.
+          '@|Set-Content release-notes.md -Encoding utf8
+
+      - name: Create or verify GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop';gh release view "v$env:VERSION" --repo $env:GITHUB_REPOSITORY *> $null;$exists=($LASTEXITCODE-eq0);$global:LASTEXITCODE=0
+          if(!$exists){$a='agent/artifacts';gh release create "v$env:VERSION" (Join-Path $a "Sokna-Print-Agent-$env:VERSION-Setup.exe") (Join-Path $a "SHA256SUMS-Agent-$env:VERSION.txt") (Join-Path $a "Sokna-Print-Agent-$env:VERSION-win-x64.zip") (Join-Path $a "Sokna-Print-Agent-$env:VERSION-source.zip") --repo $env:GITHUB_REPOSITORY --target $env:TARGET_SHA --title "Sokna Print Agent $env:VERSION" --notes-file release-notes.md;if($LASTEXITCODE-ne0){throw 'release create failed'}}
+          git fetch origin "refs/tags/v$env:VERSION:refs/tags/v$env:VERSION" --force;if($LASTEXITCODE-ne0){throw 'tag fetch failed'};$tag=(git rev-list -n 1 "v$env:VERSION").Trim();if($tag-ne$env:TARGET_SHA){throw "tag target $tag != $env:TARGET_SHA"}
+          $j=gh release view "v$env:VERSION" --repo $env:GITHUB_REPOSITORY --json url,assets,tagName,title;$r=$j|ConvertFrom-Json;$names=@($r.assets|%{$_.name});foreach($n in @("Sokna-Print-Agent-$env:VERSION-Setup.exe","SHA256SUMS-Agent-$env:VERSION.txt","Sokna-Print-Agent-$env:VERSION-win-x64.zip")){if($names-notcontains$n){throw "missing release asset $n"}};"url=$($r.url)`ntag=$tag`nassets=$($names-join',')"|Set-Content release-evidence/RELEASE.txt
+
+      - name: Verify Café pinned URLs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop';$urls=@("https://github.com/$env:GITHUB_REPOSITORY/releases/tag/v$env:VERSION","https://github.com/$env:GITHUB_REPOSITORY/releases/download/v$env:VERSION/Sokna-Print-Agent-$env:VERSION-Setup.exe");foreach($u in $urls){$ok=$false;for($i=0;$i-lt8;$i++){try{$r=Invoke-WebRequest $u -UseBasicParsing -MaximumRedirection 8 -Method Head -ErrorAction Stop;if($r.StatusCode-ge200-and$r.StatusCode-lt400){$ok=$true;break}}catch{Start-Sleep 5}};if(!$ok){throw "URL unavailable: $u"};"PASS $u"|Out-File release-evidence/URLS.txt -Append}
+
+      - name: Upload final evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Sokna-Print-Agent-6.0.0-Final-Release-Evidence
+          path: |
+            release-evidence/**
+            release-notes.md
+            agent/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json
+            agent/artifacts/SHA256SUMS-Agent-6.0.0.txt
+            agent/artifacts/windows-smoke-evidence/**
+          if-no-files-found: warn
+
+      - name: Record final publisher result
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $s='${{ job.status }}';gh release view "v$env:VERSION" --repo $env:GITHUB_REPOSITORY --json url,assets,tagName,title *> final-release-view.json;$v=($LASTEXITCODE-eq0);$global:LASTEXITCODE=0;git fetch origin main;git switch main;@("run_id=${{ github.run_id }}","job_status=$s","target_sha=$env:TARGET_SHA","release_visible=$v","recorded_at=$((Get-Date).ToUniversalTime().ToString('o'))")|Set-Content RELEASE_V6_FINAL_STATUS.txt;if(Test-Path final-release-view.json){Get-Content final-release-view.json|Out-File RELEASE_V6_FINAL_STATUS.txt -Append};git config user.name 'github-actions[bot]';git config user.email '41898282+github-actions[bot]@users.noreply.github.com';git add RELEASE_V6_FINAL_STATUS.txt;if(!(git diff --cached --quiet)){git commit -m 'Record final v6.0.0 publisher result';git pull --rebase origin main;git push origin HEAD:main}
