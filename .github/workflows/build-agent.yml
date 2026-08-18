@@ -56,7 +56,21 @@ jobs:
           & git archive --format=zip --output=$zip HEAD:agent
           if($LASTEXITCODE -ne 0 -or !(Test-Path $zip -PathType Leaf)){throw 'Tracked source archive failed.'}
 
-      - name: Upload artifacts
+      - name: Verify required artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $required=@(
+            'agent/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe',
+            'agent/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip',
+            'agent/artifacts/Sokna-Print-Agent-6.0.0-source.zip',
+            'agent/artifacts/SHA256SUMS-Agent-6.0.0.txt',
+            'agent/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json',
+            'agent/artifacts/windows-smoke-evidence/INSTALL_GATE_EVIDENCE.txt'
+          )
+          foreach($p in $required){if(!(Test-Path $p -PathType Leaf)){throw "Required artifact missing: $p"}}
+
+      - name: Upload artifacts and evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
@@ -68,4 +82,4 @@ jobs:
             agent/artifacts/SHA256SUMS-Agent-6.0.0.txt
             agent/artifacts/BUILD_ARTIFACTS-Agent-6.0.0.json
             agent/artifacts/windows-smoke-evidence/**
-          if-no-files-found: warn
+          if-no-files-found: error
