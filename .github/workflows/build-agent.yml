@@ -65,9 +65,14 @@ jobs:
           "commit=${{ github.sha }}`nrun_id=${{ github.run_id }}`nsmoke_outcome=${{ steps.smoke.outcome }}`ntimestamp=$((Get-Date).ToUniversalTime().ToString('o'))" | Set-Content $report
 
           "`n=== SERVICE ===" | Out-File $report -Append
-          & sc.exe query SoknaPrintAgent6 2>&1 | Out-File $report -Append
-          & sc.exe qc SoknaPrintAgent6 2>&1 | Out-File $report -Append
-          & sc.exe qfailure SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          $svc=Get-Service SoknaPrintAgent6 -ErrorAction SilentlyContinue
+          if($svc){
+            & sc.exe query SoknaPrintAgent6 2>&1 | Out-File $report -Append
+            & sc.exe qc SoknaPrintAgent6 2>&1 | Out-File $report -Append
+            & sc.exe qfailure SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          }else{
+            'Service absent at evidence capture (expected after successful uninstall).' | Out-File $report -Append
+          }
 
           "`n=== SERVICE REGISTRY ===" | Out-File $report -Append
           if(Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\SoknaPrintAgent6'){
@@ -108,6 +113,9 @@ jobs:
           }
           $setupLogs=Join-Path $env:ProgramData 'Sokna\PrintAgentSetup\logs'
           if(Test-Path $setupLogs){Copy-Item $setupLogs (Join-Path $dest 'setup-logs') -Recurse -Force}
+          # Diagnostic native commands are allowed to observe an absent service after uninstall;
+          # their non-zero exit must not turn evidence collection into a false release failure.
+          $global:LASTEXITCODE=0
 
       - name: Package clean source snapshot
         if: always()
