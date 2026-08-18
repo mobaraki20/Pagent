@@ -10,6 +10,10 @@ $installRoot=Join-Path $env:ProgramFiles 'Sokna\PrintAgent'
 $dataRoot=Join-Path $env:ProgramData 'Sokna\PrintAgent'
 $setupLogRoot=Join-Path $env:ProgramData 'Sokna\PrintAgentSetup\logs'
 $health=Join-Path $dataRoot 'health.json'
+$evidenceDir=Join-Path $Artifacts 'windows-smoke-evidence'
+$gateEvidence=Join-Path $evidenceDir 'INSTALL_GATE_EVIDENCE.txt'
+New-Item $evidenceDir -ItemType Directory -Force | Out-Null
+"version=$Version`ntimestamp_start=$((Get-Date).ToUniversalTime().ToString('o'))" | Set-Content $gateEvidence
 
 # Hosted Windows runners are disposable; make the smoke test deterministic.
 if(Get-Service $service -ErrorAction SilentlyContinue){
@@ -27,6 +31,7 @@ $stdout=Join-Path $env:RUNNER_TEMP 'sokna-setup-smoke.stdout.log'
 $stderr=Join-Path $env:RUNNER_TEMP 'sokna-setup-smoke.stderr.log'
 Remove-Item $stdout,$stderr -Force -ErrorAction SilentlyContinue
 $proc=Start-Process -FilePath $setup -ArgumentList '/quiet' -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+"setup_exit=$($proc.ExitCode)" | Out-File $gateEvidence -Append
 if($proc.ExitCode -ne 0){
   if(Test-Path $stdout){Write-Host '=== Setup stdout ===';Get-Content $stdout -ErrorAction SilentlyContinue}
   if(Test-Path $stderr){Write-Host '=== Setup stderr ===';Get-Content $stderr -ErrorAction SilentlyContinue}
@@ -37,12 +42,19 @@ if($proc.ExitCode -ne 0){
 $svc=Get-Service $service -ErrorAction Stop
 if($svc.Status -ne 'Running'){throw "Service not running after install: $($svc.Status)"}
 if(Get-Process 'Sokna.PrintAgent.Control' -ErrorAction SilentlyContinue){throw 'Control App unexpectedly required/launched for Service liveness.'}
+"service_status=$($svc.Status)" | Out-File $gateEvidence -Append
+"control_process_running=False" | Out-File $gateEvidence -Append
 
 if(-not (Test-Path $health -PathType Leaf)){throw 'Fresh health.json not produced.'}
 if((Get-Item $health).LastWriteTime -lt $installStarted.AddSeconds(-2)){throw 'health.json is stale.'}
 $h=Get-Content $health -Raw | ConvertFrom-Json
 if(-not $h.updated_at){throw 'health.json missing updated_at.'}
 if(-not $h.service_account_context){throw 'Service is not reporting service-account context.'}
+"health_updated_at=$($h.updated_at)" | Out-File $gateEvidence -Append
+"service_account_context=$($h.service_account_context)" | Out-File $gateEvidence -Append
+"health_state=$($h.state)" | Out-File $gateEvidence -Append
+"`n=== HEALTH.JSON BEFORE UNINSTALL ===" | Out-File $gateEvidence -Append
+Get-Content $health -Raw | Out-File $gateEvidence -Append
 
 foreach($required in @(
   'Service\Sokna.PrintAgent.Service.exe',
@@ -51,20 +63,27 @@ foreach($required in @(
   'Uninstall-SoknaPrintAgent.ps1'
 )){
   if(-not (Test-Path (Join-Path $installRoot $required) -PathType Leaf)){throw "Installed component missing: $required"}
+  "installed_component=$required" | Out-File $gateEvidence -Append
 }
 
 $cfg=& sc.exe qc $service | Out-String
 if($LASTEXITCODE -ne 0){throw "sc qc failed: $LASTEXITCODE"}
 $expectedExe=(Join-Path $installRoot 'Service\Sokna.PrintAgent.Service.exe')
 if($cfg -notmatch [Regex]::Escape($expectedExe)){throw 'Service binary path does not point to isolated Service directory.'}
+"`n=== SC QC BEFORE UNINSTALL ===" | Out-File $gateEvidence -Append
+$cfg | Out-File $gateEvidence -Append
 $svcReg="HKLM:\SYSTEM\CurrentControlSet\Services\$service"
 $svcProps=Get-ItemProperty $svcReg -ErrorAction Stop
 if([int]$svcProps.Start -ne 2){throw 'Service start type is not Automatic.'}
 if([int]$svcProps.DelayedAutoStart -ne 1){throw 'Service is not Automatic Delayed Start.'}
+"registry_start=$([int]$svcProps.Start)" | Out-File $gateEvidence -Append
+"registry_delayed_auto_start=$([int]$svcProps.DelayedAutoStart)" | Out-File $gateEvidence -Append
 
 $failure=& sc.exe qfailure $service | Out-String
 if($LASTEXITCODE -ne 0){throw "sc qfailure failed: $LASTEXITCODE"}
 if($failure -notmatch 'RESTART'){throw 'Service Recovery restart action is missing.'}
+"`n=== SC QFAILURE BEFORE UNINSTALL ===" | Out-File $gateEvidence -Append
+$failure | Out-File $gateEvidence -Append
 
 # Create durable sentinels that must survive uninstall by default.
 $sentinel=Join-Path $dataRoot 'ci-preserve-sentinel.txt'
@@ -81,6 +100,10 @@ if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service still exis
 if(Test-Path $installRoot){throw 'Program Files installation remains after uninstall.'}
 if(-not (Test-Path $sentinel -PathType Leaf)){throw 'ProgramData was deleted by default uninstall.'}
 if(-not (Test-Path $dbSentinel -PathType Leaf)){throw 'Durable data location was deleted by default uninstall.'}
+"uninstall_service_removed=True" | Out-File $gateEvidence -Append
+"uninstall_program_files_removed=True" | Out-File $gateEvidence -Append
+"uninstall_programdata_preserved=True" | Out-File $gateEvidence -Append
+"timestamp_end=$((Get-Date).ToUniversalTime().ToString('o'))" | Out-File $gateEvidence -Append
 
 # CI cleanup only, after preservation has been proven.
 Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
