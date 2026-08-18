@@ -1,14 +1,29 @@
 # Sokna Print Agent 6 — Validation Status
 
-وضعیت ثبت‌شده در 2026-08-18:
+وضعیت Evidence تا 2026-08-18:
 
-- PASS — normal source tree `agent/` به‌عنوان Source of Truth.
-- PASS — Build-time source mutation از pipeline رسمی حذف شده است.
-- PASS — Hosted Windows Build + Setup + Service + Uninstall smoke. Run `32104309526`, commit `d3493477ea135a45098c6f0ffbae490ffc648aae`. Setup: stage=`completed`, exit=`0`, child exit=`0`.
-- PASS — Windows Service crash/recovery fault test. Run `32104793517`, commit `876d429d81e96865b1027d34b829ab10f22920a9`; Service با PID جدید برگشته و health تازه تولید شده است.
-- PASS — ProgramData در uninstall پیش‌فرض حفظ می‌شود.
-- UAT_REQUIRED — چاپگر فیزیکی واقعی و visibility زیر Service account.
-- UAT_REQUIRED — رسید فارسی واقعی آشپزخانه/بار/مشتری.
-- UAT_REQUIRED — 50 چاپ متوالی، paper-out، spooler stop/start، network loss، service kill، upgrade از نسخه نصب‌شده و soak حداقل 24 ساعت.
+## PASS اجراشده
+- normal source tree `agent/` به‌عنوان Source of Truth.
+- حذف Build-time source mutation از pipeline رسمی.
+- Windows build/install gate در Run `32105255491` روی commit `b681223c6226608b842439080eca56447d546e26`: Restore، NuGet vulnerability audit، Build، Unit Tests، self-contained packaging، Setup `/quiet`، Service start/health، isolated paths، Automatic Delayed Start، Recovery config و Uninstall preservation همگی PASS شدند.
+- در همان Run، NuGet graph نسخه `SQLitePCLRaw.bundle_e_sqlite3 2.1.12` را resolve کرد و vulnerability audit برای پروژه‌های Agent package آسیب‌پذیر گزارش نکرد.
+- Windows Service crash/recovery fault test در Run `32104793517`: Service پس از kill با PID جدید برگشت و health تازه شد.
+- ProgramData در uninstall پیش‌فرض حفظ شد.
+- Setup Exit 1 تاریخی root-cause شد: dependency نامطمئن به `Get-FileHash` در Windows PowerShell child host. SHA-256 validation با `System.Security.Cryptography.SHA256` حفظ و مشکل رفع شد.
 
-تا پایان UAT فیزیکی: `PENDING — PRODUCTION GATE`.
+## قانون اعتبار این سند
+هر تغییر بعدی زیر `agent/` یا pipeline رسمی باید دوباره از `build-agent.yml` عبور کند. نتیجه‌ی GitHub Actions و Artifact همان Source commit از این سند authoritative‌تر است؛ Source موجود صرفاً به دلیل وجود فایل PASS محسوب نمی‌شود.
+
+## PENDING / UAT_REQUIRED — PRODUCTION GATE
+- Machine-wide Printer Queue واقعی و visibility زیر Service account.
+- Winspool و چاپ فارسی/RTL واقعی روی کاغذ.
+- Kitchen / Bar / Customer receipt واقعی.
+- 50 چاپ پشت‌سرهم.
+- Printer Offline/Online و Paper Out.
+- Spooler stop/start و queue deletion.
+- Windows restart.
+- internet loss/recovery در محیط عملیاتی.
+- Upgrade preservation و Rollback روی Windows نصب‌شده واقعی.
+- soak حداقل 24 ساعت و ترجیحاً 72 ساعت.
+
+تا پایان این موارد، Agent **Production-ready اعلام نمی‌شود**.
