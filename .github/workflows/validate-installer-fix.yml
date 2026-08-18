@@ -57,9 +57,12 @@ jobs:
           $report='diagnostics/INSTALLER_FIX_RESULT.txt'
           "run_id=${{ github.run_id }}`ncommit=${{ github.sha }}`nbuild=${{ steps.build.outcome }}`nsmoke=${{ steps.smoke.outcome }}`ntimestamp=$((Get-Date).ToUniversalTime().ToString('o'))" | Set-Content $report -Encoding utf8
           "`n=== SERVICE ===" | Out-File $report -Append
-          & sc.exe query SoknaPrintAgent6 2>&1 | Out-File $report -Append
-          & sc.exe qc SoknaPrintAgent6 2>&1 | Out-File $report -Append
-          & sc.exe qfailure SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          $svc=Get-Service SoknaPrintAgent6 -ErrorAction SilentlyContinue
+          if($svc){
+            & sc.exe query SoknaPrintAgent6 2>&1 | Out-File $report -Append
+            & sc.exe qc SoknaPrintAgent6 2>&1 | Out-File $report -Append
+            & sc.exe qfailure SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          }else{'Service absent after successful uninstall (expected).' | Out-File $report -Append}
           "`n=== SETUP STDOUT/STDERR ===" | Out-File $report -Append
           foreach($n in @('sokna-setup-smoke.stdout.log','sokna-setup-smoke.stderr.log')){
             $p=Join-Path $env:RUNNER_TEMP $n
@@ -71,6 +74,7 @@ jobs:
           $pd=Join-Path $env:ProgramData 'Sokna\PrintAgent';"program_data=$(Test-Path $pd)" | Out-File $report -Append
           $health=Join-Path $pd 'health.json';"health=$(Test-Path $health -PathType Leaf)" | Out-File $report -Append
           if(Test-Path $health){Get-Content $health -Raw | Out-File $report -Append}
+          $global:LASTEXITCODE=0
 
       - name: Commit validation result
         if: always()
