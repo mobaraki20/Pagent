@@ -2,6 +2,11 @@
 
 Agent مستقل Print API v4 با هدف **عدم Silent Loss، جلوگیری از Duplicate خودکار و Resolution روشن ambiguity**؛ نه ادعای exactly-once physical printing.
 
+## از کجا شروع کنم؟
+
+- اگر برنامه‌نویس **سامانه کافه / Server** هستید: ابتدا `docs/HANDOFF_CAFE_SYSTEM_FA.md` را بخوانید. مرز شما Print API v4 است و برای Integration عادی نباید سورس Agent را تغییر دهید.
+- اگر برنامه‌نویس **خود Print Agent** هستید: ابتدا `docs/HANDOFF_AGENT_DEVELOPER_FA.md` را بخوانید و سپس اسناد معماری/Update/State/Security معرفی‌شده در آن را دنبال کنید.
+
 ## Runtime
 
 - `Service`: Windows Service و orchestration
