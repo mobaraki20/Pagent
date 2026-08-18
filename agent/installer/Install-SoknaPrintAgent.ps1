@@ -9,6 +9,21 @@ $regPath='HKLM:\SOFTWARE\Sokna\PrintAgent'
 $script:InstallStage='setup_bootstrap_start'
 $referenceId=[Guid]::NewGuid().ToString('N')
 
+# Do not depend on Get-FileHash/Microsoft.PowerShell.Utility being available in the
+# Windows PowerShell host used by Setup.exe. Keep SHA-256 verification mandatory.
+function Get-Sha256Hex([string]$Path){
+  $sha=[Security.Cryptography.SHA256]::Create()
+  $stream=$null
+  try{
+    $stream=[IO.File]::Open($Path,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
+    $bytes=$sha.ComputeHash($stream)
+    return ([BitConverter]::ToString($bytes)).Replace('-','').ToLowerInvariant()
+  }
+  finally{
+    if($null -ne $stream){$stream.Dispose()}
+    $sha.Dispose()
+  }
+}
 function Set-InstallStage([string]$Name){
   $script:InstallStage=$Name
   Write-Output "SOKNA_SETUP_STAGE=$Name ref=$referenceId"
@@ -66,7 +81,7 @@ foreach($entry in @($manifest)){
   if(-not $file.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)){throw 'Payload manifest path escapes package root.'}
   if(-not (Test-Path $file -PathType Leaf)){throw "Payload file missing: $rel"}
   if((Get-Item $file).Length -ne [int64]$entry.size){throw "Payload size mismatch: $rel"}
-  $actual=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+  $actual=Get-Sha256Hex $file
   if($actual -ne ([string]$entry.sha256).ToLowerInvariant()){throw "Payload SHA256 mismatch: $rel"}
 }
 
