@@ -1,0 +1,62 @@
+name: Materialize Agent Source Tree
+
+on:
+  push:
+    paths:
+      - '.github/workflows/materialize-agent-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sokna-agent-source-materialize
+  cancel-in-progress: false
+
+jobs:
+  materialize:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Extract and reconcile current Agent source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if (!(Test-Path 'agent6.zip' -PathType Leaf)) { throw 'agent6.zip missing' }
+          if (!(Test-Path 'ci/patch_agent_source.py' -PathType Leaf)) { throw 'ci/patch_agent_source.py missing' }
+          Remove-Item agent -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force agent | Out-Null
+          Expand-Archive agent6.zip agent -Force
+          python ci/patch_agent_source.py agent
+          if ($LASTEXITCODE -ne 0) { throw "patch_agent_source.py returned $LASTEXITCODE" }
+          Get-ChildItem agent -Recurse -Directory -Force | Where-Object { $_.Name -in @('bin','obj','artifacts') } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          $zipSha=(Get-FileHash agent6.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $patchSha=(Get-FileHash ci/patch_agent_source.py -Algorithm SHA256).Hash.ToLowerInvariant()
+          @(
+            "materialized_from=agent6.zip",
+            "agent6_zip_sha256=$zipSha",
+            "patch_script_sha256=$patchSha",
+            "materialized_at_utc=$((Get-Date).ToUniversalTime().ToString('o'))"
+          ) | Set-Content agent/SOURCE_RECONCILIATION.txt -Encoding utf8NoBOM
+
+      - name: Commit normal source tree
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add agent
+          if (git diff --cached --quiet) { exit 0 }
+          git commit -m 'Materialize Agent 6 normal source tree'
+          git pull --rebase origin main
+          git push
