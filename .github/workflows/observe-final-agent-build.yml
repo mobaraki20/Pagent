@@ -1,0 +1,37 @@
+name: Observe Final Agent Build
+
+on:
+  workflow_run:
+    workflows: ["Build Sokna Print Agent 6"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Record result
+        run: |
+          cat > diagnostics/FINAL_AGENT_BUILD.txt <<EOF
+          run_id=${{ github.event.workflow_run.id }}
+          head_sha=${{ github.event.workflow_run.head_sha }}
+          status=${{ github.event.workflow_run.status }}
+          conclusion=${{ github.event.workflow_run.conclusion }}
+          run_number=${{ github.event.workflow_run.run_number }}
+          event=${{ github.event.workflow_run.event }}
+          created_at=${{ github.event.workflow_run.created_at }}
+          updated_at=${{ github.event.workflow_run.updated_at }}
+          EOF
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics/FINAL_AGENT_BUILD.txt
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record final Agent build result'
+          git pull --rebase origin main
+          git push
