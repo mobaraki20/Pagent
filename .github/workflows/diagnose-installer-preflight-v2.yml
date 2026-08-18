@@ -1,0 +1,115 @@
+name: Diagnose Installer Preflight v2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-installer-preflight-v2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Record run id immediately
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          "run_id=${{ github.run_id }}`ncommit=${{ github.sha }}`nstarted=$((Get-Date).ToUniversalTime().ToString('o'))" | Set-Content diagnostics/PREFLIGHT_V2_RUN.txt -Encoding utf8
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostics/PREFLIGHT_V2_RUN.txt
+          git commit -m 'Record installer preflight v2 run'
+          git pull --rebase origin main
+          git push
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+
+      - name: Build current normal source
+        id: build
+        continue-on-error: true
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Build-Agent.ps1
+
+      - name: Diagnose direct installer and embedded Setup
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Continue'
+          $report='diagnostics/PREFLIGHT_V2_RESULT.txt'
+          "run_id=${{ github.run_id }}`ncommit=${{ github.sha }}`nbuild_outcome=${{ steps.build.outcome }}`ntimestamp=$((Get-Date).ToUniversalTime().ToString('o'))" | Set-Content $report -Encoding utf8
+          if('${{ steps.build.outcome }}' -ne 'success'){
+            'RESULT=BUILD_FAILED' | Out-File $report -Append
+            exit 0
+          }
+
+          $zip=(Resolve-Path 'agent/artifacts/Sokna-Print-Agent-6.0.0-win-x64.zip').Path
+          $setup=(Resolve-Path 'agent/artifacts/Sokna-Print-Agent-6.0.0-Setup.exe').Path
+          $dir=Join-Path $env:RUNNER_TEMP 'sokna-preflight-v2-package'
+          Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive $zip $dir -Force
+
+          "=== PACKAGE ===" | Out-File $report -Append
+          "service=$(Test-Path (Join-Path $dir 'payload\Service\Sokna.PrintAgent.Service.exe') -PathType Leaf)" | Out-File $report -Append
+          "worker=$(Test-Path (Join-Path $dir 'payload\Worker\Sokna.PrintAgent.Worker.exe') -PathType Leaf)" | Out-File $report -Append
+          "control=$(Test-Path (Join-Path $dir 'payload\Control\Sokna.PrintAgent.Control.exe') -PathType Leaf)" | Out-File $report -Append
+          "manifest=$(Test-Path (Join-Path $dir 'PAYLOAD_MANIFEST.json') -PathType Leaf)" | Out-File $report -Append
+
+          "`n=== DIRECT INSTALLER -SkipStart ===" | Out-File $report -Append
+          $directOut=Join-Path $env:RUNNER_TEMP 'direct-v2.out.txt'
+          $directErr=Join-Path $env:RUNNER_TEMP 'direct-v2.err.txt'
+          $installer=Join-Path $dir 'Install-SoknaPrintAgent.ps1'
+          $direct=Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -ArgumentList @('-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$installer,'-SkipStart') -WorkingDirectory $dir -Wait -PassThru -RedirectStandardOutput $directOut -RedirectStandardError $directErr
+          "direct_exit=$($direct.ExitCode)" | Out-File $report -Append
+          if(Test-Path $directOut){Get-Content $directOut | Where-Object {$_ -notmatch '(?i)authorization|bearer|token|secret|hmac'} | Out-File $report -Append}
+          if(Test-Path $directErr){Get-Content $directErr | Where-Object {$_ -notmatch '(?i)authorization|bearer|token|secret|hmac'} | Out-File $report -Append}
+
+          $installedUninstaller=Join-Path $env:ProgramFiles 'Sokna\PrintAgent\Uninstall-SoknaPrintAgent.ps1'
+          if(Test-Path $installedUninstaller){& powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $installedUninstaller | Out-Null}
+          if(Get-Service SoknaPrintAgent6 -ErrorAction SilentlyContinue){& sc.exe delete SoknaPrintAgent6 | Out-Null;Start-Sleep -Seconds 2}
+
+          "`n=== SETUP /quiet ===" | Out-File $report -Append
+          $setupOut=Join-Path $env:RUNNER_TEMP 'setup-v2.out.txt'
+          $setupErr=Join-Path $env:RUNNER_TEMP 'setup-v2.err.txt'
+          $setupProc=Start-Process -FilePath $setup -ArgumentList '/quiet' -Wait -PassThru -RedirectStandardOutput $setupOut -RedirectStandardError $setupErr
+          "setup_exit=$($setupProc.ExitCode)" | Out-File $report -Append
+          if(Test-Path $setupOut){Get-Content $setupOut | Where-Object {$_ -notmatch '(?i)authorization|bearer|token|secret|hmac'} | Out-File $report -Append}
+          if(Test-Path $setupErr){Get-Content $setupErr | Where-Object {$_ -notmatch '(?i)authorization|bearer|token|secret|hmac'} | Out-File $report -Append}
+
+          $logRoot=Join-Path $env:ProgramData 'Sokna\PrintAgentSetup\logs'
+          if(Test-Path $logRoot){
+            "`n=== SETUP JSON ===" | Out-File $report -Append
+            Get-ChildItem $logRoot -File | Sort-Object LastWriteTime | Select-Object -Last 5 | ForEach-Object {Get-Content $_.FullName -Raw | Out-File $report -Append}
+          }
+
+          "`n=== POST STATE ===" | Out-File $report -Append
+          & sc.exe query SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          & sc.exe qc SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          & sc.exe qfailure SoknaPrintAgent6 2>&1 | Out-File $report -Append
+          $pf=Join-Path $env:ProgramFiles 'Sokna\PrintAgent';"program_files=$(Test-Path $pf)" | Out-File $report -Append
+          $pd=Join-Path $env:ProgramData 'Sokna\PrintAgent';"program_data=$(Test-Path $pd)" | Out-File $report -Append
+          $health=Join-Path $pd 'health.json';"health=$(Test-Path $health -PathType Leaf)" | Out-File $report -Append
+          if(Test-Path $health){Get-Content $health -Raw | Out-File $report -Append}
+
+      - name: Commit result
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git pull --rebase origin main
+          git add diagnostics/PREFLIGHT_V2_RESULT.txt
+          if(git diff --cached --quiet){exit 0}
+          git commit -m 'Capture installer preflight v2 result'
+          git push
