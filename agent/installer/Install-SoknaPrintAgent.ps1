@@ -242,25 +242,65 @@ try{
 }
 catch{
   $failure=$_
-  Write-Warning "Install/upgrade failed; attempting binary/configuration-location rollback: $(Get-SafeMessage ([string]$failure.Exception.Message))"
-  try{Get-Service $service -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue}catch{}
-  if($installedNew -and (Test-Path $InstallRoot)){Remove-Item $InstallRoot -Recurse -Force -ErrorAction SilentlyContinue}
-  if(Test-Path $backup){Move-Item $backup $InstallRoot -Force}
-  if(Test-Path $stage){Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue}
-  if($registryChanged){
-    if($oldRegExists){
-      New-Item $regPath -Force|Out-Null
-      if($null -ne $oldInstallRoot){New-ItemProperty $regPath -Name InstallRoot -Value ([string]$oldInstallRoot) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name InstallRoot -ErrorAction SilentlyContinue}
-      if($null -ne $oldDataRoot){New-ItemProperty $regPath -Name DataRoot -Value ([string]$oldDataRoot) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name DataRoot -ErrorAction SilentlyContinue}
-      if($null -ne $oldVersion){New-ItemProperty $regPath -Name Version -Value ([string]$oldVersion) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name Version -ErrorAction SilentlyContinue}
-    }else{Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue}
-  }
-  if($hadPrevious){
-    $oldExe=Join-Path $InstallRoot 'Service\Sokna.PrintAgent.Service.exe'
-    if(-not (Test-Path $oldExe -PathType Leaf)){$oldExe=Join-Path $InstallRoot 'Sokna.PrintAgent.Service.exe'}
-    if(Test-Path $oldExe -PathType Leaf){
-      try{& sc.exe config $service binPath= "`"$oldExe`"" start= delayed-auto obj= LocalSystem | Out-Null;Start-Service $service -ErrorAction SilentlyContinue}catch{}
+  Write-Warning "Install/upgrade failed; recovering previous installation state: $(Get-SafeMessage ([string]$failure.Exception.Message))"
+  $recoveryFailure=$null
+  try{
+    try{Get-Service $service -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue}catch{}
+    if($installedNew -and (Test-Path $InstallRoot)){Remove-Item $InstallRoot -Recurse -Force -ErrorAction Stop}
+    if(Test-Path $backup){Move-Item $backup $InstallRoot -Force -ErrorAction Stop}
+    if(Test-Path $stage){Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue}
+
+    if($registryChanged){
+      if($oldRegExists){
+        New-Item $regPath -Force|Out-Null
+        if($null -ne $oldInstallRoot){New-ItemProperty $regPath -Name InstallRoot -Value ([string]$oldInstallRoot) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name InstallRoot -ErrorAction SilentlyContinue}
+        if($null -ne $oldDataRoot){New-ItemProperty $regPath -Name DataRoot -Value ([string]$oldDataRoot) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name DataRoot -ErrorAction SilentlyContinue}
+        if($null -ne $oldVersion){New-ItemProperty $regPath -Name Version -Value ([string]$oldVersion) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name Version -ErrorAction SilentlyContinue}
+      }else{
+        Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue
+      }
     }
+
+    if($null -ne $previousService){
+      $oldExe=Join-Path $InstallRoot 'Service\Sokna.PrintAgent.Service.exe'
+      if(-not (Test-Path $oldExe -PathType Leaf)){$oldExe=Join-Path $InstallRoot 'Sokna.PrintAgent.Service.exe'}
+      if(-not (Test-Path $oldExe -PathType Leaf)){throw 'Previous Service binary could not be restored.'}
+      & sc.exe config $service binPath= "`"$oldExe`"" start= delayed-auto obj= LocalSystem | Out-Null
+      Assert-NativeExit 'sc previous service restore'
+      Start-Service $service -ErrorAction Stop
+      $restoreDeadline=(Get-Date).AddSeconds(15)
+      do{
+        Start-Sleep -Milliseconds 300
+        $restoredService=Get-Service $service -ErrorAction Stop
+      }while($restoredService.Status -ne 'Running' -and (Get-Date) -lt $restoreDeadline)
+      if($restoredService.Status -ne 'Running'){throw "Previous Service did not return to Running state: $($restoredService.Status)"}
+    }
+    else{
+      $newService=Get-Service $service -ErrorAction SilentlyContinue
+      if($newService){
+        & sc.exe delete $service | Out-Null
+        Assert-NativeExit 'sc orphan service cleanup'
+        $deleteDeadline=(Get-Date).AddSeconds(15)
+        do{
+          Start-Sleep -Milliseconds 300
+          $newService=Get-Service $service -ErrorAction SilentlyContinue
+        }while($newService -and (Get-Date) -lt $deleteDeadline)
+        if($newService){throw 'New Service remained registered after failed fresh install recovery.'}
+      }
+    }
+
+    Write-Output "SOKNA_ROLLBACK_RESULT=success ref=$referenceId"
+  }
+  catch{
+    $recoveryFailure=$_
+    $recoveryMessage=Get-SafeMessage ([string]$recoveryFailure.Exception.Message)
+    [Console]::Error.WriteLine("SOKNA_RECOVERY_FAILURE ref=$referenceId message=$recoveryMessage")
+  }
+
+  if($null -ne $recoveryFailure){
+    $originalMessage=Get-SafeMessage ([string]$failure.Exception.Message)
+    $recoveryMessage=Get-SafeMessage ([string]$recoveryFailure.Exception.Message)
+    throw "Install/upgrade failed and previous-state recovery could not be verified. original=$originalMessage recovery=$recoveryMessage"
   }
   throw $failure
 }
