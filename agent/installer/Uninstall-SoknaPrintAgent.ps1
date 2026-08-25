@@ -36,6 +36,15 @@ if($svc){
   if($svc){throw 'Service is still registered after sc delete.'}
 }
 
+$commonPrograms=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)
+$commonDesktop=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
+foreach($shortcut in @(
+  (Join-Path $commonPrograms 'Sokna Print Agent.lnk'),
+  (Join-Path $commonDesktop 'Sokna Print Agent.lnk')
+)){
+  Remove-Item $shortcut -Force -ErrorAction SilentlyContinue
+}
+
 if(Test-Path $InstallRoot){Remove-Item $InstallRoot -Recurse -Force -ErrorAction Stop}
 Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue
 
