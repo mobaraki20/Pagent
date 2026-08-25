@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
 using System.IO.Compression;
+using System.Net.Http;
 using System.ServiceProcess;
 using System.Text;
 using System.Text.Json;
@@ -31,7 +33,7 @@ public partial class MainWindow : Window
         TestsGrid.ItemsSource = _tests;
         LogsGrid.ItemsSource = _logs;
         MachineText.Text = Environment.MachineName;
-        VersionText.Text = "Agent 6.0.0";
+        VersionText.Text = $"Agent {AgentVersionInfo.Current}";
         LoadExistingSettings();
         ShowPage("overview");
         RefreshEverything();
