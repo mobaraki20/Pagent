@@ -9,7 +9,7 @@ namespace Sokna.PrintAgent.Service;
 
 public sealed class PrintAgentService : BackgroundService
 {
-    private const string AgentVersion = "6.0.0";
+    private static readonly string AgentVersion = AgentVersionInfo.Current;
     private const string PendingClaimMetaKey = "pending_claim_v1";
 
     private readonly AgentPaths _paths;
