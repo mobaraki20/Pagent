@@ -272,9 +272,9 @@ internal sealed class SetupForm : Form
     {
         ExitCode = 1;
         _title.Text = "نصب/به‌روزرسانی کامل نشد";
-        _subtitle.Text = result.RollbackLikelySucceeded
-            ? "Setup خطا را ثبت کرد و مسیر Rollback نسخه قبلی اجرا شد. قبل از تلاش مجدد گزارش مرحله شکست را بررسی کنید."
-            : "Setup در یکی از مراحل متوقف شد. وضعیت Service و گزارش تشخیصی باید بررسی شود.";
+        _subtitle.Text = result.RollbackVerified
+            ? "Setup خطا را ثبت کرد و بازگشت به وضعیت قبلی با موفقیت Verify شد. قبل از تلاش مجدد گزارش مرحله شکست را بررسی کنید."
+            : "Setup در یکی از مراحل متوقف شد و بازگشت به وضعیت قبلی Verify نشده است. وضعیت Service و گزارش تشخیصی باید بررسی شود.";
         _stage.Text = "نیاز به بررسی";
         _detail.Text = $"مرحله: {result.FailedStage} · Reference: {result.ReferenceId}";
         _primary.Visible = false;
@@ -459,8 +459,8 @@ internal static class InstallerEngine
         {
             var log = WriteDiagnostic(referenceId, stage, 1, childExitCode, stdout.ToString(), stderr.ToString(), ex.GetType().FullName, ex.Message);
             var combined = Sanitize(stdout + Environment.NewLine + stderr + Environment.NewLine + ex, 16000);
-            var rollbackLikely = combined.Contains("rollback", StringComparison.OrdinalIgnoreCase) || combined.Contains("Rollback", StringComparison.OrdinalIgnoreCase);
-            return new InstallResult(false, 1, referenceId, stage, log, combined, rollbackLikely);
+            var rollbackVerified = combined.Contains("SOKNA_ROLLBACK_RESULT=success", StringComparison.Ordinal);
+            return new InstallResult(false, 1, referenceId, stage, log, combined, rollbackVerified);
         }
         finally
         {
@@ -558,4 +558,4 @@ internal static class InstallerEngine
 }
 
 internal sealed record InstallUpdate(string Stage, string Title, string Detail, int Progress, string? StepLine, string? TechnicalLine);
-internal sealed record InstallResult(bool Success, int ExitCode, string ReferenceId, string FailedStage, string DiagnosticPath, string TechnicalOutput, bool RollbackLikelySucceeded);
+internal sealed record InstallResult(bool Success, int ExitCode, string ReferenceId, string FailedStage, string DiagnosticPath, string TechnicalOutput, bool RollbackVerified);
