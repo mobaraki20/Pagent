@@ -34,7 +34,14 @@ var claimEnvelope=new ClaimRequestEnvelope(
 var claimEnvelopeJson=JsonSerializer.Serialize(claimEnvelope,AgentOptions.JsonOptions());
 await store.SetMetaAsync("pending_claim_v1",claimEnvelopeJson);
 var persistedClaim=JsonSerializer.Deserialize<ClaimRequestEnvelope>(await store.GetMetaAsync("pending_claim_v1")??"",AgentOptions.JsonOptions());
-Check(persistedClaim==claimEnvelope,"claim_replay_complete_envelope_persisted");
+Check(persistedClaim is not null
+      && persistedClaim.RequestId==claimEnvelope.RequestId
+      && persistedClaim.AgentVersion==claimEnvelope.AgentVersion
+      && persistedClaim.ProtocolVersion==claimEnvelope.ProtocolVersion
+      && persistedClaim.Limit==claimEnvelope.Limit
+      && persistedClaim.CreatedAt==claimEnvelope.CreatedAt
+      && persistedClaim.ReadyDestinationKeys.SequenceEqual(claimEnvelope.ReadyDestinationKeys),
+    "claim_replay_complete_envelope_persisted");
 var metaRestarted=new LocalQueueStore(path,protector);
 await metaRestarted.InitializeAsync();
 var replayedClaim=JsonSerializer.Deserialize<ClaimRequestEnvelope>(await metaRestarted.GetMetaAsync("pending_claim_v1")??"",AgentOptions.JsonOptions());
