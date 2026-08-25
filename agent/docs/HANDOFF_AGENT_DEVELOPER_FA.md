@@ -18,8 +18,9 @@
 5. `docs/API_V4_FA.md`
 6. `docs/SECURITY_FA.md`
 7. `docs/UPGRADE_ROLLBACK_FA.md`
-8. `docs/VALIDATION_STATUS_FA.md`
-9. `docs/WINDOWS_PRINTER_PRODUCTION_GATE_FA.md`
+8. `docs/STABILIZATION_6_1_0_FA.md`
+9. `docs/VALIDATION_STATUS_FA.md`
+10. `docs/WINDOWS_PRINTER_PRODUCTION_GATE_FA.md`
 
 برای توسعه‌دهنده‌ای که API Server را هم لمس می‌کند، `docs/HANDOFF_CAFE_SYSTEM_FA.md` نیز الزامی است.
 
@@ -73,13 +74,13 @@ Workflow diagnosis موقت فقط برای incident مجاز است و بعد �
 
 ## قانون نسخه‌گذاری
 
-در نسخه 6.0.0، version هنوز در چند نقطه hard-code است؛ حداقل:
+از baseline 6.1، Version فقط یک Owner دارد:
 
-- `scripts/Build-Agent.ps1`
-- `src/Sokna.PrintAgent.Service/PrintAgentService.cs`
-- `src/Sokna.PrintAgent.Setup/Sokna.PrintAgent.Setup.csproj`
+`Directory.Build.props -> SoknaAgentVersion`
 
-این یک debt نگهداری شناخته‌شده است. قبل از اولین bump واقعی پس از 6.0.0، ترجیحاً Version باید به یک Source of Truth واحد منتقل شود و همان تغییر دوباره از Windows CI عبور کند. تا آن زمان، تغییر version باید همه نقاط بالا را هماهنگ و با artifact/runtime probe راستی‌آزمایی کند.
+Assembly metadata، runtime API version، Setup filename، artifact names و Registry install version باید از همین Owner مشتق شوند. Hard-code مستقل نسخه در Service/Control/Setup یا Build script مجاز نیست.
+
+هر bump نسخه باید با artifact filename، runtime probe/health و Windows install gate راستی‌آزمایی شود.
 
 ## تغییر API / Protocol
 
@@ -93,6 +94,8 @@ Agent developer حق ندارد endpoint یا state semantics را یک‌طرف
 - minimum/recommended agent version روی Server هماهنگ شود.
 - API v4 تا زمانی که migration plan تأیید نشده، شکسته نشود.
 
+افزودن health/diagnostic field اختیاری که state/ownership ایجاد نمی‌کند می‌تواند backward-compatible باقی بماند؛ Server قدیمی باید بتواند field ناشناخته را نادیده بگیرد.
+
 ## تغییر SQLite
 
 - schema versioned باشد.
@@ -100,12 +103,15 @@ Agent developer حق ندارد endpoint یا state semantics را یک‌طرف
 - همان release با binary قبلی backward-compatible بماند تا rollback ممکن باشد.
 - destructive cleanup در همان release معرفی schema جدید ممنوع است.
 - Upgrade نباید DB/config موجود را با DB تازه جایگزین کند.
+- `agent_meta` برای metadata کوچک و durable transport/replay مجاز است؛ نباید به Owner دوم business state تبدیل شود.
 
 ## تغییر Installer / Upgrade
 
 Installer فقط وقتی تغییر کند که واقعاً installation contract تغییر کرده است. تغییر Renderer، business payload یا API logic به‌تنهایی دلیل تغییر installer نیست.
 
 Fresh Install و Upgrade فقط از یک ورودی کاربر استفاده می‌کنند: `Sokna-Print-Agent-<version>-Setup.exe`.
+
+Setup UI مجاز است Stageهای واقعی همان engine را حرفه‌ای نمایش دهد؛ اما موتور دوم، updater daemon یا patch installer جدا مجاز نیست مگر Requirement عملیاتی آن را ثابت کند.
 
 در Upgrade باید:
 
@@ -116,6 +122,27 @@ Fresh Install و Upgrade فقط از یک ورودی کاربر استفاده �
 5. Service start + fresh health بررسی شود.
 6. failure => rollback binary قبلی.
 7. SQLite/config/token/logs/work state حفظ شوند.
+8. Start Menu/Desktop shortcut به Control Console فعلی اشاره کنند.
+
+## Control Console
+
+Control Console ابزار عملیات و تشخیص است، نه Runtime چاپ و نه Source of Truth. بستن/Crash/Hang آن نباید روی Service یا Worker اثر بگذارد.
+
+Scope مجاز:
+
+- Health و exception visibility
+- Printer/Queue visibility زیر Service account
+- Test Center
+- Agent/Setup logs و Event Viewer access
+- Support Package redacted
+- Server URL و Credential rotation
+
+Scope غیرمجاز:
+
+- Direct mutation SQLite
+- نمایش یا export Secret/Token/Lease
+- Direct Winspool test که مسیر واقعی Server/API را دور بزند
+- Reset state یا Auto-Reprint از UI محلی
 
 ## امنیت
 
@@ -135,6 +162,7 @@ Fresh Install و Upgrade فقط از یک ورودی کاربر استفاده �
 - Setup install smoke
 - Service start + fresh health
 - isolated Service/Worker/Control paths
+- Start Menu/Desktop shortcut create/remove
 - uninstall preservation
 - upgrade preservation اگر installer/schema تغییر کرده
 - crash/recovery اگر Service/Worker/recovery تغییر کرده
