@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Sokna.PrintAgent.Core;
 
 var failures=new List<string>();
@@ -21,15 +22,25 @@ var store=new LocalQueueStore(path,protector);
 await store.InitializeAsync();
 Check(await store.CountOpenAsync()==0,"sqlite_init");
 
-// agent_meta is the durable owner for transport replay envelopes. It survives process restart,
-// is overwritten atomically by key, and can be explicitly cleared only after replay evidence is local.
-await store.SetMetaAsync("pending_claim_v1","request-claim-1");
-Check(await store.GetMetaAsync("pending_claim_v1")=="request-claim-1","claim_replay_meta_persisted");
-await store.SetMetaAsync("pending_claim_v1","request-claim-1-replay");
-Check(await store.GetMetaAsync("pending_claim_v1")=="request-claim-1-replay","claim_replay_meta_upsert");
+// agent_meta is the durable owner for the complete claim wire-body envelope. It survives process
+// restart and must preserve the originating agent/protocol version so an upgrade cannot mutate replay.
+var claimEnvelope=new ClaimRequestEnvelope(
+    "request-claim-1",
+    "6.1.0",
+    4,
+    ["bar","kitchen"],
+    3,
+    "2026-08-25T05:00:00.0000000+00:00");
+var claimEnvelopeJson=JsonSerializer.Serialize(claimEnvelope,AgentOptions.JsonOptions());
+await store.SetMetaAsync("pending_claim_v1",claimEnvelopeJson);
+var persistedClaim=JsonSerializer.Deserialize<ClaimRequestEnvelope>(await store.GetMetaAsync("pending_claim_v1")??"",AgentOptions.JsonOptions());
+Check(persistedClaim==claimEnvelope,"claim_replay_complete_envelope_persisted");
 var metaRestarted=new LocalQueueStore(path,protector);
 await metaRestarted.InitializeAsync();
-Check(await metaRestarted.GetMetaAsync("pending_claim_v1")=="request-claim-1-replay","claim_replay_meta_survives_restart");
+var replayedClaim=JsonSerializer.Deserialize<ClaimRequestEnvelope>(await metaRestarted.GetMetaAsync("pending_claim_v1")??"",AgentOptions.JsonOptions());
+Check(replayedClaim?.RequestId==claimEnvelope.RequestId,"claim_replay_request_id_survives_restart");
+Check(replayedClaim?.AgentVersion=="6.1.0"&&replayedClaim.ProtocolVersion==4,"claim_replay_version_protocol_survive_restart");
+Check(replayedClaim?.Limit==3&&replayedClaim.ReadyDestinationKeys.SequenceEqual(["bar","kitchen"]),"claim_replay_body_survives_restart");
 await metaRestarted.DeleteMetaAsync("pending_claim_v1");
 Check(await metaRestarted.GetMetaAsync("pending_claim_v1") is null,"claim_replay_meta_explicit_clear");
 
