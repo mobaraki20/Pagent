@@ -14,6 +14,9 @@ Check(RecoveryPolicy.Decide(LocalJobState.Submitted,true,true)==RecoveryDecision
 Check(RecoveryPolicy.Decide(LocalJobState.Unknown,true,false)==RecoveryDecision.RetryReport,"unknown_retry_report_only");
 Check(CryptoUtil.Sha256Hex("سلام").Length==64,"sha256");
 Check(!string.IsNullOrWhiteSpace(AgentVersionInfo.Current),"agent_version_source_available");
+Check(SafeLogText.Sanitize("Authorization: Bearer abc-raw-secret")=="[redacted-sensitive-text]","authorization_log_redacted");
+Check(SafeLogText.Sanitize("{\"payload_json\":\"full-order\"}")=="[redacted-sensitive-text]","payload_log_redacted");
+Check(SafeLogText.Sanitize("network timeout",7)=="network","safe_log_bounded");
 
 var dir=Path.Combine(Path.GetTempPath(),"sokna-agent-test-"+Guid.NewGuid().ToString("N"));
 var path=Path.Combine(dir,"queue.db");
