@@ -9,8 +9,6 @@ $regPath='HKLM:\SOFTWARE\Sokna\PrintAgent'
 $script:InstallStage='setup_bootstrap_start'
 $referenceId=[Guid]::NewGuid().ToString('N')
 
-# Do not depend on Get-FileHash/Microsoft.PowerShell.Utility being available in the
-# Windows PowerShell host used by Setup.exe. Keep SHA-256 verification mandatory.
 function Get-Sha256Hex([string]$Path){
   $sha=[Security.Cryptography.SHA256]::Create()
   $stream=$null
@@ -38,6 +36,21 @@ function Get-SafeMessage([string]$Text){
 function Assert-NativeExit([string]$Operation){
   if($LASTEXITCODE -ne 0){throw "$Operation failed: $LASTEXITCODE"}
 }
+function Set-AgentShortcut([string]$Path,[string]$Target){
+  $parent=Split-Path $Path -Parent
+  New-Item $parent -ItemType Directory -Force|Out-Null
+  $shell=New-Object -ComObject WScript.Shell
+  try{
+    $shortcut=$shell.CreateShortcut($Path)
+    $shortcut.TargetPath=$Target
+    $shortcut.WorkingDirectory=Split-Path $Target -Parent
+    $shortcut.Description='Sokna Print Agent — Operations & Diagnostics Console'
+    $shortcut.Save()
+  }
+  finally{
+    if($null -ne $shell){[Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)|Out-Null}
+  }
+}
 trap {
   $e=$_
   $type=if($e.Exception){$e.Exception.GetType().FullName}else{'PowerShell.ErrorRecord'}
@@ -53,8 +66,11 @@ if(-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){thr
 
 Set-InstallStage 'existing_install_lookup'
 $oldRegExists=Test-Path $regPath
-$oldInstallRoot=$null;$oldDataRoot=$null
-if($oldRegExists){$old=Get-ItemProperty $regPath -ErrorAction SilentlyContinue;$oldInstallRoot=$old.InstallRoot;$oldDataRoot=$old.DataRoot}
+$oldInstallRoot=$null;$oldDataRoot=$null;$oldVersion=$null
+if($oldRegExists){
+  $old=Get-ItemProperty $regPath -ErrorAction SilentlyContinue
+  $oldInstallRoot=$old.InstallRoot;$oldDataRoot=$old.DataRoot;$oldVersion=$old.Version
+}
 
 Set-InstallStage 'install_paths_resolution'
 if([string]::IsNullOrWhiteSpace($InstallRoot)){$InstallRoot=if($oldInstallRoot){[string]$oldInstallRoot}else{"$env:ProgramFiles\Sokna\PrintAgent"}}
@@ -66,8 +82,12 @@ if([string]::IsNullOrWhiteSpace($InstallRoot) -or [string]::IsNullOrWhiteSpace($
 Set-InstallStage 'embedded_payload_presence'
 $source=Join-Path $PSScriptRoot 'payload'
 $manifestPath=Join-Path $PSScriptRoot 'PAYLOAD_MANIFEST.json'
+$versionPath=Join-Path $PSScriptRoot 'VERSION.txt'
 if(-not (Test-Path (Join-Path $source 'Service\Sokna.PrintAgent.Service.exe') -PathType Leaf)){throw 'Agent binaries are missing. Build the package first.'}
 if(-not (Test-Path $manifestPath -PathType Leaf)){throw 'PAYLOAD_MANIFEST.json is missing.'}
+if(-not (Test-Path $versionPath -PathType Leaf)){throw 'VERSION.txt is missing.'}
+$version=(Get-Content $versionPath -Raw).Trim()
+if($version -notmatch '^\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?$'){throw 'VERSION.txt is invalid.'}
 
 Set-InstallStage 'payload_manifest_hash_validation'
 $packageRoot=[IO.Path]::GetFullPath($PSScriptRoot).TrimEnd('\')
@@ -137,15 +157,16 @@ try{
   New-Item $regPath -Force|Out-Null
   New-ItemProperty $regPath -Name InstallRoot -Value $InstallRoot -PropertyType String -Force|Out-Null
   New-ItemProperty $regPath -Name DataRoot -Value $DataRoot -PropertyType String -Force|Out-Null
+  New-ItemProperty $regPath -Name Version -Value $version -PropertyType String -Force|Out-Null
   $registryChanged=$true
 
   Set-InstallStage 'service_create_or_config'
   $exe=Join-Path $InstallRoot 'Service\Sokna.PrintAgent.Service.exe'
   if(-not (Get-Service $service -ErrorAction SilentlyContinue)){
-    & sc.exe create $service binPath= "`"$exe`"" start= delayed-auto obj= LocalSystem DisplayName= "Sokna Print Agent 6" | Out-Null
+    & sc.exe create $service binPath= "`"$exe`"" start= delayed-auto obj= LocalSystem DisplayName= "Sokna Print Agent" | Out-Null
     Assert-NativeExit 'sc create'
   }else{
-    & sc.exe config $service binPath= "`"$exe`"" start= delayed-auto obj= LocalSystem | Out-Null
+    & sc.exe config $service binPath= "`"$exe`"" start= delayed-auto obj= LocalSystem DisplayName= "Sokna Print Agent" | Out-Null
     Assert-NativeExit 'sc config'
   }
 
@@ -204,10 +225,20 @@ try{
     if(-not (Test-Path (Join-Path $InstallRoot $required) -PathType Leaf)){throw "Installed component is missing: $required"}
   }
 
+  Set-InstallStage 'shortcut_registration'
+  try{
+    $control=Join-Path $InstallRoot 'Control\Sokna.PrintAgent.Control.exe'
+    $commonPrograms=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)
+    $commonDesktop=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
+    Set-AgentShortcut (Join-Path $commonPrograms 'Sokna Print Agent.lnk') $control
+    Set-AgentShortcut (Join-Path $commonDesktop 'Sokna Print Agent.lnk') $control
+  }
+  catch{Write-Warning "Shortcut registration failed: $(Get-SafeMessage ([string]$_.Exception.Message))"}
+
   Set-InstallStage 'finalize'
   if(Test-Path $backup){Remove-Item $backup -Recurse -Force}
-  Write-Host "Installed/Upgraded. Durable data preserved at: $DataRoot" -ForegroundColor Green
-  Write-Host 'Open Control\Sokna.PrintAgent.Control.exe as Administrator to save URL/token and test API v4. Service reload is automatic; restart is not required.'
+  Write-Host "Installed/Upgraded Sokna Print Agent $version. Durable data preserved at: $DataRoot" -ForegroundColor Green
+  Write-Host 'Operations Console is available from Start Menu/Desktop. Service reloads configuration automatically; restart is not required.'
 }
 catch{
   $failure=$_
@@ -221,6 +252,7 @@ catch{
       New-Item $regPath -Force|Out-Null
       if($null -ne $oldInstallRoot){New-ItemProperty $regPath -Name InstallRoot -Value ([string]$oldInstallRoot) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name InstallRoot -ErrorAction SilentlyContinue}
       if($null -ne $oldDataRoot){New-ItemProperty $regPath -Name DataRoot -Value ([string]$oldDataRoot) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name DataRoot -ErrorAction SilentlyContinue}
+      if($null -ne $oldVersion){New-ItemProperty $regPath -Name Version -Value ([string]$oldVersion) -PropertyType String -Force|Out-Null}else{Remove-ItemProperty $regPath -Name Version -ErrorAction SilentlyContinue}
     }else{Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue}
   }
   if($hadPrevious){
