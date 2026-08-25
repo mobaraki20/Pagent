@@ -1,7 +1,7 @@
 namespace Sokna.PrintAgent.Core;
 public interface IPrintTransport
 {
-    Task<ClaimResponse> ClaimAsync(string requestId,IReadOnlyCollection<string> readyDestinations,int limit,CancellationToken ct);
+    Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct);
     Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct);
     Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct);
     Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct);
@@ -9,6 +9,15 @@ public interface IPrintTransport
     Task<ApiResult> HeartbeatAsync(HeartbeatPayload payload,CancellationToken ct);
     Task<ProbeResponse> ProbeAsync(CancellationToken ct);
 }
+
+public sealed record ClaimRequestEnvelope(
+    string RequestId,
+    string AgentVersion,
+    int ProtocolVersion,
+    string[] ReadyDestinationKeys,
+    int Limit,
+    string CreatedAt);
+
 public sealed record HeartbeatPayload(
     string RequestId,
     string Hostname,
