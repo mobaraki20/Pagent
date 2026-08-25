@@ -237,20 +237,26 @@ public sealed class PrintAgentService : BackgroundService
             if (ready.Length == 0)
                 return;
 
-            pending = new PendingClaimEnvelope(CryptoUtil.NewRequestId(), ready, _options.ClaimBatchSize, DateTimeOffset.UtcNow.ToString("O"));
+            pending = new ClaimRequestEnvelope(
+                CryptoUtil.NewRequestId(),
+                AgentVersion,
+                4,
+                ready,
+                _options.ClaimBatchSize,
+                DateTimeOffset.UtcNow.ToString("O"));
             await _store.SetMetaAsync(PendingClaimMetaKey, JsonSerializer.Serialize(pending, AgentOptions.JsonOptions()), ct);
         }
 
-        var response = await RunApiAsync("claim", () => _api.ClaimAsync(pending.RequestId, pending.ReadyDestinationKeys, pending.Limit, ct));
+        var response = await RunApiAsync("claim", () => _api.ClaimAsync(pending, ct));
         foreach (var item in response.Jobs)
             await _store.PersistReservedAsync(item, CryptoUtil.NewLocalReceiptId(), ct);
 
-        // Clear only after the complete replay response is durable locally. If the process dies before
-        // this point, the exact same request_id/body is replayed and the Server returns the same claim.
+        // Clear only after the complete replay response is durable locally. The stored envelope includes
+        // every wire-body field, including agent/protocol version, so an upgrade cannot mutate a replay.
         await _store.DeleteMetaAsync(PendingClaimMetaKey, ct);
     }
 
-    private async Task<PendingClaimEnvelope?> LoadPendingClaimAsync(CancellationToken ct)
+    private async Task<ClaimRequestEnvelope?> LoadPendingClaimAsync(CancellationToken ct)
     {
         var raw = await _store.GetMetaAsync(PendingClaimMetaKey, ct);
         if (string.IsNullOrWhiteSpace(raw))
@@ -258,8 +264,13 @@ public sealed class PrintAgentService : BackgroundService
 
         try
         {
-            var pending = JsonSerializer.Deserialize<PendingClaimEnvelope>(raw, AgentOptions.JsonOptions());
-            if (pending is null || string.IsNullOrWhiteSpace(pending.RequestId) || pending.ReadyDestinationKeys.Length == 0 || pending.Limit is < 1 or > 5)
+            var pending = JsonSerializer.Deserialize<ClaimRequestEnvelope>(raw, AgentOptions.JsonOptions());
+            if (pending is null ||
+                string.IsNullOrWhiteSpace(pending.RequestId) ||
+                string.IsNullOrWhiteSpace(pending.AgentVersion) ||
+                pending.ProtocolVersion != 4 ||
+                pending.ReadyDestinationKeys.Length == 0 ||
+                pending.Limit is < 1 or > 5)
                 throw new InvalidDataException("Pending claim metadata نامعتبر است.");
             return pending;
         }
@@ -615,8 +626,6 @@ public sealed class PrintAgentService : BackgroundService
     private static string Safe(string s) => s.Length > 400 ? s[..400] : s;
     private static void TryDelete(string p) { try { if (File.Exists(p)) File.Delete(p); } catch { } }
     private static void TryKill(Process p) { try { if (!p.HasExited) p.Kill(true); } catch { } }
-
-    private sealed record PendingClaimEnvelope(string RequestId, string[] ReadyDestinationKeys, int Limit, string CreatedAt);
 
     private sealed class ApiOperationException : Exception
     {
