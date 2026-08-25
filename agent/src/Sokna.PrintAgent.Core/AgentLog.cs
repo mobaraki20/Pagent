@@ -8,8 +8,7 @@ public sealed class AgentLog
     public void Warn(string code,string message)=>Write("WARN",code,message);
     private void Write(string level,string code,string message)
     {
-        var safe=Sanitize(message);var line=$"{DateTimeOffset.UtcNow:O}\t{level}\t{Sanitize(code)}\t{safe}{Environment.NewLine}";
+        var safe=SafeLogText.Sanitize(message);var line=$"{DateTimeOffset.UtcNow:O}\t{level}\t{SafeLogText.Sanitize(code,120)}\t{safe}{Environment.NewLine}";
         lock(_gate)File.AppendAllText(Path.Combine(_dir,$"agent-{DateTime.UtcNow:yyyyMMdd}.log"),line);
     }
-    private static string Sanitize(string s){s=s.Replace('\r',' ').Replace('\n',' ');return s.Length>800?s[..800]:s;}
 }
