@@ -102,7 +102,7 @@ Response هر item شامل:
 Server state: `pending → reserved`.
 
 ### Claim replay در Agent 6.1
-Agent باید envelope مربوط به Claim شامل `request_id`، `ready_destination_keys` و `limit` را پیش از ارسال به‌صورت durable ذخیره کند. اگر پاسخ Claim به‌علت timeout/restart نامشخص شد، همان `request_id` و همان body replay می‌شوند. Server باید همان نتیجه منطقی قبلی را برگرداند و attempt جدید نسازد. Envelope فقط بعد از durable شدن کامل پاسخ Claim در SQLite محلی پاک می‌شود.
+Agent باید envelope کامل request شامل `request_id`، `agent_version`، `protocol_version`، `ready_destination_keys` و `limit` را **پیش از ارسال** در SQLite durable کند. اگر پاسخ Claim به‌علت timeout/restart نامشخص شد، همان مقادیر wire-body replay می‌شوند؛ حتی اگر در فاصله‌ی interruption تا replay binary Agent Upgrade شده باشد. Server باید همان نتیجه منطقی قبلی را برگرداند و attempt جدید نسازد. Envelope فقط بعد از durable شدن کامل تمام itemهای پاسخ Claim در SQLite محلی پاک می‌شود.
 
 ## accept
 Agent قبل از این درخواست باید Claim را در SQLite Transaction ذخیره و SHA را Verify کرده باشد.
