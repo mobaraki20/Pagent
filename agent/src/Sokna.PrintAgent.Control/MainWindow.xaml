@@ -1,113 +1,61 @@
 <Window x:Class="Sokna.PrintAgent.Control.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Sokna Print Agent — Operations & Diagnostics"
+        Title="Sokna Print Agent — Operations and Diagnostics"
         Width="1180" Height="760" MinWidth="980" MinHeight="680"
-        WindowStartupLocation="CenterScreen"
-        FlowDirection="RightToLeft"
+        WindowStartupLocation="CenterScreen" FlowDirection="RightToLeft"
         FontFamily="Segoe UI" Background="#F5F7FA">
     <Window.Resources>
         <Style x:Key="NavButton" TargetType="Button">
-            <Setter Property="Height" Value="44"/>
-            <Setter Property="Margin" Value="0,0,0,6"/>
-            <Setter Property="Padding" Value="14,0"/>
-            <Setter Property="HorizontalContentAlignment" Value="Right"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="Foreground" Value="#334155"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Height" Value="44"/><Setter Property="Margin" Value="0,0,0,6"/>
+            <Setter Property="Padding" Value="14,0"/><Setter Property="HorizontalContentAlignment" Value="Right"/>
+            <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="#334155"/>
+            <Setter Property="BorderThickness" Value="0"/><Setter Property="FontSize" Value="14"/><Setter Property="Cursor" Value="Hand"/>
             <Style.Triggers>
-                <Trigger Property="Tag" Value="selected">
-                    <Setter Property="Background" Value="#E8EEF8"/>
-                    <Setter Property="Foreground" Value="#173B68"/>
-                    <Setter Property="FontWeight" Value="SemiBold"/>
-                </Trigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#EEF2F7"/>
-                </Trigger>
+                <Trigger Property="Tag" Value="selected"><Setter Property="Background" Value="#E8EEF8"/><Setter Property="Foreground" Value="#173B68"/><Setter Property="FontWeight" Value="SemiBold"/></Trigger>
+                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#EEF2F7"/></Trigger>
             </Style.Triggers>
         </Style>
         <Style x:Key="Card" TargetType="Border">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="CornerRadius" Value="10"/>
-            <Setter Property="Padding" Value="18"/>
+            <Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#E2E8F0"/><Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="10"/><Setter Property="Padding" Value="18"/>
         </Style>
         <Style x:Key="PrimaryButton" TargetType="Button">
-            <Setter Property="Height" Value="40"/>
-            <Setter Property="Padding" Value="18,0"/>
-            <Setter Property="Background" Value="#1F4B7A"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="BorderBrush" Value="#1F4B7A"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Height" Value="40"/><Setter Property="Padding" Value="18,0"/><Setter Property="Background" Value="#1F4B7A"/>
+            <Setter Property="Foreground" Value="White"/><Setter Property="BorderBrush" Value="#1F4B7A"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Cursor" Value="Hand"/>
         </Style>
         <Style x:Key="SecondaryButton" TargetType="Button">
-            <Setter Property="Height" Value="40"/>
-            <Setter Property="Padding" Value="16,0"/>
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="Foreground" Value="#334155"/>
-            <Setter Property="BorderBrush" Value="#CBD5E1"/>
-            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Height" Value="40"/><Setter Property="Padding" Value="16,0"/><Setter Property="Background" Value="White"/>
+            <Setter Property="Foreground" Value="#334155"/><Setter Property="BorderBrush" Value="#CBD5E1"/><Setter Property="Cursor" Value="Hand"/>
         </Style>
-        <Style x:Key="PageTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="24"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-            <Setter Property="Foreground" Value="#0F172A"/>
-        </Style>
-        <Style x:Key="Muted" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="#64748B"/>
-            <Setter Property="FontSize" Value="13"/>
-        </Style>
+        <Style x:Key="PageTitle" TargetType="TextBlock"><Setter Property="FontSize" Value="24"/><Setter Property="FontWeight" Value="SemiBold"/><Setter Property="Foreground" Value="#0F172A"/></Style>
+        <Style x:Key="Muted" TargetType="TextBlock"><Setter Property="Foreground" Value="#64748B"/><Setter Property="FontSize" Value="13"/></Style>
         <Style TargetType="DataGrid">
-            <Setter Property="Background" Value="White"/>
-            <Setter Property="BorderBrush" Value="#E2E8F0"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
-            <Setter Property="HorizontalGridLinesBrush" Value="#EEF2F7"/>
-            <Setter Property="RowHeight" Value="42"/>
-            <Setter Property="HeadersVisibility" Value="Column"/>
-            <Setter Property="CanUserAddRows" Value="False"/>
-            <Setter Property="CanUserDeleteRows" Value="False"/>
-            <Setter Property="IsReadOnly" Value="True"/>
-            <Setter Property="AutoGenerateColumns" Value="False"/>
+            <Setter Property="Background" Value="White"/><Setter Property="BorderBrush" Value="#E2E8F0"/><Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/><Setter Property="HorizontalGridLinesBrush" Value="#EEF2F7"/><Setter Property="RowHeight" Value="42"/>
+            <Setter Property="HeadersVisibility" Value="Column"/><Setter Property="CanUserAddRows" Value="False"/><Setter Property="CanUserDeleteRows" Value="False"/>
+            <Setter Property="IsReadOnly" Value="True"/><Setter Property="AutoGenerateColumns" Value="False"/>
         </Style>
     </Window.Resources>
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="64"/>
-            <RowDefinition Height="*"/>
-            <RowDefinition Height="32"/>
-        </Grid.RowDefinitions>
-
+        <Grid.RowDefinitions><RowDefinition Height="64"/><RowDefinition Height="*"/><RowDefinition Height="32"/></Grid.RowDefinitions>
         <Border Grid.Row="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="0,0,0,1">
             <Grid Margin="22,0">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="Sokna Print Agent" FontSize="19" FontWeight="SemiBold" Foreground="#0F172A"/>
-                    <TextBlock Text="Operations & Diagnostics Console" FontSize="12" Foreground="#64748B" FlowDirection="LeftToRight" HorizontalAlignment="Right"/>
+                    <TextBlock Text="Operations and Diagnostics Console" FontSize="12" Foreground="#64748B" FlowDirection="LeftToRight" HorizontalAlignment="Right"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" FlowDirection="RightToLeft">
-                    <Border x:Name="HeaderStatusBadge" Background="#E2E8F0" CornerRadius="12" Padding="10,4" Margin="0,0,10,0">
-                        <TextBlock x:Name="HeaderStatusText" Text="در حال بررسی…" FontSize="12" FontWeight="SemiBold" Foreground="#334155"/>
-                    </Border>
+                    <Border x:Name="HeaderStatusBadge" Background="#E2E8F0" CornerRadius="12" Padding="10,4" Margin="0,0,10,0"><TextBlock x:Name="HeaderStatusText" Text="در حال بررسی…" FontSize="12" FontWeight="SemiBold" Foreground="#334155"/></Border>
                     <Button Content="تازه‌سازی" Style="{StaticResource SecondaryButton}" Click="Refresh_Click" Height="34"/>
                 </StackPanel>
             </Grid>
         </Border>
 
         <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="220"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-
+            <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
             <Border Grid.Column="0" Background="White" BorderBrush="#E2E8F0" BorderThickness="0,0,1,0" Padding="14,18">
                 <DockPanel LastChildFill="True">
                     <StackPanel DockPanel.Dock="Top">
@@ -120,172 +68,71 @@
                     </StackPanel>
                     <StackPanel DockPanel.Dock="Bottom" VerticalAlignment="Bottom">
                         <Separator Margin="0,12"/>
-                        <TextBlock x:Name="VersionText" Text="Agent 6.0.0" FontSize="12" Foreground="#64748B" Margin="12,0"/>
+                        <TextBlock x:Name="VersionText" Text="Agent" FontSize="12" Foreground="#64748B" Margin="12,0"/>
                         <TextBlock x:Name="MachineText" Text="—" FontSize="11" Foreground="#94A3B8" Margin="12,4,12,0" FlowDirection="LeftToRight" HorizontalAlignment="Right"/>
                     </StackPanel>
                 </DockPanel>
             </Border>
 
             <Grid Grid.Column="1" Margin="26,22">
-                <!-- Overview -->
                 <ScrollViewer x:Name="OverviewPage" VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <TextBlock Text="نمای کلی" Style="{StaticResource PageTitle}"/>
                         <TextBlock Text="وضعیت عملیاتی Agent، ارتباط با Sokna و صف‌های چاپ در یک نگاه." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
-
                         <Border x:Name="HealthHero" Style="{StaticResource Card}" Padding="22" Margin="0,0,0,16">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock x:Name="HealthTitle" Text="در حال بررسی وضعیت…" FontSize="21" FontWeight="SemiBold" Foreground="#0F172A"/>
-                                    <TextBlock x:Name="HealthDescription" Text="" FontSize="13" Foreground="#475569" Margin="0,7,0,0" TextWrapping="Wrap"/>
-                                </StackPanel>
-                                <TextBlock Grid.Column="1" x:Name="HealthUpdated" Text="" Foreground="#64748B" FontSize="12" VerticalAlignment="Top" Margin="18,3,0,0"/>
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel><TextBlock x:Name="HealthTitle" Text="در حال بررسی وضعیت…" FontSize="21" FontWeight="SemiBold" Foreground="#0F172A"/><TextBlock x:Name="HealthDescription" FontSize="13" Foreground="#475569" Margin="0,7,0,0" TextWrapping="Wrap"/></StackPanel>
+                                <TextBlock Grid.Column="1" x:Name="HealthUpdated" Foreground="#64748B" FontSize="12" VerticalAlignment="Top" Margin="18,3,0,0"/>
                             </Grid>
                         </Border>
-
                         <Grid Margin="0,0,0,16">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="12"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" Style="{StaticResource Card}">
-                                <StackPanel><TextBlock Text="Windows Service" Style="{StaticResource Muted}"/><TextBlock x:Name="ServiceValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel>
-                            </Border>
-                            <Border Grid.Column="2" Style="{StaticResource Card}">
-                                <StackPanel><TextBlock Text="ارتباط API" Style="{StaticResource Muted}"/><TextBlock x:Name="ApiValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="ApiDetail" Text="" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/></StackPanel>
-                            </Border>
-                            <Border Grid.Column="4" Style="{StaticResource Card}">
-                                <StackPanel><TextBlock Text="صف محلی" Style="{StaticResource Muted}"/><TextBlock x:Name="BacklogValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="BacklogDetail" Text="" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/></StackPanel>
-                            </Border>
-                            <Border Grid.Column="6" Style="{StaticResource Card}">
-                                <StackPanel><TextBlock Text="پرینترهای Ready" Style="{StaticResource Muted}"/><TextBlock x:Name="PrinterValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="PrinterDetail" Text="" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/></StackPanel>
-                            </Border>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Style="{StaticResource Card}"><StackPanel><TextBlock Text="Windows Service" Style="{StaticResource Muted}"/><TextBlock x:Name="ServiceValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel></Border>
+                            <Border Grid.Column="2" Style="{StaticResource Card}"><StackPanel><TextBlock Text="ارتباط API" Style="{StaticResource Muted}"/><TextBlock x:Name="ApiValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="ApiDetail" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/></StackPanel></Border>
+                            <Border Grid.Column="4" Style="{StaticResource Card}"><StackPanel><TextBlock Text="صف محلی" Style="{StaticResource Muted}"/><TextBlock x:Name="BacklogValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="BacklogDetail" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/></StackPanel></Border>
+                            <Border Grid.Column="6" Style="{StaticResource Card}"><StackPanel><TextBlock Text="پرینترهای Ready" Style="{StaticResource Muted}"/><TextBlock x:Name="PrinterValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="PrinterDetail" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/></StackPanel></Border>
                         </Grid>
-
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
-                                <Grid>
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <StackPanel><TextBlock Text="اطلاعات تشخیصی" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="اطلاعات فنی لازم برای تشخیص، بدون نمایش Secret یا Token." Style="{StaticResource Muted}" Margin="0,4,0,0"/></StackPanel>
-                                    <Button Grid.Column="1" Content="بسته پشتیبانی" Style="{StaticResource SecondaryButton}" Click="ExportSupport_Click"/>
-                                </Grid>
-                                <Grid Margin="0,16,0,0">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="160"/><ColumnDefinition Width="*"/><ColumnDefinition Width="160"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-                                    <TextBlock Text="آخرین API موفق" Foreground="#64748B"/><TextBlock Grid.Column="1" x:Name="DiagLastSuccess" Text="—"/>
-                                    <TextBlock Grid.Column="2" Text="آخرین خطای API" Foreground="#64748B"/><TextBlock Grid.Column="3" x:Name="DiagLastError" Text="—"/>
-                                    <TextBlock Grid.Row="1" Text="آخرین Action" Foreground="#64748B" Margin="0,10,0,0"/><TextBlock Grid.Row="1" Grid.Column="1" x:Name="DiagLastAction" Text="—" Margin="0,10,0,0"/>
-                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Latency آخر" Foreground="#64748B" Margin="0,10,0,0"/><TextBlock Grid.Row="1" Grid.Column="3" x:Name="DiagLatency" Text="—" Margin="0,10,0,0"/>
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel><TextBlock Text="اطلاعات تشخیصی" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="Evidence لازم برای تشخیص، بدون نمایش Secret یا Token." Style="{StaticResource Muted}" Margin="0,4,0,0"/></StackPanel><Button Grid.Column="1" Content="بسته پشتیبانی" Style="{StaticResource SecondaryButton}" Click="ExportSupport_Click"/></Grid>
+                                <Grid Margin="0,16,0,0"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions><Grid.ColumnDefinitions><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/><ColumnDefinition Width="150"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <TextBlock Text="آخرین API موفق" Foreground="#64748B"/><TextBlock Grid.Column="1" x:Name="DiagLastSuccess" Text="—"/><TextBlock Grid.Column="2" Text="آخرین خطای API" Foreground="#64748B"/><TextBlock Grid.Column="3" x:Name="DiagLastError" Text="—"/>
+                                    <TextBlock Grid.Row="1" Text="آخرین Action" Foreground="#64748B" Margin="0,10,0,0"/><TextBlock Grid.Row="1" Grid.Column="1" x:Name="DiagLastAction" Text="—" Margin="0,10,0,0"/><TextBlock Grid.Row="1" Grid.Column="2" Text="Latency آخر" Foreground="#64748B" Margin="0,10,0,0"/><TextBlock Grid.Row="1" Grid.Column="3" x:Name="DiagLatency" Text="—" Margin="0,10,0,0"/>
                                 </Grid>
                             </StackPanel>
                         </Border>
                     </StackPanel>
                 </ScrollViewer>
 
-                <!-- Printers -->
                 <Grid x:Name="PrintersPage" Visibility="Collapsed">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <TextBlock Text="پرینترها و صف‌ها" Style="{StaticResource PageTitle}"/>
-                    <TextBlock Grid.Row="1" Text="Queueهایی که Windows Service تحت LocalSystem واقعاً می‌بیند. Driver و Port برای تشخیص در دسترس‌اند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
-                    <DataGrid Grid.Row="2" x:Name="PrintersGrid">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="نام Queue" Binding="{Binding Name}" Width="2*"/>
-                            <DataGridTextColumn Header="وضعیت" Binding="{Binding Status}" Width="120"/>
-                            <DataGridTextColumn Header="Job" Binding="{Binding Jobs}" Width="70"/>
-                            <DataGridTextColumn Header="Driver" Binding="{Binding Driver}" Width="2*"/>
-                            <DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="*"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <TextBlock Text="پرینترها و صف‌ها" Style="{StaticResource PageTitle}"/><TextBlock Grid.Row="1" Text="Queueهایی که Windows Service تحت LocalSystem واقعاً می‌بیند؛ Driver و Port برای تشخیص حفظ شده‌اند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
+                    <DataGrid Grid.Row="2" x:Name="PrintersGrid"><DataGrid.Columns><DataGridTextColumn Header="نام Queue" Binding="{Binding Name}" Width="2*"/><DataGridTextColumn Header="وضعیت" Binding="{Binding Status}" Width="120"/><DataGridTextColumn Header="Job" Binding="{Binding Jobs}" Width="70"/><DataGridTextColumn Header="Driver" Binding="{Binding Driver}" Width="2*"/><DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="*"/></DataGrid.Columns></DataGrid>
                 </Grid>
 
-                <!-- Tests -->
                 <Grid x:Name="TestsPage" Visibility="Collapsed">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <TextBlock Text="مرکز تست" Style="{StaticResource PageTitle}"/>
-                    <TextBlock Grid.Row="1" Text="تست مرحله‌ای Service، Config، Credential، API، Spooler و Printer visibility. چاپ End-to-End از مسیر واقعی Sokna انجام می‌شود." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,14">
-                        <Button x:Name="RunTestsButton" Content="اجرای بررسی کامل" Style="{StaticResource PrimaryButton}" Click="RunTests_Click"/>
-                        <Button Content="باز کردن پنل چاپ Sokna" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" Click="OpenSoknaPrinting_Click"/>
-                    </StackPanel>
-                    <DataGrid Grid.Row="3" x:Name="TestsGrid">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="مرحله" Binding="{Binding Name}" Width="220"/>
-                            <DataGridTextColumn Header="نتیجه" Binding="{Binding Status}" Width="110"/>
-                            <DataGridTextColumn Header="جزئیات" Binding="{Binding Detail}" Width="*"/>
-                            <DataGridTextColumn Header="زمان" Binding="{Binding Duration}" Width="90"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <TextBlock Text="مرکز تست" Style="{StaticResource PageTitle}"/><TextBlock Grid.Row="1" Text="Service، Config، Credential، API، Spooler و Printer visibility مرحله‌به‌مرحله بررسی می‌شوند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,14"><Button x:Name="RunTestsButton" Content="اجرای بررسی کامل" Style="{StaticResource PrimaryButton}" Click="RunTests_Click"/><Button Content="باز کردن پنل چاپ Sokna" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" Click="OpenSoknaPrinting_Click"/></StackPanel>
+                    <DataGrid Grid.Row="3" x:Name="TestsGrid"><DataGrid.Columns><DataGridTextColumn Header="مرحله" Binding="{Binding Name}" Width="220"/><DataGridTextColumn Header="نتیجه" Binding="{Binding Status}" Width="110"/><DataGridTextColumn Header="جزئیات" Binding="{Binding Detail}" Width="*"/><DataGridTextColumn Header="زمان" Binding="{Binding Duration}" Width="90"/></DataGrid.Columns></DataGrid>
                 </Grid>
 
-                <!-- Logs -->
                 <Grid x:Name="LogsPage" Visibility="Collapsed">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <TextBlock Text="لاگ و تشخیص" Style="{StaticResource PageTitle}"/>
-                    <TextBlock Grid.Row="1" Text="Agent log و Setup diagnostics در یک نمای قابل جست‌وجو؛ Event Viewer و فایل‌های اصلی نیز مستقیم در دسترس‌اند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,14">
-                        <Button Content="تازه‌سازی لاگ" Style="{StaticResource SecondaryButton}" Click="RefreshLogs_Click"/>
-                        <Button Content="پوشه Agent Logs" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="OpenLogs_Click"/>
-                        <Button Content="Event Viewer" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="OpenEventViewer_Click"/>
-                        <Button Content="بسته پشتیبانی" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="ExportSupport_Click"/>
-                    </StackPanel>
-                    <DataGrid Grid.Row="3" x:Name="LogsGrid">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="زمان" Binding="{Binding Time}" Width="165"/>
-                            <DataGridTextColumn Header="سطح" Binding="{Binding Level}" Width="75"/>
-                            <DataGridTextColumn Header="بخش" Binding="{Binding Area}" Width="140"/>
-                            <DataGridTextColumn Header="پیام" Binding="{Binding Message}" Width="*"/>
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <TextBlock Text="لاگ و تشخیص" Style="{StaticResource PageTitle}"/><TextBlock Grid.Row="1" Text="Agent log و Setup diagnostics در یک نمای قابل اسکن؛ فایل‌های مرجع و Event Viewer نیز مستقیم قابل دسترسی‌اند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,14"><Button Content="تازه‌سازی لاگ" Style="{StaticResource SecondaryButton}" Click="RefreshLogs_Click"/><Button Content="پوشه Agent Logs" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="OpenLogs_Click"/><Button Content="Event Viewer" Style="{StaticResource SecondaryButton}" Margin="8,0,0,0" Click="OpenEventViewer_Click"/><Button Content="بسته پشتیبانی" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="ExportSupport_Click"/></StackPanel>
+                    <DataGrid Grid.Row="3" x:Name="LogsGrid"><DataGrid.Columns><DataGridTextColumn Header="زمان" Binding="{Binding Time}" Width="165"/><DataGridTextColumn Header="سطح" Binding="{Binding Level}" Width="75"/><DataGridTextColumn Header="بخش" Binding="{Binding Area}" Width="140"/><DataGridTextColumn Header="پیام" Binding="{Binding Message}" Width="*"/></DataGrid.Columns></DataGrid>
                 </Grid>
 
-                <!-- Settings -->
                 <ScrollViewer x:Name="SettingsPage" Visibility="Collapsed" VerticalScrollBarVisibility="Auto">
-                    <StackPanel MaxWidth="820" HorizontalAlignment="Stretch">
-                        <TextBlock Text="تنظیمات اتصال" Style="{StaticResource PageTitle}"/>
-                        <TextBlock Text="فقط تنظیمات پشتیبانی‌شده نمایش داده می‌شوند. پارامترهای داخلی Runtime عمداً در UI روزمره قابل تغییر نیستند." Style="{StaticResource Muted}" Margin="0,6,0,18" TextWrapping="Wrap"/>
-                        <Border Style="{StaticResource Card}">
-                            <StackPanel>
-                                <TextBlock Text="Sokna Server" FontSize="16" FontWeight="SemiBold"/>
-                                <TextBlock Text="Server URL" Style="{StaticResource Muted}" Margin="0,16,0,5"/>
-                                <TextBox x:Name="ServerUrlBox" Height="38" Padding="10,7" FlowDirection="LeftToRight" HorizontalContentAlignment="Left"/>
-                                <TextBlock Text="Credential" Style="{StaticResource Muted}" Margin="0,14,0,5"/>
-                                <Grid>
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="160"/></Grid.ColumnDefinitions>
-                                    <PasswordBox x:Name="TokenBox" Height="38" Padding="10,7" FlowDirection="LeftToRight"/>
-                                    <TextBlock Grid.Column="1" x:Name="CredentialState" Text="—" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="#475569"/>
-                                </Grid>
-                                <TextBlock Text="برای حفظ Credential فعلی، فیلد بالا را خالی بگذارید." Style="{StaticResource Muted}" Margin="0,6,0,0"/>
-                                <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
-                                    <Button Content="ذخیره تنظیمات" Style="{StaticResource PrimaryButton}" Click="SaveSettings_Click"/>
-                                    <Button x:Name="TestApiButton" Content="تست اتصال API v4" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" Click="TestApi_Click"/>
-                                </StackPanel>
-                                <TextBlock x:Name="SettingsMessage" Text="" Margin="0,12,0,0" TextWrapping="Wrap"/>
-                            </StackPanel>
-                        </Border>
-                        <Border Style="{StaticResource Card}" Margin="0,14,0,0">
-                            <StackPanel>
-                                <TextBlock Text="مسیرهای تشخیصی" FontSize="16" FontWeight="SemiBold"/>
-                                <TextBlock x:Name="DataPathText" Text="" Margin="0,14,0,0" FlowDirection="LeftToRight" HorizontalAlignment="Right" TextWrapping="Wrap"/>
-                                <TextBlock x:Name="InstallPathText" Text="" Margin="0,8,0,0" FlowDirection="LeftToRight" HorizontalAlignment="Right" TextWrapping="Wrap"/>
-                            </StackPanel>
-                        </Border>
+                    <StackPanel MaxWidth="820">
+                        <TextBlock Text="تنظیمات اتصال" Style="{StaticResource PageTitle}"/><TextBlock Text="فقط تنظیمات پشتیبانی‌شده نمایش داده می‌شوند؛ پارامترهای داخلی Runtime در UI روزمره قابل تغییر نیستند." Style="{StaticResource Muted}" Margin="0,6,0,18" TextWrapping="Wrap"/>
+                        <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="Sokna Server" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="Server URL" Style="{StaticResource Muted}" Margin="0,16,0,5"/><TextBox x:Name="ServerUrlBox" Height="38" Padding="10,7" FlowDirection="LeftToRight" HorizontalContentAlignment="Left"/><TextBlock Text="Credential" Style="{StaticResource Muted}" Margin="0,14,0,5"/><Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="160"/></Grid.ColumnDefinitions><PasswordBox x:Name="TokenBox" Height="38" Padding="10,7" FlowDirection="LeftToRight"/><TextBlock Grid.Column="1" x:Name="CredentialState" Text="—" VerticalAlignment="Center" Margin="12,0,0,0" Foreground="#475569"/></Grid><TextBlock Text="برای حفظ Credential فعلی، فیلد را خالی بگذارید." Style="{StaticResource Muted}" Margin="0,6,0,0"/><StackPanel Orientation="Horizontal" Margin="0,18,0,0"><Button Content="ذخیره تنظیمات" Style="{StaticResource PrimaryButton}" Click="SaveSettings_Click"/><Button x:Name="TestApiButton" Content="تست اتصال API v4" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" Click="TestApi_Click"/></StackPanel><TextBlock x:Name="SettingsMessage" Margin="0,12,0,0" TextWrapping="Wrap"/></StackPanel></Border>
+                        <Border Style="{StaticResource Card}" Margin="0,14,0,0"><StackPanel><TextBlock Text="مسیرهای تشخیصی" FontSize="16" FontWeight="SemiBold"/><TextBlock x:Name="DataPathText" Margin="0,14,0,0" FlowDirection="LeftToRight" HorizontalAlignment="Right" TextWrapping="Wrap"/><TextBlock x:Name="InstallPathText" Margin="0,8,0,0" FlowDirection="LeftToRight" HorizontalAlignment="Right" TextWrapping="Wrap"/></StackPanel></Border>
                     </StackPanel>
                 </ScrollViewer>
             </Grid>
         </Grid>
-
-        <Border Grid.Row="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0">
-            <Grid Margin="18,0">
-                <TextBlock x:Name="FooterText" Text="Console مستقل از Windows Service است؛ بستن این پنجره چاپ را متوقف نمی‌کند." VerticalAlignment="Center" FontSize="11" Foreground="#64748B"/>
-            </Grid>
-        </Border>
+        <Border Grid.Row="2" Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="0,1,0,0"><Grid Margin="18,0"><TextBlock x:Name="FooterText" Text="Console مستقل از Windows Service است؛ بستن این پنجره چاپ را متوقف نمی‌کند." VerticalAlignment="Center" FontSize="11" Foreground="#64748B"/></Grid></Border>
     </Grid>
 </Window>
