@@ -16,17 +16,17 @@ Production فقط HTTPS. Token خام Log/DB نمی‌شود. Protocol=4 و Agen
 - افزودن فیلد diagnostic اختیاری به heartbeat در Protocol v4 breaking change نیست؛ Server باید Agentهای 6.0 فاقد این فیلدها را نیز بپذیرد.
 
 ## probe
-Request:
+Request نمونه از Agent 6.1:
 ```json
 {"agent_version":"6.1.0","protocol_version":4}
 ```
-Response نمونه:
+Response نمونه تا پیش از Release/pin رسمی 6.1 روی Server:
 ```json
 {
   "success":true,
   "protocol_version":4,
   "minimum_agent_version":"6.0.0",
-  "recommended_agent_version":"6.1.0",
+  "recommended_agent_version":"6.0.0",
   "destinations":[{
     "destination_key":"bar",
     "label":"بار",
@@ -39,7 +39,7 @@ Response نمونه:
 }
 ```
 
-`minimum_agent_version` و `recommended_agent_version` توسط Server تعیین می‌شوند. تا زمانی که migration رسمی انجام نشده، افزایش نسخه Agent نباید Protocol v4 یا compatibility با minimum اعلام‌شده را بشکند.
+`minimum_agent_version` و `recommended_agent_version` توسط Server و فرآیند Release تعیین می‌شوند. توسعه Agent به‌تنهایی مجاز نیست این مقادیر را جلو ببرد. تا زمانی که Release/migration رسمی انجام نشده، افزایش نسخه Agent نباید Protocol v4 یا compatibility با minimum اعلام‌شده را بشکند.
 
 ## heartbeat
 تقریباً هر ۱۵ ثانیه:
@@ -187,7 +187,7 @@ Response:
 اگر attempt واقعاً `started` بوده، بعداً `unknown/recovery_hold` شده، هنوز Human-resolved نشده، و همان local receipt + spooler id evidence برسد، Server می‌تواند state را به `submitted` ارتقا دهد. این فقط ثبت evidence است و هیچ چاپی ایجاد نمی‌کند.
 
 ## امنیت idempotency
-- Claim replay با همان `claim_request_id` attempt جدید نمی‌سازد.
+- Claim replay با همان `request_id` attempt جدید نمی‌سازد.
 - Accept به `local_receipt_id` و hash bind است.
 - Start terminal state را هرگز دوباره authorize نمی‌کند.
 - Report terminal conflict را رد می‌کند؛ late-submitted فقط طبق قاعده بالا پذیرفته می‌شود.
