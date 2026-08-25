@@ -9,5 +9,25 @@ public interface IPrintTransport
     Task<ApiResult> HeartbeatAsync(HeartbeatPayload payload,CancellationToken ct);
     Task<ProbeResponse> ProbeAsync(CancellationToken ct);
 }
-public sealed record HeartbeatPayload(string RequestId,string Hostname,string AgentVersion,string OsVersion,long UptimeSeconds,string? LastPollSuccessAt,int LocalBacklogCount,int LocalUnknownCount,string? LastSubmissionAt,string SqliteHealth,long DiskFreeMb,bool WorkerOk,bool ConfigOk,bool InstanceLockOk,List<PrinterQueueHealth> Printers);
+public sealed record HeartbeatPayload(
+    string RequestId,
+    string Hostname,
+    string AgentVersion,
+    string OsVersion,
+    long UptimeSeconds,
+    string? LastPollSuccessAt,
+    int LocalBacklogCount,
+    int LocalUnknownCount,
+    string? LastSubmissionAt,
+    string SqliteHealth,
+    long DiskFreeMb,
+    bool WorkerOk,
+    bool ConfigOk,
+    bool InstanceLockOk,
+    List<PrinterQueueHealth> Printers,
+    string? LastSuccessfulAction=null,
+    string? LastApiSuccessAt=null,
+    string? LastApiErrorCode=null,
+    int ConsecutiveApiFailures=0,
+    long? LastApiLatencyMs=null);
 public sealed record ProbeResponse(bool Success,int ProtocolVersion,string MinimumAgentVersion,string RecommendedAgentVersion,List<DestinationConfig> Destinations);
