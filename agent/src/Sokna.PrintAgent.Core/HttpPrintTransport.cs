@@ -29,7 +29,7 @@ public sealed class HttpPrintTransport: IPrintTransport
         message=string.IsNullOrWhiteSpace(message)?$"Print API {action} HTTP {(int)status}: {Safe(text)}":message;
         return new PrintApiException(status,Safe(message!),code,current,terminal,human);
     }
-    private static string Safe(string text)=>text.Length>400?text[..400]:text;
+    private static string Safe(string text)=>SafeLogText.Sanitize(text,400);
     public Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct)=>PostAsync<ClaimResponse>("claim",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,limit=request.Limit,ready_destination_keys=request.ReadyDestinationKeys},ct);
     public Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct)=>PostAsync<ApiResult>("accept",new{request_id=requestId,agent_version=AgentVersionInfo.Current,protocol_version=4,attempt_id=item.Attempt.Id,lease_token=item.Attempt.LeaseToken,local_receipt_id=localReceiptId,content_sha256=item.Job.ContentSha256},ct);
     public Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct)=>PostAsync<ApiResult>("renew",new{request_id=requestId,agent_version=AgentVersionInfo.Current,protocol_version=4,attempt_id=item.Attempt.Id,lease_token=item.Attempt.LeaseToken},ct);
