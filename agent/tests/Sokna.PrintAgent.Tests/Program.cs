@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Sokna.PrintAgent.Core;
 
 var failures=new List<string>();
@@ -12,6 +13,10 @@ Check(RecoveryPolicy.Decide(LocalJobState.WorkerLaunching,true,true)==RecoveryDe
 Check(RecoveryPolicy.Decide(LocalJobState.Submitted,true,true)==RecoveryDecision.ReportSubmitted,"crash_after_spooler_before_report_no_reprint");
 Check(RecoveryPolicy.Decide(LocalJobState.Unknown,true,false)==RecoveryDecision.RetryReport,"unknown_retry_report_only");
 Check(CryptoUtil.Sha256Hex("سلام").Length==64,"sha256");
+Check(!string.IsNullOrWhiteSpace(AgentVersionInfo.Current),"agent_version_source_available");
+Check(SafeLogText.Sanitize("Authorization: Bearer abc-raw-secret")=="[redacted-sensitive-text]","authorization_log_redacted");
+Check(SafeLogText.Sanitize("{\"payload_json\":\"full-order\"}")=="[redacted-sensitive-text]","payload_log_redacted");
+Check(SafeLogText.Sanitize("network timeout",7)=="network","safe_log_bounded");
 
 var dir=Path.Combine(Path.GetTempPath(),"sokna-agent-test-"+Guid.NewGuid().ToString("N"));
 var path=Path.Combine(dir,"queue.db");
@@ -19,6 +24,35 @@ var protector=new TestLeaseProtector();
 var store=new LocalQueueStore(path,protector);
 await store.InitializeAsync();
 Check(await store.CountOpenAsync()==0,"sqlite_init");
+
+// agent_meta is the durable owner for the complete claim wire-body envelope. It survives process
+// restart and must preserve the originating agent/protocol version so an upgrade cannot mutate replay.
+var claimEnvelope=new ClaimRequestEnvelope(
+    "request-claim-1",
+    "6.1.0",
+    4,
+    ["bar","kitchen"],
+    3,
+    "2026-08-25T05:00:00.0000000+00:00");
+var claimEnvelopeJson=JsonSerializer.Serialize(claimEnvelope,AgentOptions.JsonOptions());
+await store.SetMetaAsync("pending_claim_v1",claimEnvelopeJson);
+var persistedClaim=JsonSerializer.Deserialize<ClaimRequestEnvelope>(await store.GetMetaAsync("pending_claim_v1")??"",AgentOptions.JsonOptions());
+Check(persistedClaim is not null
+      && persistedClaim.RequestId==claimEnvelope.RequestId
+      && persistedClaim.AgentVersion==claimEnvelope.AgentVersion
+      && persistedClaim.ProtocolVersion==claimEnvelope.ProtocolVersion
+      && persistedClaim.Limit==claimEnvelope.Limit
+      && persistedClaim.CreatedAt==claimEnvelope.CreatedAt
+      && persistedClaim.ReadyDestinationKeys.SequenceEqual(claimEnvelope.ReadyDestinationKeys),
+    "claim_replay_complete_envelope_persisted");
+var metaRestarted=new LocalQueueStore(path,protector);
+await metaRestarted.InitializeAsync();
+var replayedClaim=JsonSerializer.Deserialize<ClaimRequestEnvelope>(await metaRestarted.GetMetaAsync("pending_claim_v1")??"",AgentOptions.JsonOptions());
+Check(replayedClaim?.RequestId==claimEnvelope.RequestId,"claim_replay_request_id_survives_restart");
+Check(replayedClaim?.AgentVersion=="6.1.0"&&replayedClaim.ProtocolVersion==4,"claim_replay_version_protocol_survive_restart");
+Check(replayedClaim?.Limit==3&&replayedClaim.ReadyDestinationKeys.SequenceEqual(["bar","kitchen"]),"claim_replay_body_survives_restart");
+await metaRestarted.DeleteMetaAsync("pending_claim_v1");
+Check(await metaRestarted.GetMetaAsync("pending_claim_v1") is null,"claim_replay_meta_explicit_clear");
 
 var payload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"تست\"}";
 var sha=CryptoUtil.Sha256Hex(payload);
@@ -31,12 +65,10 @@ var l1=await store.PersistReservedAsync(first,"receipt-0001");
 Check(l1.AttemptId==1001&&l1.ServerJobId==77,"attempt_1_persist");
 Check(l1.ProtectedLeaseToken!="lease-a"&&protector.Unprotect(l1.ProtectedLeaseToken)=="lease-a","lease_not_plaintext_at_local_boundary");
 
-// Idempotent duplicate claim response must not create a second local row or replace its receipt.
 var l1Replay=await store.PersistReservedAsync(first,"receipt-should-not-replace");
 Check(l1Replay.AttemptId==1001&&l1Replay.LocalReceiptId=="receipt-0001","duplicate_claim_same_attempt_idempotent");
 Check(await store.CountOpenAsync()==1,"duplicate_claim_does_not_duplicate_open_job");
 
-// Same attempt identity with different immutable payload evidence is corruption/conflict, not an overwrite.
 var alteredPayload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"DIFFERENT\"}";
 var altered=first with{Job=first.Job with{PayloadJson=alteredPayload,ContentSha256=CryptoUtil.Sha256Hex(alteredPayload)}};
 await ExpectThrowsAsync(()=>store.PersistReservedAsync(altered,"receipt-conflict"),"duplicate_attempt_different_payload_rejected");
@@ -50,7 +82,6 @@ Check(l2.AttemptId==1002&&l2.ServerJobId==77,"same_job_new_attempt_persist");
 Check((await store.GetByAttemptAsync(1001)) is not null&&(await store.GetByAttemptAsync(1002)) is not null,"attempt_history_preserved");
 Check(await store.CountOpenAsync()==1,"only_new_attempt_open");
 
-// Outbox is durable evidence for report retry. A restart must retry the report, never re-authorize printing.
 await store.SetStateAsync(1002,LocalJobState.Unknown,error:"ambiguous after fence");
 await store.EnqueueReportAsync(77,1002,"request-report-1002","{\"status\":\"unknown\"}");
 Check(await store.HasPendingReportAsync(1002),"report_outbox_created");
@@ -71,7 +102,6 @@ var durable=Path.Combine(dir,"atomic.txt");
 await DurableFile.WriteTextAtomicAsync(durable,"سلام");
 Check(File.ReadAllText(durable)=="سلام","durable_atomic_file");
 
-// Corrupt SQLite bytes must fail loudly instead of silently replacing durable recovery state.
 var corruptDir=Path.Combine(Path.GetTempPath(),"sokna-agent-corrupt-"+Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(corruptDir);
 var corruptPath=Path.Combine(corruptDir,"queue.db");

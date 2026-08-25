@@ -11,4 +11,20 @@ public sealed record LocalJob(long ServerJobId,long AttemptId,int AttemptNo,stri
 public sealed record WorkerInput(long ServerJobId,long AttemptId,string LocalReceiptId,string QueueName,string PayloadJson,string ContentSha256,double PaperWidthMm,double PrintableWidthMm,int Copies,string ResultPath,string FencePath,string StartSignalPath);
 public sealed record WorkerResult(long ServerJobId,long AttemptId,string LocalReceiptId,string ContentSha256,string Status,string? SpoolerJobId=null,bool Retryable=false,string? ErrorCode=null,string? ErrorMessage=null);
 public sealed record PrinterQueueHealth(string Name,bool Offline,bool Paused,bool PaperOut,bool Error,int Jobs,string Driver,string Port);
-public sealed record LocalHealthSnapshot(string AgentVersion,string Hostname,string State,bool ConfigOk,bool SecretOk,bool ServiceAccountContext,string? LastError,string UpdatedAt,int LocalBacklogCount,int LocalUnknownCount,List<PrinterQueueHealth> Printers);
+public sealed record LocalHealthSnapshot(
+    string AgentVersion,
+    string Hostname,
+    string State,
+    bool ConfigOk,
+    bool SecretOk,
+    bool ServiceAccountContext,
+    string? LastError,
+    string UpdatedAt,
+    int LocalBacklogCount,
+    int LocalUnknownCount,
+    List<PrinterQueueHealth> Printers,
+    string? LastSuccessfulAction=null,
+    string? LastApiSuccessAt=null,
+    string? LastApiErrorCode=null,
+    int ConsecutiveApiFailures=0,
+    long? LastApiLatencyMs=null);

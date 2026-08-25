@@ -1,49 +1,92 @@
-# نصب Sokna Print Agent 6.0.0
+# نصب و به‌روزرسانی Sokna Print Agent 6.1.0
 
 ## وضعیت
-Windows Build و Installer smoke در CI واقعی اجرا و PASS شده‌اند. این فقط Installation Gate است؛ چاپ فیزیکی واقعی، Printer/Spooler faultها، Windows restart و soak همچنان **PENDING / UAT_REQUIRED — PRODUCTION GATE** هستند.
+Windows Build و Setup/Service/Uninstall gate نسخه 6.1 روی branch توسعه اجرا و PASS شده‌اند. این فقط Installation/Upgrade engineering gate است؛ چاپ فیزیکی واقعی، Printer/Spooler faultها، Windows restart و soak همچنان **PENDING / UAT_REQUIRED — PRODUCTION GATE** هستند.
+
+## اصل نصب
+برای کاربر فقط یک ورودی وجود دارد:
+
+`Sokna-Print-Agent-<version>-Setup.exe`
+
+Fresh Install و Upgrade از همان engine استفاده می‌کنند. Setup UI فقط Stageهای واقعی همان engine را نمایش می‌دهد و updater/service دوم وجود ندارد.
 
 ## پیش‌نیاز Production
 - Windows پشتیبانی‌شده و به‌روز.
-- Printer Queue قابل مشاهده توسط Account سرویس. Agent فعلی با `LocalSystem` نصب می‌شود.
+- Printer Queue قابل مشاهده توسط Account سرویس؛ Agent با `LocalSystem` اجرا می‌شود.
 - ترجیحاً Machine-wide / Standard TCP/IP Queue؛ User-profile printer بدون verification مجاز نیست.
 - HTTPS معتبر برای Sokna production.
 - Agent credential معتبر و قابل revoke/rotate.
 - در صورت نیاز به Vazirmatn، فونت باید Machine-wide باشد؛ Agent به User Profile وابسته نیست.
 
 ## Artifactهای Windows
-Build رسمی باید این موارد را با SHA-256 همان Run تولید کند:
-- `Sokna-Print-Agent-6.0.0-Setup.exe`
-- `Sokna-Print-Agent-6.0.0-win-x64.zip`
-- `Sokna-Print-Agent-6.0.0-source.zip`
-- `SHA256SUMS-Agent-6.0.0.txt`
-- `BUILD_ARTIFACTS-Agent-6.0.0.json`
+Build رسمی Version را از `Directory.Build.props:SoknaAgentVersion` می‌گیرد و باید Artifactهای زیر را با SHA-256 همان Run تولید کند:
 
-## نصب پیشنهادی
-1. SHA-256 `Setup.exe` را با گزارش Build همان Run تطبیق دهید.
-2. `Sokna-Print-Agent-6.0.0-Setup.exe` را با دسترسی Administrator اجرا کنید. برای نصب silent: `/quiet`.
-3. Setup payload embedded را استخراج و SHA-256 همه فایل‌های Manifest را قبل از تغییر سیستم Verify می‌کند.
-4. Installer Service `SoknaPrintAgent6` را با `Automatic Delayed Start` و Windows Recovery Restart ایجاد می‌کند.
-5. Service باید حتی بدون Config/Token بالا بماند و `health.json` با حالت waiting/configuration state بنویسد.
-6. Control App را فقط برای تنظیم Server URL/credential و بررسی سلامت باز کنید. Control برای زنده‌ماندن Service لازم نیست.
-7. در پنل Sokna destinationها را assign کنید.
-8. قبل از Production، Test Print و checklist چاپگر واقعی را اجرا کنید.
+- `Sokna-Print-Agent-6.1.0-Setup.exe`
+- `Sokna-Print-Agent-6.1.0-win-x64.zip`
+- `Sokna-Print-Agent-6.1.0-source.zip`
+- `SHA256SUMS-Agent-6.1.0.txt`
+- `BUILD_ARTIFACTS-Agent-6.1.0.json`
+
+## تجربه نصب / Upgrade
+Setup قبل از تغییر سیستم:
+
+1. نوع Fresh/Upgrade و Version فعلی/هدف را تشخیص می‌دهد.
+2. payload embedded را استخراج می‌کند.
+3. Manifest، size و SHA-256 همه فایل‌ها را Verify می‌کند.
+4. ProgramData و ACL را آماده/حفظ می‌کند.
+5. نسخه جدید را خارج از مسیر live stage می‌کند.
+6. Service قبلی را کنترل‌شده متوقف و binary swap را با backup انجام می‌دهد.
+7. Registry Version/path، Windows Service، Automatic Delayed Start و Recovery را Verify می‌کند.
+8. Service جدید را Start می‌کند و منتظر `health.json` تازه می‌ماند.
+9. Start Menu و Desktop shortcut را به Operations & Diagnostics Console ثبت می‌کند.
+10. فقط بعد از Health موفق backup موقت را finalize می‌کند.
+
+UI Setup Progress واقعی همین Stageها را نشان می‌دهد. Failure باید Stage و Reference ID قابل پیگیری داشته باشد؛ Error خام/Token در UI یا log مجاز نیست.
+
+## Upgrade preservation
+Upgrade عادی نباید این‌ها را حذف یا reset کند:
+
+- `config.json`
+- `secret.dat`
+- `queue.db`
+- Agent logs
+- work/fence/result state
+- report outbox
+
+در Failure، binary/config-location rollback نسخه قبلی تلاش می‌شود و durable data حفظ می‌شود.
 
 ## Layout نصب
 - Service: `%ProgramFiles%\Sokna\PrintAgent\Service\`
 - Worker: `%ProgramFiles%\Sokna\PrintAgent\Worker\`
-- Control: `%ProgramFiles%\Sokna\PrintAgent\Control\`
+- Operations Console: `%ProgramFiles%\Sokna\PrintAgent\Control\`
 - Uninstaller: `%ProgramFiles%\Sokna\PrintAgent\Uninstall-SoknaPrintAgent.ps1`
 - Mutable state: `%ProgramData%\Sokna\PrintAgent\`
 - Setup diagnostics: `%ProgramData%\Sokna\PrintAgentSetup\logs\`
 
-Mutable state شامل config/secret/SQLite/logs/work/health است و Upgrade نباید آن را پاک کند.
+Mutable state فقط در ProgramData است و Upgrade نباید آن را با دیتای خالی جایگزین کند.
+
+## Operations Console
+بعد از Fresh Install، Shortcut استاندارد `Sokna Print Agent` در Start Menu و Desktop وجود دارد. Console برای:
+
+- Health و وضعیت Service/API
+- Printer/Queue visibility
+- Test Center
+- Agent/Setup logs و Event Viewer
+- Support Package redacted
+- Server URL و Credential rotation
+
+استفاده می‌شود.
+
+Console برای زنده‌ماندن Service لازم نیست؛ بستن آن Print Runtime را متوقف نمی‌کند.
 
 ## Health نصب
 Installer پس از Service start منتظر health تازه می‌ماند. نبود Printer Queue قابل مشاهده توسط LocalSystem Warning/Production Blocker است، نه دلیل حذف Job Server.
 
+## Silent install
+برای CI/Automation همان Setup رسمی با `/quiet` اجرا می‌شود؛ موتور نصب متفاوتی وجود ندارد.
+
 ## Uninstall
-Uninstaller Service را stop/delete می‌کند و منتظر حذف واقعی SCM می‌ماند. Program Files حذف می‌شود اما ProgramData به‌صورت پیش‌فرض حفظ می‌شود.
+Uninstaller Service را stop/delete می‌کند، Shortcutها و Program Files را حذف می‌کند ولی ProgramData را به‌صورت پیش‌فرض حفظ می‌کند.
 
 حذف داده فقط با `-RemoveData` و تأیید صریح `DELETE` مجاز است.
 
@@ -54,4 +97,4 @@ Uninstaller Service را stop/delete می‌کند و منتظر حذف واقع
 .\scripts\Build-Agent.ps1 -Configuration Release -Runtime win-x64
 ```
 
-Release CI مستقیماً همین normal source tree را Build می‌کند؛ ZIP اولیه و patch-time mutation نباید در مسیر Release استفاده شوند.
+Release CI مستقیماً همین normal source tree را Build می‌کند؛ ZIP اولیه، build-time source mutation و patch-time mutation در مسیر Release ممنوع‌اند.

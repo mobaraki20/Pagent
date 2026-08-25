@@ -5,7 +5,9 @@ param(
 )
 $ErrorActionPreference='Stop'
 $root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$version='6.0.0'
+[xml]$buildProps=Get-Content (Join-Path $root 'Directory.Build.props') -Raw
+$version=[string]$buildProps.Project.PropertyGroup.SoknaAgentVersion
+if([string]::IsNullOrWhiteSpace($version)){throw 'SoknaAgentVersion is missing from Directory.Build.props.'}
 $dotnet=(Get-Command dotnet -ErrorAction Stop).Source
 Push-Location $root
 try {
@@ -47,10 +49,8 @@ $docs=Join-Path $package 'docs'
 New-Item $payload -ItemType Directory -Force|Out-Null
 New-Item $docs -ItemType Directory -Force|Out-Null
 
-# The installed uninstaller is part of the verified payload and survives Setup extraction.
 Copy-Item (Join-Path $root 'installer\Uninstall-SoknaPrintAgent.ps1') (Join-Path $payload 'Uninstall-SoknaPrintAgent.ps1') -Force
 
-# Each self-contained process owns its runtime dependency set. Do not flatten these outputs.
 $layout=[ordered]@{
   'Sokna.PrintAgent.Service'='Service'
   'Sokna.PrintAgent.Worker'='Worker'
@@ -64,7 +64,6 @@ foreach($project in $layout.Keys){
   Copy-Item (Join-Path $src '*') $dest -Recurse -Force
 }
 
-# Collision guard: component binaries may share names and DIFFER by design, but they must never be flattened.
 $flatBinaries=Get-ChildItem $payload -File | Where-Object {$_.Extension -in @('.dll','.exe')}
 if($flatBinaries){throw "Packaging collision guard: component binary found at payload root: $($flatBinaries.Name -join ', ')"}
 $componentFiles=foreach($component in $layout.Values){
@@ -103,7 +102,6 @@ $buildInfo | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $package 'BUILD_IN
 $zip=Join-Path $Output "Sokna-Print-Agent-$version-$Runtime.zip"
 Compress-Archive -Path (Join-Path $package '*') -DestinationPath $zip -CompressionLevel Optimal
 
-# Build a single-file Windows bootstrapper with the verified package embedded.
 $setupOut=Join-Path $Output 'Setup'
 New-Item $setupOut -ItemType Directory -Force|Out-Null
 $setupProject=Join-Path $root 'src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj'

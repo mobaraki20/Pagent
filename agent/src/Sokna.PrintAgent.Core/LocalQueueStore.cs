@@ -68,7 +68,6 @@ public sealed class LocalQueueStore
     {
         var db=new SqliteConnection(_connectionString);
         await db.OpenAsync(ct);
-        // Durability settings that are connection-scoped must be applied on every connection.
         await ExecAsync(db,"PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;",ct);
         return db;
     }
@@ -84,6 +83,26 @@ public sealed class LocalQueueStore
         while(await r.ReadAsync(ct))pk[r.GetString(0)]=r.GetInt64(1);
         if(!pk.TryGetValue("attempt_id",out var attemptPk)||attemptPk!=1)
             throw new InvalidDataException("SQLite local queue schema قدیمی/ناسازگار است؛ attempt_id باید کلید اصلی باشد. قبل از نصب Production از ابزار migration نسخه Agent استفاده کنید.");
+    }
+
+    public async Task<string?> GetMetaAsync(string key,CancellationToken ct=default)
+    {
+        await using var db=await OpenAsync(ct);await using var cmd=db.CreateCommand();
+        cmd.CommandText="SELECT value FROM agent_meta WHERE key=$key";cmd.Parameters.AddWithValue("$key",key);
+        var value=await cmd.ExecuteScalarAsync(ct);return value is null or DBNull?null:Convert.ToString(value);
+    }
+
+    public async Task SetMetaAsync(string key,string value,CancellationToken ct=default)
+    {
+        await using var db=await OpenAsync(ct);await using var cmd=db.CreateCommand();
+        cmd.CommandText="INSERT INTO agent_meta(key,value) VALUES($key,$value) ON CONFLICT(key) DO UPDATE SET value=excluded.value";
+        cmd.Parameters.AddWithValue("$key",key);cmd.Parameters.AddWithValue("$value",value);await cmd.ExecuteNonQueryAsync(ct);
+    }
+
+    public async Task DeleteMetaAsync(string key,CancellationToken ct=default)
+    {
+        await using var db=await OpenAsync(ct);await using var cmd=db.CreateCommand();
+        cmd.CommandText="DELETE FROM agent_meta WHERE key=$key";cmd.Parameters.AddWithValue("$key",key);await cmd.ExecuteNonQueryAsync(ct);
     }
 
     public async Task<LocalJob> PersistReservedAsync(ClaimItem item,string proposedLocalReceiptId,CancellationToken ct=default)
@@ -159,4 +178,3 @@ public sealed class LocalQueueStore
     private static LocalJob Read(SqliteDataReader r)=>new(
         r.GetInt64(r.GetOrdinal("server_job_id")),r.GetInt64(r.GetOrdinal("attempt_id")),r.GetInt32(r.GetOrdinal("attempt_no")),r.GetString(r.GetOrdinal("destination_key")),r.GetString(r.GetOrdinal("queue_name")),r.GetDouble(r.GetOrdinal("paper_width_mm")),r.GetDouble(r.GetOrdinal("printable_width_mm")),r.GetInt32(r.GetOrdinal("copies")),r.GetString(r.GetOrdinal("layout_mode")),r.GetString(r.GetOrdinal("payload_json")),r.GetString(r.GetOrdinal("content_sha256")),r.GetString(r.GetOrdinal("local_receipt_id")),r.GetString(r.GetOrdinal("protected_lease_token")),DateTimeOffset.Parse(r.GetString(r.GetOrdinal("lease_expires_at"))),Enum.Parse<LocalJobState>(r.GetString(r.GetOrdinal("state"))),r.IsDBNull(r.GetOrdinal("spooler_job_id"))?null:r.GetString(r.GetOrdinal("spooler_job_id")),DateTimeOffset.Parse(r.GetString(r.GetOrdinal("created_at"))),DateTimeOffset.Parse(r.GetString(r.GetOrdinal("updated_at"))),r.IsDBNull(r.GetOrdinal("worker_launching_at"))?null:DateTimeOffset.Parse(r.GetString(r.GetOrdinal("worker_launching_at"))),r.IsDBNull(r.GetOrdinal("last_error"))?null:r.GetString(r.GetOrdinal("last_error")));
 }
-
