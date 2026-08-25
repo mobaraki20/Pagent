@@ -1,8 +1,14 @@
 param(
   [Parameter(Mandatory=$true)][string]$Artifacts,
-  [string]$Version='6.0.0'
+  [string]$Version=''
 )
 $ErrorActionPreference='Stop'
+$root=(Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if([string]::IsNullOrWhiteSpace($Version)){
+  [xml]$buildProps=Get-Content (Join-Path $root 'Directory.Build.props') -Raw
+  $Version=[string]$buildProps.Project.PropertyGroup.SoknaAgentVersion
+}
+if([string]::IsNullOrWhiteSpace($Version)){throw 'Agent version could not be resolved.'}
 $setup=Join-Path $Artifacts "Sokna-Print-Agent-$Version-Setup.exe"
 if(-not (Test-Path $setup -PathType Leaf)){throw "Setup.exe missing: $setup"}
 $service='SoknaPrintAgent6'
@@ -12,10 +18,11 @@ $setupLogRoot=Join-Path $env:ProgramData 'Sokna\PrintAgentSetup\logs'
 $health=Join-Path $dataRoot 'health.json'
 $evidenceDir=Join-Path $Artifacts 'windows-smoke-evidence'
 $gateEvidence=Join-Path $evidenceDir 'INSTALL_GATE_EVIDENCE.txt'
+$startShortcut=Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) 'Sokna Print Agent.lnk'
+$desktopShortcut=Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)) 'Sokna Print Agent.lnk'
 New-Item $evidenceDir -ItemType Directory -Force | Out-Null
 "version=$Version`ntimestamp_start=$((Get-Date).ToUniversalTime().ToString('o'))" | Set-Content $gateEvidence
 
-# Hosted Windows runners are disposable; make the smoke test deterministic.
 if(Get-Service $service -ErrorAction SilentlyContinue){
   try{Stop-Service $service -Force -ErrorAction SilentlyContinue}catch{}
   & sc.exe delete $service | Out-Null
@@ -24,6 +31,7 @@ if(Get-Service $service -ErrorAction SilentlyContinue){
 Remove-Item $installRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $setupLogRoot -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $startShortcut,$desktopShortcut -Force -ErrorAction SilentlyContinue
 
 Write-Host '== Install through the real embedded Setup.exe =='
 $installStarted=Get-Date
@@ -65,6 +73,14 @@ foreach($required in @(
   if(-not (Test-Path (Join-Path $installRoot $required) -PathType Leaf)){throw "Installed component missing: $required"}
   "installed_component=$required" | Out-File $gateEvidence -Append
 }
+if(-not (Test-Path $startShortcut -PathType Leaf)){throw 'Start Menu shortcut was not created.'}
+if(-not (Test-Path $desktopShortcut -PathType Leaf)){throw 'Desktop shortcut was not created.'}
+"start_menu_shortcut=True" | Out-File $gateEvidence -Append
+"desktop_shortcut=True" | Out-File $gateEvidence -Append
+
+$agentReg=Get-ItemProperty 'HKLM:\SOFTWARE\Sokna\PrintAgent' -ErrorAction Stop
+if([string]$agentReg.Version -ne $Version){throw "Registry version mismatch: $($agentReg.Version) != $Version"}
+"registry_agent_version=$($agentReg.Version)" | Out-File $gateEvidence -Append
 
 $cfg=& sc.exe qc $service | Out-String
 if($LASTEXITCODE -ne 0){throw "sc qc failed: $LASTEXITCODE"}
@@ -85,7 +101,6 @@ if($failure -notmatch 'RESTART'){throw 'Service Recovery restart action is missi
 "`n=== SC QFAILURE BEFORE UNINSTALL ===" | Out-File $gateEvidence -Append
 $failure | Out-File $gateEvidence -Append
 
-# Create durable sentinels that must survive uninstall by default.
 $sentinel=Join-Path $dataRoot 'ci-preserve-sentinel.txt'
 Set-Content $sentinel 'preserve-me' -Encoding ascii
 $dbSentinel=Join-Path $dataRoot 'queue.db.ci-preserve-sentinel'
@@ -98,13 +113,15 @@ if(-not (Test-Path $uninstall -PathType Leaf)){throw 'Installed uninstaller miss
 if($LASTEXITCODE -ne 0){throw "Uninstaller returned $LASTEXITCODE"}
 if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service still exists after uninstall.'}
 if(Test-Path $installRoot){throw 'Program Files installation remains after uninstall.'}
+if(Test-Path $startShortcut -PathType Leaf){throw 'Start Menu shortcut remains after uninstall.'}
+if(Test-Path $desktopShortcut -PathType Leaf){throw 'Desktop shortcut remains after uninstall.'}
 if(-not (Test-Path $sentinel -PathType Leaf)){throw 'ProgramData was deleted by default uninstall.'}
 if(-not (Test-Path $dbSentinel -PathType Leaf)){throw 'Durable data location was deleted by default uninstall.'}
 "uninstall_service_removed=True" | Out-File $gateEvidence -Append
 "uninstall_program_files_removed=True" | Out-File $gateEvidence -Append
+"uninstall_shortcuts_removed=True" | Out-File $gateEvidence -Append
 "uninstall_programdata_preserved=True" | Out-File $gateEvidence -Append
 "timestamp_end=$((Get-Date).ToUniversalTime().ToString('o'))" | Out-File $gateEvidence -Append
 
-# CI cleanup only, after preservation has been proven.
 Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host 'PASS Windows Setup/Service/Uninstall smoke test' -ForegroundColor Green
