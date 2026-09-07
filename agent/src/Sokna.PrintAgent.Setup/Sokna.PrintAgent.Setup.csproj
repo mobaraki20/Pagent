@@ -6,6 +6,7 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>../../assets/Sokna.PrintAgent.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>Sokna-Print-Agent-$(SoknaAgentVersion)-Setup</AssemblyName>
     <InvariantGlobalization>false</InvariantGlobalization>
