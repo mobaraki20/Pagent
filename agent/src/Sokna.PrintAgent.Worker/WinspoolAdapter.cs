@@ -12,7 +12,6 @@ public sealed class WinspoolAdapter:IPrinterAdapter
         try
         {
             if(input.Copies is <1 or >5)return Failed(input,"invalid_copies","Copies باید بین 1 و 5 باشد.");
-            using var bitmap=ReceiptRenderer.Render(input.PayloadJson,input.PrintableWidthMm,input.PaperWidthMm);
             var hdc=CreateDC("WINSPOOL",input.QueueName,null,IntPtr.Zero);if(hdc==IntPtr.Zero)return Failed(input,"printer_open_failed",Win32Error());
             try
             {
@@ -20,7 +19,11 @@ public sealed class WinspoolAdapter:IPrinterAdapter
                 if(dpiX<=0||dpiY<=0||deviceWidth<=0)return Failed(input,"invalid_printer_geometry","Printer Queue هندسه چاپ قابل‌اتکا ارائه نکرد.");
                 var targetWidth=(int)Math.Round(input.PrintableWidthMm/25.4*dpiX);
                 if(targetWidth<32||targetWidth>deviceWidth)return Failed(input,"printable_width_exceeds_device",$"عرض درخواستی {input.PrintableWidthMm:0.#}mm با Printable Area این Queue سازگار نیست.");
-                var targetHeight=Math.Max(1,(int)Math.Round(bitmap.Height*(targetWidth/(double)bitmap.Width)));
+                // Render directly in the queue's native device pixels. Rendering at a fixed 203 DPI and
+                // stretching here makes anti-aliased text look like a low-quality photo on a thermal head.
+                using var bitmap=ReceiptRenderer.Render(input.PayloadJson,input.PrintableWidthMm,input.PaperWidthMm,dpiX,dpiY);
+                if(bitmap.Width!=targetWidth)return Failed(input,"renderer_geometry_mismatch","عرض تصویر تولیدشده با هندسه Queue یکسان نیست.");
+                var targetHeight=bitmap.Height;
                 var x=Math.Max(0,(deviceWidth-targetWidth)/2);
                 var doc=new DOCINFO{cbSize=Marshal.SizeOf<DOCINFO>(),lpszDocName=$"Sokna {input.ServerJobId} / {input.AttemptId}",lpszOutput=null,lpszDatatype=null,fwType=0};
                 ct.ThrowIfCancellationRequested();
@@ -81,7 +84,7 @@ public sealed class WinspoolAdapter:IPrinterAdapter
         dib.SetResolution(source.HorizontalResolution,source.VerticalResolution);
         using var g=Graphics.FromImage(dib);
         g.Clear(Color.White);
-        g.DrawImage(source,new Rectangle(0,0,dib.Width,dib.Height),0,0,source.Width,source.Height,GraphicsUnit.Pixel);
+        g.DrawImageUnscaled(source,0,0);
         return dib;
     }
 
