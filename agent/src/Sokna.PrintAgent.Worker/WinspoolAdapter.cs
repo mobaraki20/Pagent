@@ -58,15 +58,31 @@ public sealed class WinspoolAdapter:IPrinterAdapter
 
     private static void DrawBitmap(IntPtr hdc,Bitmap bitmap,int x,int targetWidth,int targetHeight,int dpiX,int dpiY)
     {
-        using var clone=new Bitmap(bitmap.Width,bitmap.Height,PixelFormat.Format32bppArgb);using(var g=Graphics.FromImage(clone)){g.DrawImageUnscaled(bitmap,0,0);}
-        var rect=new Rectangle(0,0,clone.Width,clone.Height);var data=clone.LockBits(rect,ImageLockMode.ReadOnly,PixelFormat.Format32bppArgb);
+        // Printer drivers do not agree on how the fourth byte of a 32-bpp BI_RGB DIB
+        // should be interpreted. Some thermal drivers treat the alpha/padding byte as
+        // image data, turning untouched/transparent pixels into large black regions.
+        // Flatten every rendered receipt onto an explicit white, alpha-free BGR surface
+        // at the Winspool boundary. The explicit pixel-sized draw also prevents the
+        // bitmap DPI metadata from changing the copied rectangle.
+        using var dib=CreateOpaquePrinterDib(bitmap);
+        var rect=new Rectangle(0,0,dib.Width,dib.Height);var data=dib.LockBits(rect,ImageLockMode.ReadOnly,PixelFormat.Format24bppRgb);
         try
         {
-            var bmi=new BITMAPINFO{bmiHeader=new BITMAPINFOHEADER{biSize=(uint)Marshal.SizeOf<BITMAPINFOHEADER>(),biWidth=clone.Width,biHeight=-clone.Height,biPlanes=1,biBitCount=32,biCompression=0,biSizeImage=(uint)(Math.Abs(data.Stride)*clone.Height)}};
-            var copied=StretchDIBits(hdc,x,0,targetWidth,targetHeight,0,0,clone.Width,clone.Height,data.Scan0,ref bmi,0,0x00CC0020);
+            var bmi=new BITMAPINFO{bmiHeader=new BITMAPINFOHEADER{biSize=(uint)Marshal.SizeOf<BITMAPINFOHEADER>(),biWidth=dib.Width,biHeight=-dib.Height,biPlanes=1,biBitCount=24,biCompression=0,biSizeImage=(uint)(Math.Abs(data.Stride)*dib.Height)}};
+            var copied=StretchDIBits(hdc,x,0,targetWidth,targetHeight,0,0,dib.Width,dib.Height,data.Scan0,ref bmi,0,0x00CC0020);
             if(copied==0)throw new InvalidOperationException($"StretchDIBits failed at {dpiX}x{dpiY} DPI: {Win32Error()}");
         }
-        finally{clone.UnlockBits(data);}
+        finally{dib.UnlockBits(data);}
+    }
+
+    internal static Bitmap CreateOpaquePrinterDib(Bitmap source)
+    {
+        var dib=new Bitmap(source.Width,source.Height,PixelFormat.Format24bppRgb);
+        dib.SetResolution(source.HorizontalResolution,source.VerticalResolution);
+        using var g=Graphics.FromImage(dib);
+        g.Clear(Color.White);
+        g.DrawImage(source,new Rectangle(0,0,dib.Width,dib.Height),0,0,source.Width,source.Height,GraphicsUnit.Pixel);
+        return dib;
     }
 
     [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]private struct DOCINFO{public int cbSize;[MarshalAs(UnmanagedType.LPWStr)]public string lpszDocName;[MarshalAs(UnmanagedType.LPWStr)]public string? lpszOutput;[MarshalAs(UnmanagedType.LPWStr)]public string? lpszDatatype;public int fwType;}

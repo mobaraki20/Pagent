@@ -20,7 +20,7 @@ internal static class ReceiptRenderer
         using var staging=new Bitmap(width,maxHeight,System.Drawing.Imaging.PixelFormat.Format32bppArgb);staging.SetResolution(Dpi,Dpi);
         using var g=Graphics.FromImage(staging);g.Clear(Color.White);g.TextRenderingHint=TextRenderingHint.AntiAliasGridFit;g.SmoothingMode=SmoothingMode.HighQuality;g.InterpolationMode=InterpolationMode.HighQualityBicubic;
         var c=new Canvas(g,width,margin,template,design,paperWidthMm);c.Render(root);var finalHeight=Math.Clamp(c.Y+margin,160,maxHeight);
-        var output=new Bitmap(width,finalHeight,System.Drawing.Imaging.PixelFormat.Format32bppArgb);output.SetResolution(Dpi,Dpi);using(var og=Graphics.FromImage(output)){og.Clear(Color.White);og.DrawImageUnscaled(staging,0,0);}return output;
+        var output=new Bitmap(width,finalHeight,System.Drawing.Imaging.PixelFormat.Format24bppRgb);output.SetResolution(Dpi,Dpi);using(var og=Graphics.FromImage(output)){og.Clear(Color.White);og.DrawImage(staging,new Rectangle(0,0,width,finalHeight),0,0,width,finalHeight,GraphicsUnit.Pixel);}return output;
     }
 
     private sealed class Canvas
