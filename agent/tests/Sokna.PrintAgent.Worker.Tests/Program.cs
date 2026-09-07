@@ -18,6 +18,11 @@ foreach(var point in new[]{new Point(0,0),new Point(79,0),new Point(0,59),new Po
 }
 var flattened=dib.GetPixel(40,30);
 Check(flattened.R is >=126 and <=129&&flattened.G is >=126 and <=129&&flattened.B is >=126 and <=129,"semi_transparent_pixel_is_flattened_over_white");
+dib.SetPixel(10,10,Color.Black);
+var monochrome=WinspoolAdapter.CreateMonochromePrinterDib(dib);
+Check(monochrome.Stride%4==0,"monochrome_stride_is_dword_aligned");
+Check(monochrome.IsWhite(0,0),"monochrome_white_pixel_is_palette_white");
+Check(!monochrome.IsWhite(10,10),"monochrome_black_pixel_is_palette_black");
 
 Check(ReceiptRenderer.LogicalAlignmentForRtl(StringAlignment.Far)==StringAlignment.Near,"rtl_visual_right_uses_logical_near");
 Check(ReceiptRenderer.LogicalAlignmentForRtl(StringAlignment.Near)==StringAlignment.Far,"rtl_visual_left_uses_logical_far");
