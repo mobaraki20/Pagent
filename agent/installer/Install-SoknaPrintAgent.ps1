@@ -8,6 +8,7 @@ $service='SoknaPrintAgent6'
 $regPath='HKLM:\SOFTWARE\Sokna\PrintAgent'
 $script:InstallStage='setup_bootstrap_start'
 $referenceId=[Guid]::NewGuid().ToString('N')
+$shortcutCleanupCandidates=@()
 
 function Get-Sha256Hex([string]$Path){
   $sha=[Security.Cryptography.SHA256]::Create()
@@ -37,17 +38,23 @@ function Assert-NativeExit([string]$Operation){
   if($LASTEXITCODE -ne 0){throw "$Operation failed: $LASTEXITCODE"}
 }
 function Set-AgentShortcut([string]$Path,[string]$Target){
+  if(-not (Test-Path $Target -PathType Leaf)){throw "Shortcut target is missing: $Target"}
   $parent=Split-Path $Path -Parent
+  if([string]::IsNullOrWhiteSpace($parent)){throw "Shortcut parent path is empty: $Path"}
   New-Item $parent -ItemType Directory -Force|Out-Null
+  $shortcut=$null
   $shell=New-Object -ComObject WScript.Shell
   try{
     $shortcut=$shell.CreateShortcut($Path)
     $shortcut.TargetPath=$Target
     $shortcut.WorkingDirectory=Split-Path $Target -Parent
+    $shortcut.IconLocation="$Target,0"
     $shortcut.Description='Sokna Print Agent — Operations & Diagnostics Console'
     $shortcut.Save()
+    if(-not (Test-Path $Path -PathType Leaf)){throw "Shortcut was not created: $Path"}
   }
   finally{
+    if($null -ne $shortcut){[Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut)|Out-Null}
     if($null -ne $shell){[Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)|Out-Null}
   }
 }
@@ -226,14 +233,19 @@ try{
   }
 
   Set-InstallStage 'shortcut_registration'
-  try{
-    $control=Join-Path $InstallRoot 'Control\Sokna.PrintAgent.Control.exe'
-    $commonPrograms=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)
-    $commonDesktop=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
-    Set-AgentShortcut (Join-Path $commonPrograms 'Sokna Print Agent.lnk') $control
-    Set-AgentShortcut (Join-Path $commonDesktop 'Sokna Print Agent.lnk') $control
+  $control=Join-Path $InstallRoot 'Control\Sokna.PrintAgent.Control.exe'
+  $commonPrograms=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)
+  $commonDesktop=[Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)
+  if([string]::IsNullOrWhiteSpace($commonPrograms)){throw 'Common Start Menu path could not be resolved.'}
+  if([string]::IsNullOrWhiteSpace($commonDesktop)){throw 'Public Desktop path could not be resolved.'}
+  $shortcutPaths=@(
+    (Join-Path $commonPrograms 'Sokna Print Agent.lnk')
+    (Join-Path $commonDesktop 'Sokna Print Agent.lnk')
+  )
+  foreach($shortcutPath in $shortcutPaths){
+    if(-not (Test-Path $shortcutPath -PathType Leaf)){$shortcutCleanupCandidates += $shortcutPath}
+    Set-AgentShortcut $shortcutPath $control
   }
-  catch{Write-Warning "Shortcut registration failed: $(Get-SafeMessage ([string]$_.Exception.Message))"}
 
   Set-InstallStage 'finalize'
   if(Test-Path $backup){Remove-Item $backup -Recurse -Force}
@@ -246,6 +258,7 @@ catch{
   $recoveryFailure=$null
   try{
     try{Get-Service $service -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue}catch{}
+    foreach($shortcutPath in $shortcutCleanupCandidates){Remove-Item $shortcutPath -Force -ErrorAction SilentlyContinue}
     if($installedNew -and (Test-Path $InstallRoot)){Remove-Item $InstallRoot -Recurse -Force -ErrorAction Stop}
     if(Test-Path $backup){Move-Item $backup $InstallRoot -Force -ErrorAction Stop}
     if(Test-Path $stage){Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue}
