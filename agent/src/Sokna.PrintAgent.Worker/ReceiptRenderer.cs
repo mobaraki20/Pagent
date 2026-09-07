@@ -111,14 +111,14 @@ internal static class ReceiptRenderer
         private void DrawCustomerColumns(List<JsonElement> items,bool full)
         {
             var usable=_width-_marginX*2;var totalWidth=(int)(usable*.23);var quantityWidth=full?(int)(usable*.12):(int)(usable*.28);var unitWidth=full?(int)(usable*.22):0;var nameWidth=usable-totalWidth-quantityWidth-unitWidth;
-            using var headerFont=MakeFont(Math.Max(13,_base-7),true);var headerY=Y;DrawCell("شرح",_marginX+totalWidth+quantityWidth+unitWidth,headerY,nameWidth,headerFont,StringAlignment.Far);
+            using var headerFont=MakeFont(Math.Max(18,_base-2),true);var headerY=Y;DrawCell("شرح",_marginX+totalWidth+quantityWidth+unitWidth,headerY,nameWidth,headerFont,StringAlignment.Far);
             if(full){DrawCell("فی",_marginX+totalWidth,headerY,unitWidth,headerFont,StringAlignment.Center);DrawCell("تعداد",_marginX+totalWidth+unitWidth,headerY,quantityWidth,headerFont,StringAlignment.Center);}else DrawCell("تعداد × فی",_marginX+totalWidth,headerY,quantityWidth,headerFont,StringAlignment.Center);
             DrawCell("مبلغ",_marginX,headerY,totalWidth,headerFont,StringAlignment.Near);Y+=Math.Max(Py(28),(int)headerFont.GetHeight(_g)+Py(8));Hairline();
             foreach(var item in items)
             {
-                var name=Get(item,"name","—");var quantity=FaDigits(Get(item,"quantity","1"));var unit=Money(GetLong(item,"unit_price",0));var line=Money(GetLong(item,"line_total",0));using var font=MakeFont(Math.Max(15,_base-4),false);using var boldFont=MakeFont(Math.Max(15,_base-4),true);
+                var name=Get(item,"name","—");var quantity=FaDigits(Get(item,"quantity","1"));var unit=Money(GetLong(item,"unit_price",0));var line=Money(GetLong(item,"line_total",0));using var font=MakeFont(Math.Max(_base,_table-2),false);using var boldFont=MakeFont(_table,true);
                 var nameRectangle=new RectangleF(_marginX+totalWidth+quantityWidth+unitWidth,Y,nameWidth,Py(500));var nameHeight=(int)Math.Ceiling(_g.MeasureString(name,font,nameRectangle.Size,Rtl(StringAlignment.Far)).Height)+Py(8);var rowHeight=Math.Max(Py(_density=="comfortable"?46:34),nameHeight);
-                DrawCell(name,(int)nameRectangle.X,Y,nameWidth,font,StringAlignment.Far,rowHeight);if(full){DrawCell(unit,_marginX+totalWidth,Y,unitWidth,font,StringAlignment.Center,rowHeight);DrawCell(quantity,_marginX+totalWidth+unitWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);}else DrawCell(quantity+" × "+unit,_marginX+totalWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);DrawCell(line,_marginX,Y,totalWidth,boldFont,StringAlignment.Near,rowHeight);Y+=rowHeight;Hairline();
+                DrawCell(name,(int)nameRectangle.X,Y,nameWidth,boldFont,StringAlignment.Far,rowHeight);if(full){DrawCell(unit,_marginX+totalWidth,Y,unitWidth,font,StringAlignment.Center,rowHeight);DrawCell(quantity,_marginX+totalWidth+unitWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);}else DrawCell(quantity+" × "+unit,_marginX+totalWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);DrawCell(line,_marginX,Y,totalWidth,boldFont,StringAlignment.Near,rowHeight);Y+=rowHeight;Hairline();
             }
         }
         private void DrawCustomerTwoLine(JsonElement item)

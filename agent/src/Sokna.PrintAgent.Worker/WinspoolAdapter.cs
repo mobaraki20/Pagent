@@ -61,21 +61,21 @@ public sealed class WinspoolAdapter:IPrinterAdapter
 
     private static void DrawBitmap(IntPtr hdc,Bitmap bitmap,int x,int targetWidth,int targetHeight,int dpiX,int dpiY)
     {
-        // Printer drivers do not agree on how the fourth byte of a 32-bpp BI_RGB DIB
-        // should be interpreted. Some thermal drivers treat the alpha/padding byte as
-        // image data, turning untouched/transparent pixels into large black regions.
-        // Flatten every rendered receipt onto an explicit white, alpha-free BGR surface
-        // at the Winspool boundary. The explicit pixel-sized draw also prevents the
-        // bitmap DPI metadata from changing the copied rectangle.
-        using var dib=CreateOpaquePrinterDib(bitmap);
-        var rect=new Rectangle(0,0,dib.Width,dib.Height);var data=dib.LockBits(rect,ImageLockMode.ReadOnly,PixelFormat.Format24bppRgb);
+        if(bitmap.Width!=targetWidth||bitmap.Height!=targetHeight)throw new InvalidOperationException("Printer bitmap must be submitted at native 1:1 dimensions.");
+        var dib=CreateMonochromePrinterDib(bitmap);
+        var bmi=new MONO_BITMAPINFO
+        {
+            bmiHeader=new BITMAPINFOHEADER{biSize=(uint)Marshal.SizeOf<BITMAPINFOHEADER>(),biWidth=dib.Width,biHeight=-dib.Height,biPlanes=1,biBitCount=1,biCompression=0,biSizeImage=(uint)dib.Bits.Length},
+            black=0x00000000,
+            white=0x00FFFFFF,
+        };
+        var handle=GCHandle.Alloc(dib.Bits,GCHandleType.Pinned);
         try
         {
-            var bmi=new BITMAPINFO{bmiHeader=new BITMAPINFOHEADER{biSize=(uint)Marshal.SizeOf<BITMAPINFOHEADER>(),biWidth=dib.Width,biHeight=-dib.Height,biPlanes=1,biBitCount=24,biCompression=0,biSizeImage=(uint)(Math.Abs(data.Stride)*dib.Height)}};
-            var copied=StretchDIBits(hdc,x,0,targetWidth,targetHeight,0,0,dib.Width,dib.Height,data.Scan0,ref bmi,0,0x00CC0020);
-            if(copied==0)throw new InvalidOperationException($"StretchDIBits failed at {dpiX}x{dpiY} DPI: {Win32Error()}");
+            var copied=SetDIBitsToDevice(hdc,x,0,(uint)dib.Width,(uint)dib.Height,0,0,0,(uint)dib.Height,handle.AddrOfPinnedObject(),ref bmi,0);
+            if(copied==0)throw new InvalidOperationException($"SetDIBitsToDevice failed at {dpiX}x{dpiY} DPI: {Win32Error()}");
         }
-        finally{dib.UnlockBits(data);}
+        finally{handle.Free();}
     }
 
     internal static Bitmap CreateOpaquePrinterDib(Bitmap source)
@@ -88,9 +88,38 @@ public sealed class WinspoolAdapter:IPrinterAdapter
         return dib;
     }
 
+    internal sealed record MonochromePrinterDib(int Width,int Height,int Stride,byte[] Bits)
+    {
+        public bool IsWhite(int x,int y)=>(Bits[y*Stride+x/8]&(0x80>>(x%8)))!=0;
+    }
+
+    internal static MonochromePrinterDib CreateMonochromePrinterDib(Bitmap source)
+    {
+        using var opaque=CreateOpaquePrinterDib(source);
+        var stride=((opaque.Width+31)/32)*4;
+        var bits=Enumerable.Repeat((byte)0xFF,stride*opaque.Height).ToArray();
+        var rectangle=new Rectangle(0,0,opaque.Width,opaque.Height);
+        var data=opaque.LockBits(rectangle,ImageLockMode.ReadOnly,PixelFormat.Format24bppRgb);
+        try
+        {
+            var sourceStride=Math.Abs(data.Stride);var row=new byte[sourceStride];
+            for(var y=0;y<opaque.Height;y++)
+            {
+                Marshal.Copy(IntPtr.Add(data.Scan0,y*data.Stride),row,0,sourceStride);
+                for(var x=0;x<opaque.Width;x++)
+                {
+                    var offset=x*3;var luminance=row[offset]+row[offset+1]+row[offset+2];
+                    if(luminance<384)bits[y*stride+x/8]&=(byte)~(0x80>>(x%8));
+                }
+            }
+        }
+        finally{opaque.UnlockBits(data);}
+        return new MonochromePrinterDib(opaque.Width,opaque.Height,stride,bits);
+    }
+
     [StructLayout(LayoutKind.Sequential,CharSet=CharSet.Unicode)]private struct DOCINFO{public int cbSize;[MarshalAs(UnmanagedType.LPWStr)]public string lpszDocName;[MarshalAs(UnmanagedType.LPWStr)]public string? lpszOutput;[MarshalAs(UnmanagedType.LPWStr)]public string? lpszDatatype;public int fwType;}
     [StructLayout(LayoutKind.Sequential)]private struct BITMAPINFOHEADER{public uint biSize;public int biWidth,biHeight;public ushort biPlanes,biBitCount;public uint biCompression,biSizeImage;public int biXPelsPerMeter,biYPelsPerMeter;public uint biClrUsed,biClrImportant;}
-    [StructLayout(LayoutKind.Sequential)]private struct BITMAPINFO{public BITMAPINFOHEADER bmiHeader;public uint bmiColors;}
+    [StructLayout(LayoutKind.Sequential)]private struct MONO_BITMAPINFO{public BITMAPINFOHEADER bmiHeader;public uint black,white;}
     [DllImport("gdi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]private static extern IntPtr CreateDC(string driver,string device,string? output,IntPtr devmode);
     [DllImport("gdi32.dll",SetLastError=true)]private static extern bool DeleteDC(IntPtr hdc);
     [DllImport("gdi32.dll",CharSet=CharSet.Unicode,SetLastError=true)]private static extern int StartDoc(IntPtr hdc,ref DOCINFO lpdi);
@@ -99,5 +128,5 @@ public sealed class WinspoolAdapter:IPrinterAdapter
     [DllImport("gdi32.dll",SetLastError=true)]private static extern int StartPage(IntPtr hdc);
     [DllImport("gdi32.dll",SetLastError=true)]private static extern int EndPage(IntPtr hdc);
     [DllImport("gdi32.dll")]private static extern int GetDeviceCaps(IntPtr hdc,int index);
-    [DllImport("gdi32.dll",SetLastError=true)]private static extern int StretchDIBits(IntPtr hdc,int xDest,int yDest,int DestWidth,int DestHeight,int xSrc,int ySrc,int SrcWidth,int SrcHeight,IntPtr bits,ref BITMAPINFO bitsInfo,uint iUsage,uint rop);
+    [DllImport("gdi32.dll",SetLastError=true)]private static extern int SetDIBitsToDevice(IntPtr hdc,int xDest,int yDest,uint width,uint height,int xSrc,int ySrc,uint startScan,uint scanLines,IntPtr bits,ref MONO_BITMAPINFO bitsInfo,uint colorUse);
 }
