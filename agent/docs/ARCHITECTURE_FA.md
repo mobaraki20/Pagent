@@ -59,9 +59,9 @@ PrintWorker Process مستقل است. Service UI/GDI را اجرا نمی‌ک�
 - بعد از Fence → recovery hold / Retry ممنوع.
 
 ## Rendering
-Renderer Payload snapshot را deterministic رندر می‌کند و به Profile فونت کاربر وابسته نیست. فونت Machine-wide به ترتیب `Vazirmatn → Tahoma → Segoe UI` انتخاب می‌شود. RTL، ارقام فارسی، 58/80mm، wrap، ستون قیمت، preparation quantity-first، note/adjustment/takeaway و نشان بزرگ «چاپ مجدد» پشتیبانی می‌شوند.
+Renderer Payload snapshot را deterministic رندر می‌کند و به Profile فونت کاربر وابسته نیست. Vazirmatn Regular/Bold همراه Worker و با `PrivateFontCollection` بارگذاری می‌شود؛ فونت سیستم فقط fallback خرابی بسته است. خروجی از ابتدا با DPI و عرض پیکسلی واقعی Queue ساخته می‌شود و متن تک‌رنگ GridFit بدون مرحله Scale به Winspool می‌رسد. RTL، ارقام فارسی، 58/80mm، wrap، ستون قیمت، ترتیب بخش‌ها، تراکم، نوع جداکننده، note/adjustment/takeaway و نشان بزرگ «چاپ مجدد» پشتیبانی می‌شوند.
 
-WinspoolAdapter عرض چاپ را از `printable_width_mm` و DPI واقعی Queue محاسبه می‌کند و اگر عرض مقصد از printable area دستگاه بزرگ‌تر باشد **پیش از StartDoc** Fail می‌کند. Driver scaling/fit-to-page از طرف Agent درخواست نمی‌شود؛ UAT فیزیکی همچنان Gate است.
+WinspoolAdapter عرض چاپ را از `printable_width_mm` و DPI واقعی Queue محاسبه می‌کند، همان هندسه را به Renderer می‌دهد و Bitmap را ۱:۱ ارسال می‌کند. اگر عرض مقصد از printable area دستگاه بزرگ‌تر باشد **پیش از StartDoc** Fail می‌کند. Driver scaling/fit-to-page از طرف Agent درخواست نمی‌شود؛ UAT فیزیکی همچنان Gate است.
 
 ## Failover
 - v4 فقط destinationهای Primary همان Agent را Claim می‌کند.

@@ -23,7 +23,7 @@
 - [ ] Bar preparation
 - [ ] Kitchen preparation
 - [ ] Customer receipt
-- [ ] Vazirmatn machine-wide و RTL واقعی
+- [ ] Vazirmatn بسته‌بندی‌شده، RTL واقعی و نبود وابستگی به فونت نصب‌شده سیستم
 - [ ] اعداد فارسی/لاتین
 - [ ] 80mm
 - [ ] 58mm در صورت استفاده
