@@ -5,4 +5,5 @@
   <Project Path="src/Sokna.PrintAgent.Control/Sokna.PrintAgent.Control.csproj" />
   <Project Path="src/Sokna.PrintAgent.Setup/Sokna.PrintAgent.Setup.csproj" />
   <Project Path="tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.Worker.Tests/Sokna.PrintAgent.Worker.Tests.csproj" />
 </Solution>

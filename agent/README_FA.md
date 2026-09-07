@@ -1,4 +1,4 @@
-# Sokna Print Agent 6.1.0
+# Sokna Print Agent 6.1.1
 
 Agent مستقل Print API v4 با هدف **عدم Silent Loss، جلوگیری از Duplicate خودکار و Resolution روشن ambiguity**؛ نه ادعای exactly-once physical printing.
 
@@ -15,7 +15,7 @@ Agent مستقل Print API v4 با هدف **عدم Silent Loss، جلوگیری 
 - `Worker`: renderer ایزوله + Winspool adapter.
 - `Control`: **Operations & Diagnostics Console** برای Health، Printer visibility، تست‌های مرحله‌ای، Logs، Support Package و تنظیمات اتصال.
 
-این جداسازی بخشی از reliability چاپ است و نباید برای ساده‌سازی ظاهری flatten شود. بسته‌شدن Control Console هیچ اثری بر Service/Worker ندارد.
+این جداسازی بخشی از reliability چاپ است و نباید برای ساده‌سازی ظاهری flatten شود. بستن پنجرهٔ Control Console آن را در System Tray نگه می‌دارد؛ «خروج کامل» از منوی Tray نیز هیچ اثری بر Service/Worker ندارد.
 
 ## نصب و Upgrade
 
@@ -29,6 +29,12 @@ Source of Truth فقط پوشه `agent/` است. ZIP منبع، build-time patch
 - Probe/Heartbeat و refresh تشخیصی حق ندارند مسیر حیاتی Accept/Print/Report را starve کنند.
 - Logهای transport action-aware هستند (`claim`, `accept`, `start`, `report`, `heartbeat`, `probe_refresh`).
 - Health محلی و Heartbeat Evidence آخرین action/success/error/consecutive failure/latency را بدون Secret گزارش می‌کنند.
+
+## اصلاح چاپ حرارتی در 6.1.1
+
+- خروجی Renderer و مرز Winspool پیش از ارسال به Driver به سطح 24-bit BGR بدون Alpha تبدیل می‌شوند.
+- تمام پیکسل‌های خارج از متن صریحاً سفید هستند؛ Driverهای حرارتی که byte چهارم DIB را نادرست تفسیر می‌کنند دیگر فضای خالی رسید را مشکی چاپ نمی‌کنند.
+- ابعاد کپی با مختصات Pixel صریح است تا DPI metadata باعث کوچک‌شدن محتوای رسید نشود.
 
 ## CI
 
