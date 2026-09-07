@@ -122,8 +122,49 @@ foreach($required in @(
 }
 if(-not (Test-Path $startShortcut -PathType Leaf)){throw 'Start Menu shortcut was not created.'}
 if(-not (Test-Path $desktopShortcut -PathType Leaf)){throw 'Desktop shortcut was not created.'}
+$controlExe=Join-Path $installRoot 'Control\Sokna.PrintAgent.Control.exe'
+$shortcutShell=New-Object -ComObject WScript.Shell
+try{
+  foreach($shortcutPath in @($startShortcut,$desktopShortcut)){
+    $shortcut=$null
+    try{
+      $shortcut=$shortcutShell.CreateShortcut($shortcutPath)
+      if(-not [string]::Equals([IO.Path]::GetFullPath($shortcut.TargetPath),[IO.Path]::GetFullPath($controlExe),[StringComparison]::OrdinalIgnoreCase)){throw "Shortcut target mismatch: $shortcutPath"}
+      if(-not ([string]$shortcut.IconLocation).StartsWith($controlExe,[StringComparison]::OrdinalIgnoreCase)){throw "Shortcut icon mismatch: $shortcutPath"}
+    }
+    finally{if($null -ne $shortcut){[Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut)|Out-Null}}
+  }
+}
+finally{if($null -ne $shortcutShell){[Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcutShell)|Out-Null}}
 "start_menu_shortcut=True" | Out-File $gateEvidence -Append
 "desktop_shortcut=True" | Out-File $gateEvidence -Append
+
+$extractedIcon=[System.Drawing.Icon]::ExtractAssociatedIcon($controlExe)
+try{
+  if($null -eq $extractedIcon -or $extractedIcon.Width -lt 16 -or $extractedIcon.Height -lt 16){throw 'Control executable does not contain a valid application icon.'}
+  "control_icon=$($extractedIcon.Width)x$($extractedIcon.Height)" | Out-File $gateEvidence -Append
+}
+finally{if($null -ne $extractedIcon){$extractedIcon.Dispose()}}
+
+$controlProcess=Start-Process -FilePath $controlExe -PassThru
+try{
+  $windowDeadline=(Get-Date).AddSeconds(20)
+  do{
+    Start-Sleep -Milliseconds 250
+    $controlProcess.Refresh()
+  }while(-not $controlProcess.HasExited -and $controlProcess.MainWindowHandle -eq 0 -and (Get-Date) -lt $windowDeadline)
+  if($controlProcess.HasExited){throw 'Control app exited before the tray lifecycle test.'}
+  if($controlProcess.MainWindowHandle -eq 0){throw 'Control app did not create its main window for the tray lifecycle test.'}
+  if(-not $controlProcess.CloseMainWindow()){throw 'WM_CLOSE could not be sent to the Control app.'}
+  Start-Sleep -Seconds 2
+  $controlProcess.Refresh()
+  if($controlProcess.HasExited){throw 'Control app exited instead of remaining active in System Tray.'}
+  "close_to_tray=True" | Out-File $gateEvidence -Append
+}
+finally{
+  if(-not $controlProcess.HasExited){Stop-Process -Id $controlProcess.Id -Force -ErrorAction SilentlyContinue}
+  $controlProcess.Dispose()
+}
 
 $agentReg=Get-ItemProperty $regPath -ErrorAction Stop
 if([string]$agentReg.Version -ne $Version){throw "Registry version mismatch: $($agentReg.Version) != $Version"}

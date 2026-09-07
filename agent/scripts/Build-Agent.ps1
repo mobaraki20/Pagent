@@ -33,6 +33,8 @@ if($LASTEXITCODE -ne 0){throw 'dotnet vulnerability audit command failed.'}
 if($LASTEXITCODE -ne 0){throw 'dotnet build failed.'}
 & $dotnet run --project (Join-Path $root 'tests\Sokna.PrintAgent.Tests\Sokna.PrintAgent.Tests.csproj') -c $Configuration --no-build
 if($LASTEXITCODE -ne 0){throw 'Agent tests failed.'}
+& $dotnet run --project (Join-Path $root 'tests\Sokna.PrintAgent.Worker.Tests\Sokna.PrintAgent.Worker.Tests.csproj') -c $Configuration --no-build
+if($LASTEXITCODE -ne 0){throw 'Worker raster tests failed.'}
 
 foreach($project in @('Sokna.PrintAgent.Service','Sokna.PrintAgent.Worker','Sokna.PrintAgent.Control')){
   $proj=Join-Path $root "src\$project\$project.csproj"
