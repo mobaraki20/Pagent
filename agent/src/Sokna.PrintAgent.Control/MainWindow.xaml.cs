@@ -16,6 +16,7 @@ using Sokna.PrintAgent.Core;
 using Brush = System.Windows.Media.Brush;
 using Button = System.Windows.Controls.Button;
 using Color = System.Windows.Media.Color;
+using ColorConverter = System.Windows.Media.ColorConverter;
 using MessageBox = System.Windows.MessageBox;
 
 namespace Sokna.PrintAgent.Control;
