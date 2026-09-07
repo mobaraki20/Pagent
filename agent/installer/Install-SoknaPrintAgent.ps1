@@ -139,6 +139,9 @@ try{
   foreach($required in @(
     'Service\Sokna.PrintAgent.Service.exe',
     'Worker\Sokna.PrintAgent.Worker.exe',
+    'Worker\Fonts\Vazirmatn-Regular.ttf',
+    'Worker\Fonts\Vazirmatn-Bold.ttf',
+    'Worker\Fonts\OFL.txt',
     'Control\Sokna.PrintAgent.Control.exe',
     'Uninstall-SoknaPrintAgent.ps1'
   )){
@@ -192,13 +195,10 @@ try{
   Assert-NativeExit 'sc qfailure'
   if($failureConfig -notmatch 'RESTART'){throw 'Service Recovery restart action is missing.'}
 
-  Set-InstallStage 'machine_font_check'
-  $machineFont=$false
-  foreach($fontKey in @('HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts','HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\Fonts')){
-    if(Test-Path $fontKey){$props=Get-ItemProperty $fontKey;foreach($name in $props.PSObject.Properties.Name){if($name -like 'Vazirmatn*'){$machineFont=$true;break}}}
-    if($machineFont){break}
+  Set-InstallStage 'bundled_font_validation'
+  foreach($font in @('Vazirmatn-Regular.ttf','Vazirmatn-Bold.ttf','OFL.txt')){
+    if(-not (Test-Path (Join-Path $InstallRoot "Worker\Fonts\$font") -PathType Leaf)){throw "Bundled font asset is missing: $font"}
   }
-  if(-not $machineFont){Write-Warning 'Vazirmatn is not installed machine-wide; deterministic Tahoma/Segoe UI fallback will be used.'}
 
   if(-not $SkipStart){
     Set-InstallStage 'service_start'
@@ -226,6 +226,9 @@ try{
   foreach($required in @(
     'Service\Sokna.PrintAgent.Service.exe',
     'Worker\Sokna.PrintAgent.Worker.exe',
+    'Worker\Fonts\Vazirmatn-Regular.ttf',
+    'Worker\Fonts\Vazirmatn-Bold.ttf',
+    'Worker\Fonts\OFL.txt',
     'Control\Sokna.PrintAgent.Control.exe',
     'Uninstall-SoknaPrintAgent.ps1'
   )){
