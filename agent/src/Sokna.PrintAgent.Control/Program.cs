@@ -1,4 +1,5 @@
-using System.Windows;
+using WpfApplication = System.Windows.Application;
+using WpfShutdownMode = System.Windows.ShutdownMode;
 
 namespace Sokna.PrintAgent.Control;
 
@@ -7,9 +8,9 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
-        var app = new Application
+        var app = new WpfApplication
         {
-            ShutdownMode = ShutdownMode.OnMainWindowClose
+            ShutdownMode = WpfShutdownMode.OnExplicitShutdown
         };
         app.Run(new MainWindow());
     }

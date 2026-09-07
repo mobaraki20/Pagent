@@ -5,10 +5,13 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
     <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>../../assets/Sokna.PrintAgent.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <StartupObject>Sokna.PrintAgent.Control.Program</StartupObject>
   </PropertyGroup>
   <ItemGroup>
+    <Resource Include="../../assets/Sokna.PrintAgent.ico" Link="Assets/Sokna.PrintAgent.ico" />
     <ProjectReference Include="../Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
   </ItemGroup>

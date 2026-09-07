@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -12,6 +13,10 @@ using System.Windows.Media;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Sokna.PrintAgent.Core;
+using Brush = System.Windows.Media.Brush;
+using Button = System.Windows.Controls.Button;
+using Color = System.Windows.Media.Color;
+using MessageBox = System.Windows.MessageBox;
 
 namespace Sokna.PrintAgent.Control;
 
@@ -24,7 +29,11 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<TestRow> _tests = [];
     private readonly ObservableCollection<LogRow> _logs = [];
     private readonly DispatcherTimer _refreshTimer;
+    private readonly System.Drawing.Icon _applicationIcon;
+    private readonly System.Windows.Forms.NotifyIcon _trayIcon;
     private LocalHealthSnapshot? _latestHealth;
+    private bool _exitRequested;
+    private bool _trayHintShown;
 
     public MainWindow()
     {
@@ -34,6 +43,8 @@ public partial class MainWindow : Window
         LogsGrid.ItemsSource = _logs;
         MachineText.Text = Environment.MachineName;
         VersionText.Text = $"Agent {AgentVersionInfo.Current}";
+        _applicationIcon = LoadApplicationIcon();
+        _trayIcon = CreateTrayIcon(_applicationIcon);
         LoadExistingSettings();
         ShowPage("overview");
         RefreshEverything();
@@ -41,6 +52,87 @@ public partial class MainWindow : Window
         _refreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
         _refreshTimer.Tick += (_, _) => RefreshOperationalSnapshot();
         _refreshTimer.Start();
+    }
+
+    private System.Windows.Forms.NotifyIcon CreateTrayIcon(System.Drawing.Icon icon)
+    {
+        var menu = new System.Windows.Forms.ContextMenuStrip();
+        var open = new System.Windows.Forms.ToolStripMenuItem("باز کردن پنل");
+        open.Click += (_, _) => Dispatcher.Invoke(RestoreFromTray);
+        var exit = new System.Windows.Forms.ToolStripMenuItem("خروج کامل");
+        exit.Click += (_, _) => Dispatcher.Invoke(ExitApplication);
+        menu.Items.Add(open);
+        menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+        menu.Items.Add(exit);
+
+        var trayIcon = new System.Windows.Forms.NotifyIcon
+        {
+            Icon = icon,
+            Text = "Sokna Print Agent",
+            ContextMenuStrip = menu,
+            Visible = true
+        };
+        trayIcon.DoubleClick += (_, _) => Dispatcher.Invoke(RestoreFromTray);
+        return trayIcon;
+    }
+
+    private static System.Drawing.Icon LoadApplicationIcon()
+    {
+        var executable = Environment.ProcessPath;
+        var icon = string.IsNullOrWhiteSpace(executable)
+            ? null
+            : System.Drawing.Icon.ExtractAssociatedIcon(executable);
+        return icon ?? (System.Drawing.Icon)System.Drawing.SystemIcons.Application.Clone();
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (!_exitRequested)
+        {
+            e.Cancel = true;
+            HideToTray();
+            return;
+        }
+
+        base.OnClosing(e);
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _refreshTimer.Stop();
+        _trayIcon.Visible = false;
+        _trayIcon.ContextMenuStrip?.Dispose();
+        _trayIcon.Dispose();
+        _applicationIcon.Dispose();
+        base.OnClosed(e);
+    }
+
+    private void HideToTray()
+    {
+        ShowInTaskbar = false;
+        Hide();
+        if (_trayHintShown) return;
+        _trayHintShown = true;
+        _trayIcon.ShowBalloonTip(
+            2500,
+            "Sokna Print Agent",
+            "برنامه در System Tray فعال است. برای باز کردن، روی آیکن دوبار کلیک کنید.",
+            System.Windows.Forms.ToolTipIcon.Info);
+    }
+
+    private void RestoreFromTray()
+    {
+        ShowInTaskbar = true;
+        Show();
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+        Activate();
+    }
+
+    private void ExitApplication()
+    {
+        _exitRequested = true;
+        Close();
+        System.Windows.Application.Current.Shutdown();
     }
 
     private void Navigate_Click(object sender, RoutedEventArgs e)
