@@ -1,4 +1,4 @@
-# نصب و به‌روزرسانی Sokna Print Agent 6.1.2
+# نصب و به‌روزرسانی Sokna Print Agent 6.1.3
 
 ## وضعیت
 Windows Build و Setup/Service/Uninstall gate نسخه 6.1 روی branch توسعه اجرا و PASS شده‌اند. این فقط Installation/Upgrade engineering gate است؛ چاپ فیزیکی واقعی، Printer/Spooler faultها، Windows restart و soak همچنان **PENDING / UAT_REQUIRED — PRODUCTION GATE** هستند.
@@ -21,11 +21,11 @@ Fresh Install و Upgrade از همان engine استفاده می‌کنند. Se
 ## Artifactهای Windows
 Build رسمی Version را از `Directory.Build.props:SoknaAgentVersion` می‌گیرد و باید Artifactهای زیر را با SHA-256 همان Run تولید کند:
 
-- `Sokna-Print-Agent-6.1.2-Setup.exe`
-- `Sokna-Print-Agent-6.1.2-win-x64.zip`
-- `Sokna-Print-Agent-6.1.2-source.zip`
-- `SHA256SUMS-Agent-6.1.2.txt`
-- `BUILD_ARTIFACTS-Agent-6.1.2.json`
+- `Sokna-Print-Agent-6.1.3-Setup.exe`
+- `Sokna-Print-Agent-6.1.3-win-x64.zip`
+- `Sokna-Print-Agent-6.1.3-source.zip`
+- `SHA256SUMS-Agent-6.1.3.txt`
+- `BUILD_ARTIFACTS-Agent-6.1.3.json`
 
 ## تجربه نصب / Upgrade
 Setup قبل از تغییر سیستم:
