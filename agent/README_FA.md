@@ -1,4 +1,4 @@
-# Sokna Print Agent 6.1.1
+# Sokna Print Agent 6.1.2
 
 Agent مستقل Print API v4 با هدف **عدم Silent Loss، جلوگیری از Duplicate خودکار و Resolution روشن ambiguity**؛ نه ادعای exactly-once physical printing.
 
@@ -35,6 +35,13 @@ Source of Truth فقط پوشه `agent/` است. ZIP منبع، build-time patch
 - خروجی Renderer و مرز Winspool پیش از ارسال به Driver به سطح 24-bit BGR بدون Alpha تبدیل می‌شوند.
 - تمام پیکسل‌های خارج از متن صریحاً سفید هستند؛ Driverهای حرارتی که byte چهارم DIB را نادرست تفسیر می‌کنند دیگر فضای خالی رسید را مشکی چاپ نمی‌کنند.
 - ابعاد کپی با مختصات Pixel صریح است تا DPI metadata باعث کوچک‌شدن محتوای رسید نشود.
+
+## کیفیت و تطبیق قالب در 6.1.2
+
+- Vazirmatn Regular/Bold همراه Worker است و بدون نصب فونت در ویندوز بارگذاری می‌شود.
+- Renderer مستقیماً با DPI و عرض پیکسلی واقعی Queue خروجی می‌سازد؛ مرحلهٔ Stretch حذف شده است.
+- متن برای هد حرارتی به‌صورت تک‌رنگ GridFit ساخته می‌شود تا لبه‌های خاکستری و ظاهر عکس‌مانند حذف شود.
+- راست‌چین واقعی، ترتیب بخش‌ها، تراکم، نوع جداکننده و تنظیمات قالبِ همراه Job در چاپ فیزیکی اعمال می‌شوند.
 
 ## CI
 
