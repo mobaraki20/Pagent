@@ -30,7 +30,8 @@ internal static class ReceiptRenderer
         // make glyphs look like a scaled photo; grid-fitted 1-bit text stays crisp.
         g.TextRenderingHint=TextRenderingHint.SingleBitPerPixelGridFit;g.SmoothingMode=SmoothingMode.None;g.InterpolationMode=InterpolationMode.NearestNeighbor;g.PixelOffsetMode=PixelOffsetMode.Half;
         var canvas=new Canvas(g,width,marginX,marginY,template,design,paperWidthMm,scaleX,scaleY);canvas.Render(root);
-        var finalHeight=Math.Clamp(canvas.Y+marginY,(int)Math.Round(160*scaleY),maxHeight);
+        if(canvas.Y+marginY>maxHeight)throw new InvalidDataException("رسید از ظرفیت امن Renderer بلندتر است؛ برای جلوگیری از بریدگی هیچ خروجی چاپی ساخته نشد.");
+        var finalHeight=Math.Max((int)Math.Round(160*scaleY),canvas.Y+marginY);
         var output=new Bitmap(width,finalHeight,System.Drawing.Imaging.PixelFormat.Format24bppRgb);output.SetResolution(dpiX,dpiY);
         using(var outputGraphics=Graphics.FromImage(output)){outputGraphics.Clear(Color.White);outputGraphics.DrawImageUnscaled(staging,0,0);}return output;
     }
@@ -117,14 +118,18 @@ internal static class ReceiptRenderer
             foreach(var item in items)
             {
                 var name=Get(item,"name","—");var quantity=FaDigits(Get(item,"quantity","1"));var unit=Money(GetLong(item,"unit_price",0));var line=Money(GetLong(item,"line_total",0));using var font=MakeFont(Math.Max(_base,_table-2),false);using var boldFont=MakeFont(_table,true);
-                var nameRectangle=new RectangleF(_marginX+totalWidth+quantityWidth+unitWidth,Y,nameWidth,Py(500));var nameHeight=(int)Math.Ceiling(_g.MeasureString(name,font,nameRectangle.Size,Rtl(StringAlignment.Far)).Height)+Py(8);var rowHeight=Math.Max(Py(_density=="comfortable"?46:34),nameHeight);
-                DrawCell(name,(int)nameRectangle.X,Y,nameWidth,boldFont,StringAlignment.Far,rowHeight);if(full){DrawCell(unit,_marginX+totalWidth,Y,unitWidth,font,StringAlignment.Center,rowHeight);DrawCell(quantity,_marginX+totalWidth+unitWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);}else DrawCell(quantity+" × "+unit,_marginX+totalWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);DrawCell(line,_marginX,Y,totalWidth,boldFont,StringAlignment.Near,rowHeight);Y+=rowHeight;Hairline();
+                var nameHeight=MeasureCellHeight(name,nameWidth,boldFont,StringAlignment.Far);var lineHeight=MeasureCellHeight(line,totalWidth,boldFont,StringAlignment.Near);var quantityText=full?quantity:quantity+" × "+unit;var quantityHeight=MeasureCellHeight(quantityText,quantityWidth,font,StringAlignment.Center);var unitHeight=full?MeasureCellHeight(unit,unitWidth,font,StringAlignment.Center):0;var rowHeight=Math.Max(Py(_density=="comfortable"?46:34),Math.Max(Math.Max(nameHeight,lineHeight),Math.Max(quantityHeight,unitHeight)));
+                DrawCell(name,_marginX+totalWidth+quantityWidth+unitWidth,Y,nameWidth,boldFont,StringAlignment.Far,rowHeight);if(full){DrawCell(unit,_marginX+totalWidth,Y,unitWidth,font,StringAlignment.Center,rowHeight);DrawCell(quantity,_marginX+totalWidth+unitWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);}else DrawCell(quantityText,_marginX+totalWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);DrawCell(line,_marginX,Y,totalWidth,boldFont,StringAlignment.Near,rowHeight);Y+=rowHeight;Hairline();
             }
+        }
+        private int MeasureCellHeight(string text,int width,Font font,StringAlignment alignment)
+        {
+            using var format=Rtl(alignment);return (int)Math.Ceiling(_g.MeasureString(text,font,new SizeF(Math.Max(1,width),Py(1000)),format).Height)+Py(8);
         }
         private void DrawCustomerTwoLine(JsonElement item)
         {
             var name=Get(item,"name","—");var quantity=FaDigits(Get(item,"quantity","1"));var unit=Money(GetLong(item,"unit_price",0));var line=Money(GetLong(item,"line_total",0));
-            if(_showPrices){var lineWidth=(int)((_width-_marginX*2)*.32);using var boldFont=MakeFont(Math.Max(17,_base-2),true);using var nameFont=MakeFont(Math.Max(18,_base-1),true);var nameWidth=_width-_marginX*2-lineWidth;var height=Math.Max(Py(_density=="comfortable"?48:38),(int)Math.Ceiling(_g.MeasureString(name,nameFont,new SizeF(nameWidth,Py(500)),Rtl(StringAlignment.Far)).Height)+Py(8));DrawCell(name,_marginX+lineWidth,Y,nameWidth,nameFont,StringAlignment.Far,height);DrawCell(line,_marginX,Y,lineWidth,boldFont,StringAlignment.Near,height);Y+=height;Text(quantity+" × "+unit,Math.Max(14,_base-6),false,StringAlignment.Far,1);}else Text(quantity+" × "+name,Math.Max(19,_base-1),true,StringAlignment.Far,2);
+            if(_showPrices){var lineWidth=(int)((_width-_marginX*2)*.32);using var boldFont=MakeFont(Math.Max(17,_table-6),true);using var nameFont=MakeFont(_table,true);var nameWidth=_width-_marginX*2-lineWidth;var height=Math.Max(Py(_density=="comfortable"?48:38),Math.Max(MeasureCellHeight(name,nameWidth,nameFont,StringAlignment.Far),MeasureCellHeight(line,lineWidth,boldFont,StringAlignment.Near)));DrawCell(name,_marginX+lineWidth,Y,nameWidth,nameFont,StringAlignment.Far,height);DrawCell(line,_marginX,Y,lineWidth,boldFont,StringAlignment.Near,height);Y+=height;Text(quantity+" × "+unit,Math.Max(14,_table-8),false,StringAlignment.Far,1);}else Text(quantity+" × "+name,Math.Max(19,_table),true,StringAlignment.Far,2);
             var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,Math.Max(16,_base-4),true);Hairline();
         }
         private void Pair(string right,string left,int size,bool bold){using var font=MakeFont(size,bold);var height=Math.Max(Py(34),(int)font.GetHeight(_g)+Py(12));var half=(_width-_marginX*2)/2;DrawCell(right,_marginX+half,Y,half,font,StringAlignment.Far,height);DrawCell(left,_marginX,Y,half,font,StringAlignment.Near,height);Y+=height+_gap;}
