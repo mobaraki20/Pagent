@@ -10,7 +10,9 @@ builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton(sp=>new LocalQueueStore(paths.DatabasePath));
 builder.Services.AddSingleton<IPrinterHealthProvider,WindowsPrinterHealthProvider>();
 builder.Services.AddSingleton(sp=>new AgentLog(paths.LogsPath));
+builder.Services.AddSingleton<PrintWakeSignal>();
 // Configuration/token are intentionally NOT loaded during DI construction. A fresh installation must
 // start as a healthy-but-unconfigured Windows Service so the Control App can configure it afterwards.
 builder.Services.AddHostedService<PrintAgentService>();
+builder.Services.AddHostedService<LocalBridgeService>();
 await builder.Build().RunAsync();
