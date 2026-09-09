@@ -7,7 +7,7 @@ async Task ExpectThrowsAsync(Func<Task> action,string name){try{await action();f
 
 Check(RecoveryPolicy.Decide(LocalJobState.Reserved,false,false)==RecoveryDecision.ContinueAccept,"restart_before_accept");
 Check(RecoveryPolicy.Decide(LocalJobState.Claimed,false,false)==RecoveryDecision.ContinueClaimed,"restart_after_accept");
-Check(RecoveryPolicy.Decide(LocalJobState.WorkerLaunching,false,false)==RecoveryDecision.ContinueClaimed,"crash_before_submission_fence_safe_resume");
+Check(RecoveryPolicy.Decide(LocalJobState.WorkerLaunching,false,false)==RecoveryDecision.RecoveryHold,"restart_workerlaunching_without_death_proof_is_ambiguous");
 Check(RecoveryPolicy.Decide(LocalJobState.WorkerLaunching,true,false)==RecoveryDecision.RecoveryHold,"crash_after_submission_fence_ambiguous");
 Check(RecoveryPolicy.Decide(LocalJobState.WorkerLaunching,true,true)==RecoveryDecision.Nothing,"durable_worker_result_takes_precedence");
 Check(RecoveryPolicy.Decide(LocalJobState.Submitted,true,true)==RecoveryDecision.ReportSubmitted,"crash_after_spooler_before_report_no_reprint");
@@ -24,95 +24,47 @@ var protector=new TestLeaseProtector();
 var store=new LocalQueueStore(path,protector);
 await store.InitializeAsync();
 Check(await store.CountOpenAsync()==0,"sqlite_init");
+Check(await store.GetMetaAsync("schema_version")=="3","sqlite_schema_v3");
 
-// agent_meta is the durable owner for the complete claim wire-body envelope. It survives process
-// restart and must preserve the originating agent/protocol version so an upgrade cannot mutate replay.
-var claimEnvelope=new ClaimRequestEnvelope(
-    "request-claim-1",
-    "6.1.0",
-    4,
-    ["bar","kitchen"],
-    3,
-    "2026-08-25T05:00:00.0000000+00:00");
+var claimEnvelope=new ClaimRequestEnvelope("request-claim-1","6.2.0",4,["bar","kitchen"],3,"2026-09-09T21:00:00.0000000+00:00");
 var claimEnvelopeJson=JsonSerializer.Serialize(claimEnvelope,AgentOptions.JsonOptions());
 await store.SetMetaAsync("pending_claim_v1",claimEnvelopeJson);
 var persistedClaim=JsonSerializer.Deserialize<ClaimRequestEnvelope>(await store.GetMetaAsync("pending_claim_v1")??"",AgentOptions.JsonOptions());
-Check(persistedClaim is not null
-      && persistedClaim.RequestId==claimEnvelope.RequestId
-      && persistedClaim.AgentVersion==claimEnvelope.AgentVersion
-      && persistedClaim.ProtocolVersion==claimEnvelope.ProtocolVersion
-      && persistedClaim.Limit==claimEnvelope.Limit
-      && persistedClaim.CreatedAt==claimEnvelope.CreatedAt
-      && persistedClaim.ReadyDestinationKeys.SequenceEqual(claimEnvelope.ReadyDestinationKeys),
-    "claim_replay_complete_envelope_persisted");
-var metaRestarted=new LocalQueueStore(path,protector);
-await metaRestarted.InitializeAsync();
+Check(persistedClaim is not null&&persistedClaim.RequestId==claimEnvelope.RequestId&&persistedClaim.AgentVersion==claimEnvelope.AgentVersion&&persistedClaim.ProtocolVersion==claimEnvelope.ProtocolVersion&&persistedClaim.Limit==claimEnvelope.Limit&&persistedClaim.CreatedAt==claimEnvelope.CreatedAt&&persistedClaim.ReadyDestinationKeys.SequenceEqual(claimEnvelope.ReadyDestinationKeys),"claim_replay_complete_envelope_persisted");
+var metaRestarted=new LocalQueueStore(path,protector);await metaRestarted.InitializeAsync();
 var replayedClaim=JsonSerializer.Deserialize<ClaimRequestEnvelope>(await metaRestarted.GetMetaAsync("pending_claim_v1")??"",AgentOptions.JsonOptions());
 Check(replayedClaim?.RequestId==claimEnvelope.RequestId,"claim_replay_request_id_survives_restart");
-Check(replayedClaim?.AgentVersion=="6.1.0"&&replayedClaim.ProtocolVersion==4,"claim_replay_version_protocol_survive_restart");
+Check(replayedClaim?.AgentVersion=="6.2.0"&&replayedClaim.ProtocolVersion==4,"claim_replay_version_protocol_survive_restart");
 Check(replayedClaim?.Limit==3&&replayedClaim.ReadyDestinationKeys.SequenceEqual(["bar","kitchen"]),"claim_replay_body_survives_restart");
-await metaRestarted.DeleteMetaAsync("pending_claim_v1");
-Check(await metaRestarted.GetMetaAsync("pending_claim_v1") is null,"claim_replay_meta_explicit_clear");
+await metaRestarted.DeleteMetaAsync("pending_claim_v1");Check(await metaRestarted.GetMetaAsync("pending_claim_v1") is null,"claim_replay_meta_explicit_clear");
 
-var payload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"تست\"}";
-var sha=CryptoUtil.Sha256Hex(payload);
-var destination=new DestinationConfig("prep_shared","آماده‌سازی","Test Queue",80,72.1,1,"combined");
-var first=new ClaimItem(
-    new ClaimedJob(77,"pub","prep_order",true,"order","77",DateTimeOffset.UtcNow.ToString("O"),4,sha,payload),
-    new ClaimAttempt(1001,1,"lease-a",DateTimeOffset.UtcNow.AddSeconds(45).ToString("O")),destination);
+// Stable request identities are persisted before network calls and survive restart.
+await store.SetMetaAsync("accept_request:1001","request-accept-stable");
+var identityRestarted=new LocalQueueStore(path,protector);await identityRestarted.InitializeAsync();
+Check(await identityRestarted.GetMetaAsync("accept_request:1001")=="request-accept-stable","accept_request_identity_survives_restart");
 
-var l1=await store.PersistReservedAsync(first,"receipt-0001");
-Check(l1.AttemptId==1001&&l1.ServerJobId==77,"attempt_1_persist");
-Check(l1.ProtectedLeaseToken!="lease-a"&&protector.Unprotect(l1.ProtectedLeaseToken)=="lease-a","lease_not_plaintext_at_local_boundary");
+var payload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"تست\"}";var sha=CryptoUtil.Sha256Hex(payload);var destination=new DestinationConfig("prep_shared","آماده‌سازی","Test Queue",80,72.1,1,"combined");
+var first=new ClaimItem(new ClaimedJob(77,"pub","prep_order",true,"order","77",DateTimeOffset.UtcNow.ToString("O"),4,sha,payload),new ClaimAttempt(1001,1,"lease-a",DateTimeOffset.UtcNow.AddSeconds(45).ToString("O")),destination);
+var l1=await store.PersistReservedAsync(first,"receipt-0001");Check(l1.AttemptId==1001&&l1.ServerJobId==77,"attempt_1_persist");Check(l1.ProtectedLeaseToken!="lease-a"&&protector.Unprotect(l1.ProtectedLeaseToken)=="lease-a","lease_not_plaintext_at_local_boundary");
+var l1Replay=await store.PersistReservedAsync(first,"receipt-should-not-replace");Check(l1Replay.AttemptId==1001&&l1Replay.LocalReceiptId=="receipt-0001","duplicate_claim_same_attempt_idempotent");Check(await store.CountOpenAsync()==1,"duplicate_claim_does_not_duplicate_open_job");
+var alteredPayload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"DIFFERENT\"}";var altered=first with{Job=first.Job with{PayloadJson=alteredPayload,ContentSha256=CryptoUtil.Sha256Hex(alteredPayload)}};await ExpectThrowsAsync(()=>store.PersistReservedAsync(altered,"receipt-conflict"),"duplicate_attempt_different_payload_rejected");
+var badHash=first with{Job=first.Job with{ContentSha256=new string('0',64)}};await ExpectThrowsAsync(()=>store.PersistReservedAsync(badHash,"receipt-bad-hash"),"payload_hash_tamper_rejected");
 
-var l1Replay=await store.PersistReservedAsync(first,"receipt-should-not-replace");
-Check(l1Replay.AttemptId==1001&&l1Replay.LocalReceiptId=="receipt-0001","duplicate_claim_same_attempt_idempotent");
-Check(await store.CountOpenAsync()==1,"duplicate_claim_does_not_duplicate_open_job");
+await store.SetStateAsync(1001,LocalJobState.Resolved);var second=first with{Attempt=new ClaimAttempt(1002,2,"lease-b",DateTimeOffset.UtcNow.AddSeconds(45).ToString("O"))};var l2=await store.PersistReservedAsync(second,"receipt-0002");Check(l2.AttemptId==1002&&l2.ServerJobId==77,"same_job_new_attempt_persist");Check((await store.GetByAttemptAsync(1001)) is not null&&(await store.GetByAttemptAsync(1002)) is not null,"attempt_history_preserved");Check(await store.CountOpenAsync()==1,"only_new_attempt_open");
 
-var alteredPayload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"DIFFERENT\"}";
-var altered=first with{Job=first.Job with{PayloadJson=alteredPayload,ContentSha256=CryptoUtil.Sha256Hex(alteredPayload)}};
-await ExpectThrowsAsync(()=>store.PersistReservedAsync(altered,"receipt-conflict"),"duplicate_attempt_different_payload_rejected");
-var badHash=first with{Job=first.Job with{ContentSha256=new string('0',64)}};
-await ExpectThrowsAsync(()=>store.PersistReservedAsync(badHash,"receipt-bad-hash"),"payload_hash_tamper_rejected");
+await store.SetStateAsync(1002,LocalJobState.Unknown,error:"ambiguous after fence");await store.EnqueueReportAsync(77,1002,"request-report-1002","{\"status\":\"unknown\"}");Check(await store.HasPendingReportAsync(1002),"report_outbox_created");Check(await store.CountAmbiguousAsync()==1,"ambiguous_local_count_before_report");
+var restarted=new LocalQueueStore(path,protector);await restarted.InitializeAsync();var recovered=await restarted.GetByAttemptAsync(1002);Check(recovered?.State==LocalJobState.Unknown,"unknown_survives_restart");var pending=await restarted.PendingReportsAsync();Check(pending.Count==1&&pending[0].AttemptId==1002&&pending[0].RequestId=="request-report-1002","report_request_id_survives_restart");
+await restarted.MarkReportErrorAsync(pending[0].Id,"network unavailable");Check((await restarted.PendingReportsAsync()).Count==0,"report_transport_failure_gets_backoff_instead_of_hot_loop");Check(await restarted.HasPendingReportAsync(1002),"backoff_report_remains_durable");
+await restarted.MarkReportSentAsync(pending[0].Id,1002);Check((await restarted.GetByAttemptAsync(1002))?.State==LocalJobState.Resolved,"report_success_resolves_local_attempt_without_reprint");Check((await restarted.PendingReportsAsync()).Count==0,"report_outbox_sent_once");
 
-await store.SetStateAsync(1001,LocalJobState.Resolved);
-var second=first with{Attempt=new ClaimAttempt(1002,2,"lease-b",DateTimeOffset.UtcNow.AddSeconds(45).ToString("O"))};
-var l2=await store.PersistReservedAsync(second,"receipt-0002");
-Check(l2.AttemptId==1002&&l2.ServerJobId==77,"same_job_new_attempt_persist");
-Check((await store.GetByAttemptAsync(1001)) is not null&&(await store.GetByAttemptAsync(1002)) is not null,"attempt_history_preserved");
-Check(await store.CountOpenAsync()==1,"only_new_attempt_open");
+// A permanent conflict may be quarantined without blocking an independent report behind it.
+await restarted.EnqueueReportAsync(77,1001,"request-report-permanent","{\"status\":\"failed\"}");var conflict=(await restarted.PendingReportsAsync()).Single(x=>x.RequestId=="request-report-permanent");await restarted.MarkReportErrorAsync(conflict.Id,"terminal conflict",true);Check((await restarted.PendingReportsAsync()).All(x=>x.RequestId!="request-report-permanent"),"permanent_report_quarantined");
+await restarted.EnqueueReportAsync(77,1002,"request-report-independent","{\"status\":\"submitted\"}");Check((await restarted.PendingReportsAsync()).Any(x=>x.RequestId=="request-report-independent"),"permanent_report_does_not_block_independent_report");
 
-await store.SetStateAsync(1002,LocalJobState.Unknown,error:"ambiguous after fence");
-await store.EnqueueReportAsync(77,1002,"request-report-1002","{\"status\":\"unknown\"}");
-Check(await store.HasPendingReportAsync(1002),"report_outbox_created");
-Check(await store.CountAmbiguousAsync()==1,"ambiguous_local_count_before_report");
-var restarted=new LocalQueueStore(path,protector);
-await restarted.InitializeAsync();
-var recovered=await restarted.GetByAttemptAsync(1002);
-Check(recovered?.State==LocalJobState.Unknown,"unknown_survives_restart");
-var pending=await restarted.PendingReportsAsync();
-Check(pending.Count==1&&pending[0].AttemptId==1002&&pending[0].RequestId=="request-report-1002","report_request_id_survives_restart");
-await restarted.MarkReportErrorAsync(pending[0].Id,"network unavailable");
-Check((await restarted.PendingReportsAsync()).Count==1,"report_network_failure_keeps_outbox");
-await restarted.MarkReportSentAsync(pending[0].Id,1002);
-Check((await restarted.GetByAttemptAsync(1002))?.State==LocalJobState.Resolved,"report_success_resolves_local_attempt_without_reprint");
-Check((await restarted.PendingReportsAsync()).Count==0,"report_outbox_sent_once");
-
-var durable=Path.Combine(dir,"atomic.txt");
-await DurableFile.WriteTextAtomicAsync(durable,"سلام");
-Check(File.ReadAllText(durable)=="سلام","durable_atomic_file");
-
-var corruptDir=Path.Combine(Path.GetTempPath(),"sokna-agent-corrupt-"+Guid.NewGuid().ToString("N"));
-Directory.CreateDirectory(corruptDir);
-var corruptPath=Path.Combine(corruptDir,"queue.db");
-await File.WriteAllTextAsync(corruptPath,"not-a-sqlite-database");
-await ExpectThrowsAsync(()=>new LocalQueueStore(corruptPath,protector).InitializeAsync(),"sqlite_corruption_detected");
-
-try{Directory.Delete(dir,true);}catch{}
-try{Directory.Delete(corruptDir,true);}catch{}
-if(failures.Count>0){Console.Error.WriteLine("FAIL "+string.Join(",",failures));return 1;}
-Console.WriteLine("PASS Sokna.PrintAgent.Tests");
-return 0;
+var durable=Path.Combine(dir,"atomic.txt");await DurableFile.WriteTextAtomicAsync(durable,"سلام");Check(File.ReadAllText(durable)=="سلام","durable_atomic_file");
+var corruptDir=Path.Combine(Path.GetTempPath(),"sokna-agent-corrupt-"+Guid.NewGuid().ToString("N"));Directory.CreateDirectory(corruptDir);var corruptPath=Path.Combine(corruptDir,"queue.db");await File.WriteAllTextAsync(corruptPath,"not-a-sqlite-database");await ExpectThrowsAsync(()=>new LocalQueueStore(corruptPath,protector).InitializeAsync(),"sqlite_corruption_detected");
+try{Directory.Delete(dir,true);}catch{}try{Directory.Delete(corruptDir,true);}catch{}
+if(failures.Count>0){Console.Error.WriteLine("FAIL "+string.Join(",",failures));return 1;}Console.WriteLine("PASS Sokna.PrintAgent.Tests");return 0;
 
 sealed class TestLeaseProtector:ILeaseTokenProtector
 {
