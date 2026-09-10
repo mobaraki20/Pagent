@@ -36,13 +36,13 @@ if($LASTEXITCODE -ne 0){throw 'Agent tests failed.'}
 & $dotnet run --project (Join-Path $root 'tests\Sokna.PrintAgent.Worker.Tests\Sokna.PrintAgent.Worker.Tests.csproj') -c $Configuration --no-build
 if($LASTEXITCODE -ne 0){throw 'Worker raster tests failed.'}
 
-# Run only acceptance cases that are implemented at this remediation stage. The public
+# Run only acceptance cases implemented at this remediation stage. The public
 # Test-Agent-Acceptance.ps1 -Suite Automated intentionally remains strict and will fail
 # until every automated A-case is implemented; CI must not turn missing cases into PASS.
 $acceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.Acceptance\Sokna.PrintAgent.Acceptance.csproj'
 $acceptanceResults=Join-Path $Output 'acceptance-smoke'
 New-Item $acceptanceResults -ItemType Directory -Force|Out-Null
-$implementedAcceptance=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A44','A46')
+$implementedAcceptance=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A24','A28','A44','A46')
 foreach($caseId in $implementedAcceptance){
   $caseDir=Join-Path $acceptanceResults $caseId
   New-Item $caseDir -ItemType Directory -Force|Out-Null
