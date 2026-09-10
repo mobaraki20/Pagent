@@ -21,12 +21,14 @@ $gateEvidence=Join-Path $evidenceDir 'INSTALL_GATE_EVIDENCE.txt'
 $startShortcut=Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonPrograms)) 'Sokna Print Agent.lnk'
 $desktopShortcut=Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::CommonDesktopDirectory)) 'Sokna Print Agent.lnk'
 $regPath='HKLM:\SOFTWARE\Sokna\PrintAgent'
+$uninstallRegPath='HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\SoknaPrintAgent6'
 New-Item $evidenceDir -ItemType Directory -Force | Out-Null
 "version=$Version`ntimestamp_start=$((Get-Date).ToUniversalTime().ToString('o'))" | Set-Content $gateEvidence
 
-function Invoke-SetupQuiet([string]$Stdout,[string]$Stderr){
+function Invoke-SetupQuiet([string]$Stdout,[string]$Stderr,[string[]]$ExtraArgs=@()){
   Remove-Item $Stdout,$Stderr -Force -ErrorAction SilentlyContinue
-  return Start-Process -FilePath $setup -ArgumentList '/quiet' -Wait -PassThru -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr
+  $arguments=@('/quiet')+$ExtraArgs
+  return Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr
 }
 
 function Test-UsersReadExecuteAcl([string]$Path){
@@ -38,6 +40,47 @@ function Test-UsersReadExecuteAcl([string]$Path){
     if($sid -eq $usersSid -and $rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and (($rights -band $needed) -eq $needed)){return $true}
   }
   return $false
+}
+
+function Assert-Shortcut([string]$Path,[bool]$Expected,[string]$ControlExe,[string]$Label){
+  $exists=Test-Path $Path -PathType Leaf
+  if($exists -ne $Expected){throw "$Label shortcut expected=$Expected actual=$exists"}
+  if(-not $Expected){return}
+  $shortcut=$null
+  $shell=New-Object -ComObject WScript.Shell
+  try{
+    $shortcut=$shell.CreateShortcut($Path)
+    if(-not [string]::Equals([IO.Path]::GetFullPath($shortcut.TargetPath),[IO.Path]::GetFullPath($ControlExe),[StringComparison]::OrdinalIgnoreCase)){throw "$Label shortcut target mismatch."}
+    if(-not ([string]$shortcut.IconLocation).StartsWith($ControlExe,[StringComparison]::OrdinalIgnoreCase)){throw "$Label shortcut icon mismatch."}
+  }
+  finally{
+    if($null -ne $shortcut){[Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut)|Out-Null}
+    if($null -ne $shell){[Runtime.InteropServices.Marshal]::FinalReleaseComObject($shell)|Out-Null}
+  }
+}
+
+function Assert-InstalledAppsRegistration(){
+  if(-not (Test-Path $uninstallRegPath)){throw 'Windows Installed Apps registry entry is missing.'}
+  $arp=Get-ItemProperty $uninstallRegPath -ErrorAction Stop
+  if([string]$arp.DisplayName -ne 'Sokna Print Agent'){throw "Installed Apps DisplayName mismatch: $($arp.DisplayName)"}
+  if([string]$arp.DisplayVersion -ne $Version){throw "Installed Apps DisplayVersion mismatch: $($arp.DisplayVersion)"}
+  if([string]$arp.Publisher -ne 'Sokna Group'){throw "Installed Apps Publisher mismatch: $($arp.Publisher)"}
+  if(-not [string]::Equals([IO.Path]::GetFullPath([string]$arp.InstallLocation),[IO.Path]::GetFullPath($installRoot),[StringComparison]::OrdinalIgnoreCase)){throw 'Installed Apps InstallLocation mismatch.'}
+  if([string]::IsNullOrWhiteSpace([string]$arp.UninstallString) -or ([string]$arp.UninstallString -notmatch 'Uninstall-SoknaPrintAgent\.ps1')){throw 'Installed Apps UninstallString is invalid.'}
+  if([string]::IsNullOrWhiteSpace([string]$arp.QuietUninstallString) -or ([string]$arp.QuietUninstallString -notmatch '-Quiet')){throw 'Installed Apps QuietUninstallString is invalid.'}
+  if([int]$arp.NoModify -ne 1 -or [int]$arp.NoRepair -ne 1){throw 'Installed Apps NoModify/NoRepair policy mismatch.'}
+  if([int]$arp.EstimatedSize -le 0){throw 'Installed Apps EstimatedSize must be positive.'}
+  if(([string]$arp.DisplayIcon) -notmatch 'Sokna\.PrintAgent\.Control\.exe'){throw 'Installed Apps DisplayIcon is invalid.'}
+  return $arp
+}
+
+function Invoke-RegisteredQuietUninstall(){
+  $arp=Assert-InstalledAppsRegistration
+  $command=[string]$arp.QuietUninstallString
+  if($command -notmatch '^"([^"]+)"\s+(.+)$'){throw "QuietUninstallString cannot be parsed: $command"}
+  $fileName=$Matches[1]
+  $arguments=$Matches[2]
+  return Start-Process -FilePath $fileName -ArgumentList $arguments -Wait -PassThru
 }
 
 function New-FailureInjectedPackage(){
@@ -90,9 +133,9 @@ Remove-Item $installRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $setupLogRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $startShortcut,$desktopShortcut -Force -ErrorAction SilentlyContinue
-Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $regPath,$uninstallRegPath -Recurse -Force -ErrorAction SilentlyContinue
 
-Write-Host '== Install through the real embedded Setup.exe =='
+Write-Host '== Fresh install through real embedded Setup.exe =='
 $installStarted=Get-Date
 $stdout=Join-Path $env:RUNNER_TEMP 'sokna-setup-smoke.stdout.log'
 $stderr=Join-Path $env:RUNNER_TEMP 'sokna-setup-smoke.stderr.log'
@@ -131,26 +174,19 @@ foreach($required in @(
   if(-not (Test-Path (Join-Path $installRoot $required) -PathType Leaf)){throw "Installed component missing: $required"}
   "installed_component=$required" | Out-File $gateEvidence -Append
 }
-if(-not (Test-Path $startShortcut -PathType Leaf)){throw 'Start Menu shortcut was not created.'}
-if(-not (Test-Path $desktopShortcut -PathType Leaf)){throw 'Desktop shortcut was not created.'}
 if(-not (Test-UsersReadExecuteAcl $installRoot)){throw 'Built-in Users does not have ReadAndExecute on Program Files installation.'}
 "program_files_users_read_execute=True" | Out-File $gateEvidence -Append
 $controlExe=Join-Path $installRoot 'Control\Sokna.PrintAgent.Control.exe'
-$shortcutShell=New-Object -ComObject WScript.Shell
-try{
-  foreach($shortcutPath in @($startShortcut,$desktopShortcut)){
-    $shortcut=$null
-    try{
-      $shortcut=$shortcutShell.CreateShortcut($shortcutPath)
-      if(-not [string]::Equals([IO.Path]::GetFullPath($shortcut.TargetPath),[IO.Path]::GetFullPath($controlExe),[StringComparison]::OrdinalIgnoreCase)){throw "Shortcut target mismatch: $shortcutPath"}
-      if(-not ([string]$shortcut.IconLocation).StartsWith($controlExe,[StringComparison]::OrdinalIgnoreCase)){throw "Shortcut icon mismatch: $shortcutPath"}
-    }
-    finally{if($null -ne $shortcut){[Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcut)|Out-Null}}
-  }
-}
-finally{if($null -ne $shortcutShell){[Runtime.InteropServices.Marshal]::FinalReleaseComObject($shortcutShell)|Out-Null}}
-"start_menu_shortcut=True" | Out-File $gateEvidence -Append
-"desktop_shortcut=True" | Out-File $gateEvidence -Append
+Assert-Shortcut $startShortcut $true $controlExe 'Start Menu'
+Assert-Shortcut $desktopShortcut $false $controlExe 'Desktop'
+"fresh_start_menu_shortcut=True" | Out-File $gateEvidence -Append
+"fresh_desktop_shortcut=False" | Out-File $gateEvidence -Append
+$agentReg=Get-ItemProperty $regPath -ErrorAction Stop
+if([int]$agentReg.CreateStartMenuShortcut -ne 1 -or [int]$agentReg.CreateDesktopShortcut -ne 0){throw 'Fresh shortcut preferences were not persisted.'}
+$arp=Assert-InstalledAppsRegistration
+"installed_apps_registered=True" | Out-File $gateEvidence -Append
+"installed_apps_display_version=$($arp.DisplayVersion)" | Out-File $gateEvidence -Append
+"installed_apps_estimated_size_kb=$($arp.EstimatedSize)" | Out-File $gateEvidence -Append
 
 $extractedIcon=[System.Drawing.Icon]::ExtractAssociatedIcon($controlExe)
 try{
@@ -197,12 +233,38 @@ if($repairProc.ExitCode -ne 0){
 $repairService=Get-Service $service -ErrorAction Stop
 if($repairService.Status -ne 'Running'){throw "Service not running after same-version repair: $($repairService.Status)"}
 if(-not (Test-UsersReadExecuteAcl $installRoot)){throw 'Same-version repair did not restore Users ReadAndExecute ACL.'}
-if(-not (Test-Path $desktopShortcut -PathType Leaf)){throw 'Desktop shortcut missing after same-version repair.'}
+Assert-Shortcut $startShortcut $true $controlExe 'Start Menu after repair'
+Assert-Shortcut $desktopShortcut $false $controlExe 'Desktop after repair'
+$agentReg=Get-ItemProperty $regPath -ErrorAction Stop
+if([int]$agentReg.CreateStartMenuShortcut -ne 1 -or [int]$agentReg.CreateDesktopShortcut -ne 0){throw 'Same-version repair did not preserve shortcut preferences.'}
+Assert-InstalledAppsRegistration|Out-Null
 "same_version_repair_service_running=True" | Out-File $gateEvidence -Append
 "same_version_repair_acl_restored=True" | Out-File $gateEvidence -Append
+"same_version_repair_shortcuts_preserved=True" | Out-File $gateEvidence -Append
 
+Write-Host '== Explicit shortcut preference change: Desktop-only =='
+$toggleStdout=Join-Path $env:RUNNER_TEMP 'sokna-shortcut-toggle.stdout.log'
+$toggleStderr=Join-Path $env:RUNNER_TEMP 'sokna-shortcut-toggle.stderr.log'
+$toggleProc=Invoke-SetupQuiet $toggleStdout $toggleStderr @('/no-start-menu-shortcut','/desktop-shortcut')
+if($toggleProc.ExitCode -ne 0){throw "Shortcut preference repair failed: $($toggleProc.ExitCode)"}
+Assert-Shortcut $startShortcut $false $controlExe 'Start Menu after explicit disable'
+Assert-Shortcut $desktopShortcut $true $controlExe 'Desktop after explicit enable'
 $agentReg=Get-ItemProperty $regPath -ErrorAction Stop
-if([string]$agentReg.Version -ne $Version){throw "Registry version mismatch: $($agentReg.Version) != $Version"}
+if([int]$agentReg.CreateStartMenuShortcut -ne 0 -or [int]$agentReg.CreateDesktopShortcut -ne 1){throw 'Explicit shortcut preferences were not persisted.'}
+"shortcut_toggle_start_menu=False" | Out-File $gateEvidence -Append
+"shortcut_toggle_desktop=True" | Out-File $gateEvidence -Append
+
+Write-Host '== Repair without flags must retain stored Desktop-only preference =='
+$retainStdout=Join-Path $env:RUNNER_TEMP 'sokna-shortcut-retain.stdout.log'
+$retainStderr=Join-Path $env:RUNNER_TEMP 'sokna-shortcut-retain.stderr.log'
+$retainProc=Invoke-SetupQuiet $retainStdout $retainStderr
+if($retainProc.ExitCode -ne 0){throw "Shortcut retention repair failed: $($retainProc.ExitCode)"}
+Assert-Shortcut $startShortcut $false $controlExe 'Start Menu after retained repair'
+Assert-Shortcut $desktopShortcut $true $controlExe 'Desktop after retained repair'
+$agentReg=Get-ItemProperty $regPath -ErrorAction Stop
+if([int]$agentReg.CreateStartMenuShortcut -ne 0 -or [int]$agentReg.CreateDesktopShortcut -ne 1){throw 'Stored shortcut preferences were not retained.'}
+$arp=Assert-InstalledAppsRegistration
+"shortcut_preferences_retained=True" | Out-File $gateEvidence -Append
 "registry_agent_version=$($agentReg.Version)" | Out-File $gateEvidence -Append
 
 $cfg=& sc.exe qc $service | Out-String
@@ -229,32 +291,35 @@ Set-Content $sentinel 'preserve-me' -Encoding ascii
 $dbSentinel=Join-Path $dataRoot 'queue.db.ci-preserve-sentinel'
 Set-Content $dbSentinel 'preserve-db-location' -Encoding ascii
 
-Write-Host '== Uninstall; ProgramData must be preserved by default =='
-$uninstall=Join-Path $installRoot 'Uninstall-SoknaPrintAgent.ps1'
-if(-not (Test-Path $uninstall -PathType Leaf)){throw 'Installed uninstaller missing.'}
-& powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $uninstall
-if($LASTEXITCODE -ne 0){throw "Uninstaller returned $LASTEXITCODE"}
-if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service still exists after uninstall.'}
-if(Test-Path $installRoot){throw 'Program Files installation remains after uninstall.'}
-if(Test-Path $startShortcut -PathType Leaf){throw 'Start Menu shortcut remains after uninstall.'}
-if(Test-Path $desktopShortcut -PathType Leaf){throw 'Desktop shortcut remains after uninstall.'}
+Write-Host '== Uninstall through Windows Installed Apps command; ProgramData must be preserved =='
+$uninstallProc=Invoke-RegisteredQuietUninstall
+"registered_uninstall_exit=$($uninstallProc.ExitCode)" | Out-File $gateEvidence -Append
+if($uninstallProc.ExitCode -ne 0){throw "Registered uninstaller returned $($uninstallProc.ExitCode)"}
+if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service still exists after registered uninstall.'}
+if(Test-Path $installRoot){throw 'Program Files installation remains after registered uninstall.'}
+if(Test-Path $startShortcut -PathType Leaf){throw 'Start Menu shortcut remains after registered uninstall.'}
+if(Test-Path $desktopShortcut -PathType Leaf){throw 'Desktop shortcut remains after registered uninstall.'}
+if(Test-Path $uninstallRegPath){throw 'Windows Installed Apps registry entry remains after uninstall.'}
 if(-not (Test-Path $sentinel -PathType Leaf)){throw 'ProgramData was deleted by default uninstall.'}
 if(-not (Test-Path $dbSentinel -PathType Leaf)){throw 'Durable data location was deleted by default uninstall.'}
 "uninstall_service_removed=True" | Out-File $gateEvidence -Append
 "uninstall_program_files_removed=True" | Out-File $gateEvidence -Append
 "uninstall_shortcuts_removed=True" | Out-File $gateEvidence -Append
+"uninstall_installed_apps_entry_removed=True" | Out-File $gateEvidence -Append
 "uninstall_programdata_preserved=True" | Out-File $gateEvidence -Append
 
 Write-Host '== Synthetic fresh-install failure rollback gate =='
 Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $regPath,$uninstallRegPath -Recurse -Force -ErrorAction SilentlyContinue
 Invoke-InjectedFailure 'fresh' | Out-Null
 if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Fresh-install rollback left an orphan Windows Service.'}
 if(Test-Path $installRoot){throw 'Fresh-install rollback left Program Files behind.'}
 if(Test-Path $regPath){throw 'Fresh-install rollback left installation registry state behind.'}
+if(Test-Path $uninstallRegPath){throw 'Fresh-install rollback left Installed Apps registration behind.'}
 "rollback_fresh_service_orphan=False" | Out-File $gateEvidence -Append
 "rollback_fresh_program_files_removed=True" | Out-File $gateEvidence -Append
 "rollback_fresh_registry_removed=True" | Out-File $gateEvidence -Append
+"rollback_fresh_installed_apps_removed=True" | Out-File $gateEvidence -Append
 
 Write-Host '== Synthetic upgrade failure rollback gate =='
 $upgradeSetupStdout=Join-Path $env:RUNNER_TEMP 'sokna-upgrade-baseline.stdout.log'
@@ -266,6 +331,11 @@ if($beforeService.Status -ne 'Running'){throw 'Upgrade rollback baseline Service
 $beforeExe=Join-Path $installRoot 'Service\Sokna.PrintAgent.Service.exe'
 $beforeHash=(Get-FileHash $beforeExe -Algorithm SHA256).Hash
 $beforeVersion=[string](Get-ItemProperty $regPath -ErrorAction Stop).Version
+$beforeArp=Assert-InstalledAppsRegistration
+$beforeArpVersion=[string]$beforeArp.DisplayVersion
+$beforeUninstallString=[string]$beforeArp.UninstallString
+$beforeStartExists=Test-Path $startShortcut -PathType Leaf
+$beforeDesktopExists=Test-Path $desktopShortcut -PathType Leaf
 $upgradeSentinel=Join-Path $dataRoot 'ci-upgrade-rollback-sentinel.txt'
 Set-Content $upgradeSentinel 'preserve-through-rollback' -Encoding ascii
 Invoke-InjectedFailure 'upgrade' | Out-Null
@@ -276,19 +346,24 @@ $afterHash=(Get-FileHash $beforeExe -Algorithm SHA256).Hash
 if($afterHash -ne $beforeHash){throw 'Upgrade rollback previous Service binary hash changed.'}
 $afterVersion=[string](Get-ItemProperty $regPath -ErrorAction Stop).Version
 if($afterVersion -ne $beforeVersion){throw "Upgrade rollback registry version changed: $afterVersion != $beforeVersion"}
+$afterArp=Assert-InstalledAppsRegistration
+if([string]$afterArp.DisplayVersion -ne $beforeArpVersion -or [string]$afterArp.UninstallString -ne $beforeUninstallString){throw 'Upgrade rollback changed Installed Apps metadata.'}
+if((Test-Path $startShortcut -PathType Leaf) -ne $beforeStartExists -or (Test-Path $desktopShortcut -PathType Leaf) -ne $beforeDesktopExists){throw 'Upgrade rollback changed shortcut state.'}
 if(-not (Test-Path $upgradeSentinel -PathType Leaf)){throw 'Upgrade rollback lost ProgramData sentinel.'}
 "rollback_upgrade_service_running=True" | Out-File $gateEvidence -Append
 "rollback_upgrade_binary_restored=True" | Out-File $gateEvidence -Append
 "rollback_upgrade_version_restored=True" | Out-File $gateEvidence -Append
+"rollback_upgrade_installed_apps_restored=True" | Out-File $gateEvidence -Append
+"rollback_upgrade_shortcuts_restored=True" | Out-File $gateEvidence -Append
 "rollback_upgrade_programdata_preserved=True" | Out-File $gateEvidence -Append
 
-$uninstall=Join-Path $installRoot 'Uninstall-SoknaPrintAgent.ps1'
-& powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $uninstall
-if($LASTEXITCODE -ne 0){throw "Final rollback-gate uninstaller returned $LASTEXITCODE"}
+$finalUninstall=Invoke-RegisteredQuietUninstall
+if($finalUninstall.ExitCode -ne 0){throw "Final registered uninstaller returned $($finalUninstall.ExitCode)"}
 if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service still exists after final rollback-gate uninstall.'}
+if(Test-Path $uninstallRegPath){throw 'Installed Apps entry still exists after final rollback-gate uninstall.'}
 
 "timestamp_end=$((Get-Date).ToUniversalTime().ToString('o'))" | Out-File $gateEvidence -Append
 Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $setupLogRoot -Recurse -Force -ErrorAction SilentlyContinue
-Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host 'PASS Windows Setup/Service/Uninstall/Rollback/Repair smoke test' -ForegroundColor Green
+Remove-Item $regPath,$uninstallRegPath -Recurse -Force -ErrorAction SilentlyContinue
+Write-Host 'PASS Windows Setup/Service/InstalledApps/Shortcut/Uninstall/Rollback/Repair smoke test' -ForegroundColor Green
