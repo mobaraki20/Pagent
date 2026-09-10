@@ -28,8 +28,9 @@ $bridgeRuntimeProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeRuntimeAccep
 $bridgeProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeAcceptance\Sokna.PrintAgent.BridgeAcceptance.csproj'
 $bridgeSecurityProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeSecurityAcceptance\Sokna.PrintAgent.BridgeSecurityAcceptance.csproj'
 $bridgeLoadProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeLoadAcceptance\Sokna.PrintAgent.BridgeLoadAcceptance.csproj'
+$previewProject=Join-Path $root 'tests\Sokna.PrintAgent.PreviewAcceptance\Sokna.PrintAgent.PreviewAcceptance.csproj'
 $realApiProject=Join-Path $root 'tests\Sokna.PrintAgent.RealApiIntegration\Sokna.PrintAgent.RealApiIntegration.csproj'
-foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject,$bridgeRuntimeProject,$bridgeProject,$bridgeSecurityProject,$bridgeLoadProject,$realApiProject)){
+foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject,$bridgeRuntimeProject,$bridgeProject,$bridgeSecurityProject,$bridgeLoadProject,$previewProject,$realApiProject)){
   if(!(Test-Path $required -PathType Leaf)){throw "Acceptance project missing: $required"}
 }
 $sourceSha=(& git -C $root rev-parse HEAD).Trim()
@@ -44,9 +45,10 @@ $cleanupCases=@('A29')
 $bridgeRuntimeCases=@('A32')
 $bridgeCases=@('A33')
 $bridgeSecurityCases=@('A34')
+$previewCases=@('A35','A37','A38','A47')
 $bridgeLoadCases=@('A36')
 $integrationCases=@('A49')
-$implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A24','A25','A26','A27','A28','A29','A32','A33','A34','A36','A44','A46')
+$implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A24','A25','A26','A27','A28','A29','A32','A33','A34','A35','A36','A37','A38','A44','A46','A47')
 $allAutomated=1..47 | ForEach-Object {'A{0:D2}' -f $_}
 $allAutomated+=@('A52')
 
@@ -70,7 +72,7 @@ function Invoke-Case([string]$id){
   if($manualUat -contains $id){return (Write-ManualUatResult $id)}
   $caseDir=Join-Path $results $id
   New-Item $caseDir -ItemType Directory -Force | Out-Null
-  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}elseif($bridgeRuntimeCases -contains $id){$bridgeRuntimeProject}elseif($bridgeSecurityCases -contains $id){$bridgeSecurityProject}elseif($bridgeLoadCases -contains $id){$bridgeLoadProject}elseif($bridgeCases -contains $id){$bridgeProject}elseif($integrationCases -contains $id){$realApiProject}else{$project}
+  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}elseif($bridgeRuntimeCases -contains $id){$bridgeRuntimeProject}elseif($bridgeSecurityCases -contains $id){$bridgeSecurityProject}elseif($previewCases -contains $id){$previewProject}elseif($bridgeLoadCases -contains $id){$bridgeLoadProject}elseif($bridgeCases -contains $id){$bridgeProject}elseif($integrationCases -contains $id){$realApiProject}else{$project}
   & dotnet run --project $selectedProject -c $Configuration -- --case $id --results $caseDir
   return $LASTEXITCODE
 }
