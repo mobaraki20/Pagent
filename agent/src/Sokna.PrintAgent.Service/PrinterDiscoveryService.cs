@@ -18,6 +18,7 @@ public sealed class PrinterDiscoveryService : BackgroundService
 
     private readonly IPrinterHealthProvider _provider;
     private readonly PrinterHealthState _state;
+    private readonly PrintWakeSignal _wake;
     private readonly ILogger<PrinterDiscoveryService> _log;
     private Task<IReadOnlyList<PrinterQueueHealth>>? _inFlight;
     private bool _timeoutReported;
@@ -25,10 +26,12 @@ public sealed class PrinterDiscoveryService : BackgroundService
     public PrinterDiscoveryService(
         IPrinterHealthProvider provider,
         PrinterHealthState state,
+        PrintWakeSignal wake,
         ILogger<PrinterDiscoveryService> log)
     {
         _provider=provider;
         _state=state;
+        _wake=wake;
         _log=log;
     }
 
@@ -66,6 +69,7 @@ public sealed class PrinterDiscoveryService : BackgroundService
             {
                 _timeoutReported=true;
                 _state.MarkFailure("printer_discovery_timeout");
+                _wake.Pulse();
                 _log.LogWarning("Printer discovery exceeded the {TimeoutMs}ms budget; cached health will age naturally.",(long)DiscoveryTimeout.TotalMilliseconds);
             }
 
@@ -85,6 +89,11 @@ public sealed class PrinterDiscoveryService : BackgroundService
             var safe=SafeLogText.Sanitize(e.Message,300);
             _state.MarkFailure(safe);
             _log.LogWarning("Printer discovery failed: {Type}: {Message}",e.GetType().Name,safe);
+        }
+        finally
+        {
+            // This is only a coalesced notification that readiness may have changed.
+            _wake.Pulse();
         }
     }
 
