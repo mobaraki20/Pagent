@@ -37,6 +37,8 @@ try
         case "A08": RunA08(); break;
         case "A09": RunA09(); break;
         case "A10": await RunA10(); break;
+        case "A24": await RunA24(); break;
+        case "A28": await RunA28(); break;
         case "A44": await RunA44(); break;
         case "A46": await RunA46(); break;
         default:
@@ -168,9 +170,12 @@ async Task RunA05()
     await restartMissing.InitializeAsync();
     var missingOutcome=await restartMissing.GetOutcomeAsync(missing.AttemptId);
     var missingReport=await restartMissing.GetOutboxForAttemptAsync(missing.AttemptId);
+    var missingWire=missingReport is null?null:JsonSerializer.Deserialize<ReportRequestEnvelope>(missingReport.BodyJson,AgentOptions.JsonOptions());
     Check(missingOutcome?.Status==PrintOutcomeStatus.RecoveryHold,"legacy ReportPending without report becomes hold");
     Check(missingOutcome?.ErrorCode=="legacy_reportpending_missing_report","missing legacy report has explicit reason");
-    Check(missingReport is not null&&missingReport.DeliveryState==ReportDeliveryState.ReconciliationRequired,"missing evidence creates durable reconciliation report");
+    Check(missingReport is not null&&missingReport.DeliveryState==ReportDeliveryState.Pending,"missing evidence creates durable recovery-hold report for delivery");
+    Check(missingWire?.Status=="recovery_hold","missing evidence reports recovery_hold to server");
+    Check(missingWire?.SpoolerJobId is null,"missing evidence report does not invent spooler id");
     Check(missingOutcome?.Status!=PrintOutcomeStatus.Submitted,"missing evidence never guesses submitted");
 
     var conflicting=await env.CreateJobAsync(2202,"server-a","receipt-a05-conflict");
@@ -266,6 +271,44 @@ async Task RunA10()
     Check(summary.ReconciliationRequired==1,"422 requires reconciliation");
     Check(row?.DeliveryState==ReportDeliveryState.ReconciliationRequired,"422 evidence remains durable");
     Check(outcome?.Status==PrintOutcomeStatus.Failed,"422 does not mutate print outcome");
+}
+
+async Task RunA24()
+{
+    var spec=new WorkerLaunchSpec("missing-worker.exe","",".",TimeSpan.FromMilliseconds(100),TimeSpan.FromMilliseconds(100),TimeSpan.FromMilliseconds(100),512);
+    var startFailureFactory=new FakeWorkerProcessFactory(()=>throw new InvalidOperationException("simulated Process.Start failure"));
+    var startFailure=await new WorkerSupervisor(startFailureFactory).RunAsync(spec,_=>Task.CompletedTask,CancellationToken.None);
+    Check(startFailure.StopKind==WorkerStopKind.LaunchFailed,"Process.Start failure is classified before child ownership");
+    Check(!startFailure.ProcessStarted&&startFailure.ExitProven,"Process.Start failure leaves no unowned child");
+
+    var guardProcess=new FakeWorkerProcess{ThrowOnAttach=true,KillMakesExited=true};
+    var guardFactory=new FakeWorkerProcessFactory(()=>guardProcess);
+    var callbackRan=false;
+    var guardFailure=await new WorkerSupervisor(guardFactory).RunAsync(spec,_=>{callbackRan=true;return Task.CompletedTask;},CancellationToken.None);
+    Check(guardFailure.StopKind==WorkerStopKind.GuardFailed,"guard failure is classified explicitly");
+    Check(guardFailure.ExitProven&&guardProcess.KillCalled,"guard failure kills child and proves exit");
+    Check(!callbackRan,"start signal is never written before guard ownership");
+}
+
+async Task RunA28()
+{
+    var process=new FakeWorkerProcess
+    {
+        KillThrows=true,
+        KillMakesExited=false,
+        WaitUntilCancelled=true
+    };
+    var factory=new FakeWorkerProcessFactory(()=>process);
+    var supervisor=new WorkerSupervisor(factory);
+    var spec=new WorkerLaunchSpec("fake-worker.exe","",".",TimeSpan.FromMilliseconds(60),TimeSpan.FromMilliseconds(90),TimeSpan.FromMilliseconds(120),256);
+    var stopwatch=Stopwatch.StartNew();
+    var result=await supervisor.RunAsync(spec,_=>Task.CompletedTask,CancellationToken.None);
+    stopwatch.Stop();
+    Check(result.StopKind==WorkerStopKind.ExitUnproven,"kill/proof failure becomes explicit ExitUnproven");
+    Check(result.ProcessStarted&&!result.ExitProven,"unproven child is never reported as exited");
+    Check(process.KillCalled,"bounded supervisor attempts kill");
+    Check(stopwatch.Elapsed<TimeSpan.FromSeconds(2),"kill/exit proof has a bounded deadline");
+    Check(result.Error?.Contains("simulated kill failure",StringComparison.Ordinal)==true,"kill failure evidence is retained");
 }
 
 async Task RunA44()
@@ -428,4 +471,48 @@ sealed class ScriptedTransport:IPrintTransport
     public Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct){PrintInvocationCount++;return Task.FromResult(new ApiResult(true,Status:"started",AttemptId:job.AttemptId,JobId:job.ServerJobId));}
     public Task<ApiResult> HeartbeatAsync(HeartbeatPayload payload,CancellationToken ct)=>Task.FromResult(new ApiResult(true));
     public Task<ProbeResponse> ProbeAsync(CancellationToken ct)=>Task.FromResult(new ProbeResponse(true,4,"6.0.0",AgentVersionInfo.Current,[],["attempt_status"],"server-a",DateTimeOffset.UtcNow.ToString("O")));
+}
+
+sealed class FakeWorkerProcessFactory: IWorkerProcessFactory
+{
+    private readonly Func<IWorkerProcess> _factory;
+    public FakeWorkerProcessFactory(Func<IWorkerProcess> factory)=>_factory=factory;
+    public IWorkerProcess Start(WorkerLaunchSpec spec)=>_factory();
+}
+
+sealed class FakeWorkerProcess: IWorkerProcess
+{
+    public bool ThrowOnAttach{get;init;}
+    public bool KillThrows{get;init;}
+    public bool KillMakesExited{get;init;}
+    public bool WaitUntilCancelled{get;init;}
+    public bool KillCalled{get;private set;}
+    public bool HasExited{get;private set;}
+    public int? ExitCode=>HasExited?0:null;
+
+    public void AttachGuard()
+    {
+        if(ThrowOnAttach)throw new InvalidOperationException("simulated guard attach failure");
+    }
+
+    public void KillTree()
+    {
+        KillCalled=true;
+        if(KillThrows)throw new InvalidOperationException("simulated kill failure");
+        if(KillMakesExited)HasExited=true;
+    }
+
+    public async Task WaitForExitAsync(CancellationToken cancellationToken)
+    {
+        if(HasExited)return;
+        if(WaitUntilCancelled)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan,cancellationToken);
+            return;
+        }
+        HasExited=true;
+    }
+
+    public string GetBoundedStandardError()=>string.Empty;
+    public ValueTask DisposeAsync()=>ValueTask.CompletedTask;
 }
