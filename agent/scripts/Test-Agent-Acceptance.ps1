@@ -24,7 +24,7 @@ $sourceSha=(& git -C $root rev-parse HEAD).Trim()
 if($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sourceSha)){throw 'Unable to resolve source SHA.'}
 
 $manualUat=@('A48','A50','A51')
-$implementedAutomated=@('A01','A04','A06','A07','A08','A09','A10','A44','A46')
+$implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A44','A46')
 $allAutomated=1..47 | ForEach-Object {'A{0:D2}' -f $_}
 $allAutomated+=@('A52')
 
