@@ -4,19 +4,20 @@ public interface IPrintTransport
 {
     Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct);
 
-    [Obsolete("Use the durable AcceptRequestEnvelope overload.")]
+    // Transitional source-compatibility overload for existing test/adaptor implementations.
+    // Production coordinator code must use the durable request-envelope overload below.
     Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct);
     Task<ApiResult> AcceptAsync(ClaimItem item,AcceptRequestEnvelope request,CancellationToken ct)
         => AcceptAsync(item,request.LocalReceiptId,request.RequestId,ct);
 
-    [Obsolete("Use the durable RenewRequestEnvelope overload.")]
+    // Transitional source-compatibility overload; see AcceptAsync above.
     Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct);
     Task<ApiResult> RenewAsync(ClaimItem item,RenewRequestEnvelope request,CancellationToken ct)
         => RenewAsync(item,request.RequestId,ct);
 
     Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct);
 
-    [Obsolete("Use the durable StartRequestEnvelope overload.")]
+    // Transitional source-compatibility overload; see AcceptAsync above.
     Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct);
     Task<ApiResult> StartAsync(LocalJob job,StartRequestEnvelope request,CancellationToken ct)
         => StartAsync(job,request.RequestId,ct);
