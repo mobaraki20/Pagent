@@ -107,14 +107,14 @@
 
                 <Grid x:Name="PrintersPage" Visibility="Collapsed">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <TextBlock Text="پرینترها و صف‌ها" Style="{StaticResource PageTitle}"/><TextBlock Grid.Row="1" Text="Queueهایی که Windows Service تحت LocalSystem واقعاً می‌بیند؛ Driver و Port برای تشخیص حفظ شده‌اند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
+                    <TextBlock Text="پرینترها و صف‌ها" Style="{StaticResource PageTitle}"/><TextBlock Grid.Row="1" Text="Queueهای Windows که Service می‌بیند، به‌همراه مقصد مجازی PDF Test؛ Driver و Port برای تشخیص حفظ شده‌اند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
                     <DataGrid Grid.Row="2" x:Name="PrintersGrid"><DataGrid.Columns><DataGridTextColumn Header="نام Queue" Binding="{Binding Name}" Width="2*"/><DataGridTextColumn Header="وضعیت" Binding="{Binding Status}" Width="120"/><DataGridTextColumn Header="Job" Binding="{Binding Jobs}" Width="70"/><DataGridTextColumn Header="Driver" Binding="{Binding Driver}" Width="2*"/><DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="*"/></DataGrid.Columns></DataGrid>
                 </Grid>
 
                 <Grid x:Name="TestsPage" Visibility="Collapsed">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <TextBlock Text="مرکز تست" Style="{StaticResource PageTitle}"/><TextBlock Grid.Row="1" Text="Service، Config، Credential، API، Spooler و Printer visibility مرحله‌به‌مرحله بررسی می‌شوند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,14"><Button x:Name="RunTestsButton" Content="اجرای بررسی کامل" Style="{StaticResource PrimaryButton}" Click="RunTests_Click"/><Button Content="باز کردن پنل چاپ Sokna" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" Click="OpenSoknaPrinting_Click"/></StackPanel>
+                    <TextBlock Text="مرکز تست" Style="{StaticResource PageTitle}"/><TextBlock Grid.Row="1" Text="Service، Config، API، Spooler و مسیر PDF Test مرحله‌به‌مرحله بررسی می‌شوند. PDF Test بدون مصرف کاغذ همان Routing واقعی Job را طی می‌کند." Style="{StaticResource Muted}" Margin="0,6,0,18" TextWrapping="Wrap"/>
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,14"><Button x:Name="RunTestsButton" Content="اجرای بررسی کامل" Style="{StaticResource PrimaryButton}" Click="RunTests_Click"/><Button Content="باز کردن پنل چاپ Sokna" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" Click="OpenSoknaPrinting_Click"/><Button Content="پوشه PDFهای آزمایشی" Style="{StaticResource SecondaryButton}" Margin="10,0,0,0" Click="OpenPdfTests_Click"/></StackPanel>
                     <DataGrid Grid.Row="3" x:Name="TestsGrid"><DataGrid.Columns><DataGridTextColumn Header="مرحله" Binding="{Binding Name}" Width="220"/><DataGridTextColumn Header="نتیجه" Binding="{Binding Status}" Width="110"/><DataGridTextColumn Header="جزئیات" Binding="{Binding Detail}" Width="*"/><DataGridTextColumn Header="زمان" Binding="{Binding Duration}" Width="90"/></DataGrid.Columns></DataGrid>
                 </Grid>
 
