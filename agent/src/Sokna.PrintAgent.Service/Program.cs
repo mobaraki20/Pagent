@@ -21,4 +21,5 @@ builder.Services.AddSingleton<WorkerSupervisor>();
 // start as a healthy-but-unconfigured Windows Service so the Control App can configure it afterwards.
 builder.Services.AddHostedService<PrintAgentService>();
 builder.Services.AddHostedService<LocalBridgeService>();
+builder.Services.AddHostedService<WorkerEvidenceJanitor>();
 await builder.Build().RunAsync();
