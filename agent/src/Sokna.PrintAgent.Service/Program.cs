@@ -14,6 +14,9 @@ builder.Services.AddSingleton(sp=>new AgentLog(paths.LogsPath));
 builder.Services.AddSingleton<PrintWakeSignal>();
 builder.Services.AddSingleton<ReportDeliveryPolicy>();
 builder.Services.AddSingleton<ReportDispatcher>();
+builder.Services.AddSingleton<DurableMutationRequestStore>();
+builder.Services.AddSingleton<IWorkerProcessFactory,SystemWorkerProcessFactory>();
+builder.Services.AddSingleton<WorkerSupervisor>();
 // Configuration/token are intentionally NOT loaded during DI construction. A fresh installation must
 // start as a healthy-but-unconfigured Windows Service so the Control App can configure it afterwards.
 builder.Services.AddHostedService<PrintAgentService>();
