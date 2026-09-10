@@ -108,8 +108,10 @@ internal static class ReceiptPdfWriter
         if(copies is <1 or >5)throw new InvalidDataException("PDF copies خارج از بازه مجاز است.");
         if(dpi<=0)throw new InvalidDataException("PDF DPI نامعتبر است.");
 
+        var expectedPixelWidth=(int)Math.Round(printableWidthMm/25.4d*dpi);
+        if(bitmap.Width!=expectedPixelWidth)throw new InvalidDataException("PDF raster width با RenderProfile مجازی 203 DPI تطابق ندارد.");
         var pageWidthPoints=paperWidthMm/25.4d*72d;
-        var imageWidthPoints=printableWidthMm/25.4d*72d;
+        var imageWidthPoints=bitmap.Width/(double)dpi*72d;
         var pageHeightPoints=bitmap.Height/(double)dpi*72d;
         if(pageWidthPoints<=0||imageWidthPoints<=0||imageWidthPoints>pageWidthPoints||pageHeightPoints<=0||pageHeightPoints>14000)
             throw new InvalidDataException("ابعاد صفحه PDF خارج از محدوده امن است.");
