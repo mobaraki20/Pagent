@@ -24,8 +24,9 @@ $serviceProject=Join-Path $root 'tests\Sokna.PrintAgent.ServiceAcceptance\Sokna.
 $contractProject=Join-Path $root 'tests\Sokna.PrintAgent.ContractAcceptance\Sokna.PrintAgent.ContractAcceptance.csproj'
 $windowsFaultProject=Join-Path $root 'tests\Sokna.PrintAgent.WindowsFaultAcceptance\Sokna.PrintAgent.WindowsFaultAcceptance.csproj'
 $cleanupProject=Join-Path $root 'tests\Sokna.PrintAgent.CleanupAcceptance\Sokna.PrintAgent.CleanupAcceptance.csproj'
+$bridgeProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeAcceptance\Sokna.PrintAgent.BridgeAcceptance.csproj'
 $realApiProject=Join-Path $root 'tests\Sokna.PrintAgent.RealApiIntegration\Sokna.PrintAgent.RealApiIntegration.csproj'
-foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject,$realApiProject)){
+foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject,$bridgeProject,$realApiProject)){
   if(!(Test-Path $required -PathType Leaf)){throw "Acceptance project missing: $required"}
 }
 $sourceSha=(& git -C $root rev-parse HEAD).Trim()
@@ -37,8 +38,11 @@ $serviceCases=@('A12','A13','A14','A15','A16')
 $contractCases=@('A18')
 $windowsFaultCases=@('A25','A26','A27')
 $cleanupCases=@('A29')
+$bridgeCases=@('A32','A33','A34','A36')
 $integrationCases=@('A49')
-$implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A24','A25','A26','A27','A28','A29','A44','A46')
+# A32 has a partial harness but is intentionally NOT in implementedAutomated until heartbeat
+# consumes BridgeRuntimeState rather than configuration intent.
+$implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A24','A25','A26','A27','A28','A29','A33','A34','A36','A44','A46')
 $allAutomated=1..47 | ForEach-Object {'A{0:D2}' -f $_}
 $allAutomated+=@('A52')
 
@@ -60,9 +64,14 @@ function Write-ManualUatResult([string]$id){
 
 function Invoke-Case([string]$id){
   if($manualUat -contains $id){return (Write-ManualUatResult $id)}
+  if($id -eq 'A32' -and -not ($implementedAutomated -contains 'A32')){
+    $path=Join-Path $results 'A32.result.json'
+    [ordered]@{case_id='A32';status='NOT_RUN';source_sha=$sourceSha;run_started_at=(Get-Date).ToUniversalTime().ToString('o');run_finished_at=(Get-Date).ToUniversalTime().ToString('o');exit_code=3;evidence=@();blocker='Bridge reload harness exists, but A32 remains incomplete until heartbeat reports the actual active BridgeRuntimeState generation.'} | ConvertTo-Json -Depth 5 | Set-Content $path -Encoding utf8NoBOM
+    return 3
+  }
   $caseDir=Join-Path $results $id
   New-Item $caseDir -ItemType Directory -Force | Out-Null
-  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}elseif($integrationCases -contains $id){$realApiProject}else{$project}
+  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}elseif($bridgeCases -contains $id){$bridgeProject}elseif($integrationCases -contains $id){$realApiProject}else{$project}
   & dotnet run --project $selectedProject -c $Configuration -- --case $id --results $caseDir
   return $LASTEXITCODE
 }
