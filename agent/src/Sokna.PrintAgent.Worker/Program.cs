@@ -9,16 +9,68 @@ if(args.Length==2&&args[0]=="--preview")
     try
     {
         var preview=JsonSerializer.Deserialize<PreviewInput>(await File.ReadAllTextAsync(args[1]),AgentOptions.JsonOptions())??throw new InvalidDataException("Preview input معتبر نیست.");
-        if(preview.PayloadJson.Length>262144)throw new InvalidDataException("Preview payload بیش از حد مجاز است.");
-        if(preview.PaperWidthMm is not (58 or 80)||preview.PrintableWidthMm<20||preview.PrintableWidthMm>preview.PaperWidthMm)throw new InvalidDataException("Preview geometry معتبر نیست.");
-        if(preview.DpiX is <100 or >600||preview.DpiY is <100 or >600)throw new InvalidDataException("Preview DPI معتبر نیست.");
+        var requestedLimits=new PreviewSafetyLimits(
+            preview.MaxPayloadBytes,
+            preview.MaxTextCharacters,
+            preview.MaxItems,
+            preview.MaxHeightPixels,
+            preview.MaxPixelArea,
+            preview.MaxOutputBytes).ClampToAbsolute();
+        var metrics=PreviewSafety.Validate(
+            preview.PayloadJson,
+            preview.PaperWidthMm,
+            preview.PrintableWidthMm,
+            preview.DpiX,
+            preview.DpiY,
+            requestedLimits);
+
+        // ReceiptRenderer currently stages against a bounded logical-height canvas. Prove that
+        // allocation fits the preview raster budget before calling Render; this prevents a small
+        // JSON request with extreme DPI from allocating an unexpectedly large bitmap.
+        var rendererStagingHeight=Math.Clamp((int)Math.Round(16000*preview.DpiY/203d),16000,48000);
+        if((long)metrics.WidthPixels*rendererStagingHeight>requestedLimits.MaxPixelArea)
+            throw new InvalidDataException("Preview raster allocation از سقف pixel area مجاز عبور می‌کند.");
+
         using var bitmap=ReceiptRenderer.Render(preview.PayloadJson,preview.PrintableWidthMm,preview.PaperWidthMm,preview.DpiX,preview.DpiY);
-        var directory=Path.GetDirectoryName(preview.OutputPath)??throw new InvalidDataException("Preview output path معتبر نیست.");Directory.CreateDirectory(directory);
-        var tmp=preview.OutputPath+"."+Guid.NewGuid().ToString("N")+".tmp";bitmap.Save(tmp,ImageFormat.Png);File.Move(tmp,preview.OutputPath,true);
-        var png=await File.ReadAllBytesAsync(preview.OutputPath);var meta=new PreviewResult(true,bitmap.Width,bitmap.Height,preview.DpiX,preview.DpiY,Convert.ToHexString(SHA256.HashData(png)).ToLowerInvariant(),AgentVersionInfo.Current,ReceiptRenderer.ActiveFontFamily,ReceiptRenderer.UsesBundledFont);
-        Console.Out.Write(JsonSerializer.Serialize(meta,AgentOptions.JsonOptions()));return 0;
+        if(bitmap.Height>requestedLimits.MaxHeightPixels||(long)bitmap.Width*bitmap.Height>requestedLimits.MaxPixelArea)
+            throw new InvalidDataException("Preview output geometry از سقف مجاز عبور کرده است.");
+
+        var directory=Path.GetDirectoryName(preview.OutputPath)??throw new InvalidDataException("Preview output path معتبر نیست.");
+        Directory.CreateDirectory(directory);
+        var tmp=preview.OutputPath+"."+Guid.NewGuid().ToString("N")+".tmp";
+        try
+        {
+            bitmap.Save(tmp,ImageFormat.Png);
+            var tmpInfo=new FileInfo(tmp);
+            if(tmpInfo.Length<8||tmpInfo.Length>requestedLimits.MaxOutputBytes)
+                throw new InvalidDataException("Preview PNG از سقف اندازه خروجی مجاز عبور کرده است.");
+            File.Move(tmp,preview.OutputPath,true);
+        }
+        finally
+        {
+            try{if(File.Exists(tmp))File.Delete(tmp);}catch{}
+        }
+
+        var png=await File.ReadAllBytesAsync(preview.OutputPath);
+        if(png.Length>requestedLimits.MaxOutputBytes)throw new InvalidDataException("Preview PNG از سقف اندازه خروجی مجاز عبور کرده است.");
+        var meta=new PreviewResult(
+            true,
+            bitmap.Width,
+            bitmap.Height,
+            preview.DpiX,
+            preview.DpiY,
+            Convert.ToHexString(SHA256.HashData(png)).ToLowerInvariant(),
+            AgentVersionInfo.Current,
+            ReceiptRenderer.ActiveFontFamily,
+            ReceiptRenderer.UsesBundledFont);
+        Console.Out.Write(JsonSerializer.Serialize(meta,AgentOptions.JsonOptions()));
+        return 0;
     }
-    catch(Exception e){Console.Error.WriteLine(e.GetType().Name+": "+Safe(e.Message));return 71;}
+    catch(Exception e)
+    {
+        Console.Error.WriteLine(e.GetType().Name+": "+Safe(e.Message));
+        return 71;
+    }
 }
 
 if(args.Length!=1){Console.Error.WriteLine("Usage: Sokna.PrintAgent.Worker <input.json> | --preview <preview.json>");return 64;}
@@ -49,5 +101,17 @@ catch(Exception e)
 }
 static string Safe(string s)=>s.Length>400?s[..400]:s;
 
-sealed record PreviewInput(string PayloadJson,double PaperWidthMm,double PrintableWidthMm,int DpiX,int DpiY,string OutputPath);
+sealed record PreviewInput(
+    string PayloadJson,
+    double PaperWidthMm,
+    double PrintableWidthMm,
+    int DpiX,
+    int DpiY,
+    string OutputPath,
+    int MaxPayloadBytes=240000,
+    int MaxTextCharacters=100000,
+    int MaxItems=500,
+    int MaxHeightPixels=24000,
+    long MaxPixelArea=24000000,
+    int MaxOutputBytes=2000000);
 sealed record PreviewResult(bool Success,int Width,int Height,int DpiX,int DpiY,string PngSha256,string RendererVersion,string FontFamily,bool BundledFont);
