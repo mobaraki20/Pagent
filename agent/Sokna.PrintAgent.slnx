@@ -19,4 +19,5 @@
   <Project Path="tests/Sokna.PrintAgent.BridgeAcceptance/Sokna.PrintAgent.BridgeAcceptance.csproj" />
   <Project Path="tests/Sokna.PrintAgent.BridgeSecurityAcceptance/Sokna.PrintAgent.BridgeSecurityAcceptance.csproj" />
   <Project Path="tests/Sokna.PrintAgent.BridgeLoadAcceptance/Sokna.PrintAgent.BridgeLoadAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.PreviewAcceptance/Sokna.PrintAgent.PreviewAcceptance.csproj" />
 </Solution>
