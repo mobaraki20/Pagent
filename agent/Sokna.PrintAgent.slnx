@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="src/Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj" />
+  <Project Path="src/Sokna.PrintAgent.Runtime/Sokna.PrintAgent.Runtime.csproj" />
   <Project Path="src/Sokna.PrintAgent.Service/Sokna.PrintAgent.Service.csproj" />
   <Project Path="src/Sokna.PrintAgent.Worker/Sokna.PrintAgent.Worker.csproj" />
   <Project Path="src/Sokna.PrintAgent.Control/Sokna.PrintAgent.Control.csproj" />
