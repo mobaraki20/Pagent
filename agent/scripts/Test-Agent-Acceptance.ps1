@@ -31,8 +31,8 @@ if($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sourceSha)){throw 'Unab
 $manualUat=@('A48','A50','A51')
 $transportCases=@('A04','A06','A17')
 $serviceCases=@('A12','A13','A14','A15','A16')
-$contractCases=@()
-$implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A24','A28','A44','A46')
+$contractCases=@('A18')
+$implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A24','A28','A44','A46')
 $allAutomated=1..47 | ForEach-Object {'A{0:D2}' -f $_}
 $allAutomated+=@('A52')
 
