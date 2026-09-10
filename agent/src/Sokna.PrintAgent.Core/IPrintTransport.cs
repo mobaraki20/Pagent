@@ -1,4 +1,5 @@
 namespace Sokna.PrintAgent.Core;
+
 public interface IPrintTransport
 {
     Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct);
@@ -6,7 +7,7 @@ public interface IPrintTransport
     Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct);
     Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct);
     Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct);
-    Task<ApiResult> ReportAsync(LocalJob job,string requestId,string status,string? spoolerJobId,bool retryable,string? errorCode,string? errorMessage,CancellationToken ct);
+    Task<ApiResult> ReportAsync(LocalJob job,ReportRequestEnvelope request,CancellationToken ct);
     Task<ApiResult> HeartbeatAsync(HeartbeatPayload payload,CancellationToken ct);
     Task<ProbeResponse> ProbeAsync(CancellationToken ct);
 }
@@ -44,6 +45,19 @@ public sealed record HeartbeatPayload(
     int BridgeProtocolVersion=0,
     int BridgePort=0,
     string? BridgePairingId=null,
-    string? BridgeOrigin=null);
-public sealed record ProbeResponse(bool Success,int ProtocolVersion,string MinimumAgentVersion,string RecommendedAgentVersion,List<DestinationConfig> Destinations);
+    string? BridgeOrigin=null,
+    int PendingReportCount=0,
+    int AuthBlockedReportCount=0,
+    int ReconciliationReportCount=0);
+
+public sealed record ProbeResponse(
+    bool Success,
+    int ProtocolVersion,
+    string MinimumAgentVersion,
+    string RecommendedAgentVersion,
+    List<DestinationConfig> Destinations,
+    string[]? Capabilities=null,
+    string? ServerInstanceId=null,
+    string? ServerTime=null);
+
 public sealed record AttemptStatusResult(bool Success,long AttemptId,long JobId,string AttemptState,string JobState,bool ReceiptMatches,string NextAction,bool Terminal,bool RequiresHumanResolution,string? LeaseExpiresAt,string ServerTime);
