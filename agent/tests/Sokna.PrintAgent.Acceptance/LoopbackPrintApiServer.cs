@@ -12,6 +12,7 @@ internal enum LoopbackResponseKind
     Success,
     Unauthorized,
     ProbeSuccess,
+    ProbeLegacyNoAttemptStatus,
     BusinessFailure,
     MalformedJson,
     InvalidTypes,
@@ -23,6 +24,7 @@ internal enum LoopbackResponseKind
     AttemptStatusBadAction,
     AttemptStatusUnknownState,
     AttemptStatusOffsetless,
+    AttemptStatusClaimed,
     AttemptStatusExpired
 }
 
@@ -113,6 +115,7 @@ internal sealed class LoopbackPrintApiServer : IAsyncDisposable
         {
             LoopbackResponseKind.Unauthorized=>"{\"success\":false,\"code\":\"invalid_token\",\"message\":\"invalid token\"}",
             LoopbackResponseKind.ProbeSuccess=>"{\"success\":true,\"protocol_version\":4,\"minimum_agent_version\":\"6.0.0\",\"recommended_agent_version\":\"6.2.0\",\"destinations\":[],\"capabilities\":[\"attempt_status\"],\"server_instance_id\":\"acceptance-server\",\"server_time\":\"2026-09-10T08:00:00Z\"}",
+            LoopbackResponseKind.ProbeLegacyNoAttemptStatus=>"{\"success\":true,\"protocol_version\":4,\"minimum_agent_version\":\"6.0.0\",\"recommended_agent_version\":\"6.2.0\",\"destinations\":[],\"capabilities\":[],\"server_instance_id\":\"acceptance-legacy-server\",\"server_time\":\"2026-09-10T08:00:00Z\"}",
             LoopbackResponseKind.BusinessFailure=>"{\"success\":false,\"code\":\"destination_forbidden\",\"message\":\"business rejected\"}",
             LoopbackResponseKind.MalformedJson=>"{not-json",
             LoopbackResponseKind.InvalidTypes=>"{\"success\":\"yes\",\"attempt_id\":\"not-a-number\",\"local_receipt_id\":17}",
@@ -124,6 +127,7 @@ internal sealed class LoopbackPrintApiServer : IAsyncDisposable
             LoopbackResponseKind.AttemptStatusBadAction=>BuildAttemptStatus(body,nextAction:"delete"),
             LoopbackResponseKind.AttemptStatusUnknownState=>BuildAttemptStatus(body,state:"mystery",nextAction:"continue"),
             LoopbackResponseKind.AttemptStatusOffsetless=>BuildAttemptStatus(body,serverTime:"2026-09-10T08:00:00"),
+            LoopbackResponseKind.AttemptStatusClaimed=>BuildAttemptStatus(body),
             LoopbackResponseKind.AttemptStatusExpired=>BuildAttemptStatus(body,state:"expired",nextAction:"stop",terminal:true,leaseExpiresAt:"2026-09-10T07:55:00Z"),
             _=>BuildSuccess(body)
         };
