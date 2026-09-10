@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Sokna.PrintAgent.Core;
 
@@ -142,13 +143,16 @@ public sealed class ReportDispatcher
 
     private static void ValidateResponse(ApiResult result,LocalJob job,ReportRequestEnvelope request)
     {
-        if(!result.Success)throw new InvalidDataException("Report response success=false بدون typed exception دریافت شد.");
-        if(result.RequiresHumanResolution)throw new InvalidDataException("Report response نیازمند human resolution است و ACK خودکار مجاز نیست.");
-        if(result.AttemptId is { } attempt&&attempt!=job.AttemptId)throw new InvalidDataException("Report response attempt_id mismatch.");
-        if(result.JobId is { } serverJob&&serverJob!=job.ServerJobId)throw new InvalidDataException("Report response job_id mismatch.");
-        if(!string.IsNullOrWhiteSpace(result.LocalReceiptId)&&!string.Equals(result.LocalReceiptId,job.LocalReceiptId,StringComparison.Ordinal))throw new InvalidDataException("Report response local_receipt_id mismatch.");
-        if(!string.IsNullOrWhiteSpace(result.Status)&&!string.Equals(result.Status,request.Status,StringComparison.OrdinalIgnoreCase))throw new InvalidDataException("Report response status با Outcome ارسالی تطابق ندارد.");
+        if(!result.Success)throw SemanticResponseError("report_success_false","Report response success=false بدون typed exception دریافت شد.",result);
+        if(result.RequiresHumanResolution)throw SemanticResponseError("report_requires_human_resolution","Report response نیازمند human resolution است و ACK خودکار مجاز نیست.",result);
+        if(result.AttemptId is { } attempt&&attempt!=job.AttemptId)throw SemanticResponseError("report_attempt_identity_mismatch","Report response attempt_id mismatch.",result);
+        if(result.JobId is { } serverJob&&serverJob!=job.ServerJobId)throw SemanticResponseError("report_job_identity_mismatch","Report response job_id mismatch.",result);
+        if(!string.IsNullOrWhiteSpace(result.LocalReceiptId)&&!string.Equals(result.LocalReceiptId,job.LocalReceiptId,StringComparison.Ordinal))throw SemanticResponseError("report_receipt_identity_mismatch","Report response local_receipt_id mismatch.",result);
+        if(!string.IsNullOrWhiteSpace(result.Status)&&!string.Equals(result.Status,request.Status,StringComparison.OrdinalIgnoreCase))throw SemanticResponseError("report_status_mismatch","Report response status با Outcome ارسالی تطابق ندارد.",result);
     }
+
+    private static PrintApiException SemanticResponseError(string code,string message,ApiResult result)
+        => new(HttpStatusCode.OK,message,code,result.CurrentState,result.Status is "cancelled" or "resolved",result.RequiresHumanResolution,result.NextAction);
 
     private static bool ScopeCompatible(string rowScope,string activeScope)
     {
