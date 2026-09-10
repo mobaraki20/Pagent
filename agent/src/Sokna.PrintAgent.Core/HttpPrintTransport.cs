@@ -91,11 +91,22 @@ public sealed class HttpPrintTransport : IPrintTransport
 
     public Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct)=>PostAsync<ClaimResponse>("claim",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,limit=request.Limit,ready_destination_keys=request.ReadyDestinationKeys},ct);
 
+    // Compatibility wrappers preserve the pre-remediation interface for existing harnesses/adapters.
+    // Production service code persists and calls the envelope overloads below.
+    public Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct)
+        =>AcceptAsync(item,new AcceptRequestEnvelope(requestId,AgentVersionInfo.Current,4,item.Attempt.Id,localReceiptId,item.Job.ContentSha256),ct);
+
     public Task<ApiResult> AcceptAsync(ClaimItem item,AcceptRequestEnvelope request,CancellationToken ct)=>PostAsync<ApiResult>("accept",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,attempt_id=request.AttemptId,lease_token=item.Attempt.LeaseToken,local_receipt_id=request.LocalReceiptId,content_sha256=request.ContentSha256},ct);
+
+    public Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct)
+        =>RenewAsync(item,new RenewRequestEnvelope(requestId,AgentVersionInfo.Current,4,item.Attempt.Id),ct);
 
     public Task<ApiResult> RenewAsync(ClaimItem item,RenewRequestEnvelope request,CancellationToken ct)=>PostAsync<ApiResult>("renew",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,attempt_id=request.AttemptId,lease_token=item.Attempt.LeaseToken},ct);
 
     public Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct)=>PostAsync<AttemptStatusResult>("attempt_status",new{agent_version=AgentVersionInfo.Current,protocol_version=4,attempt_id=job.AttemptId,lease_token=UnprotectLease(job.ProtectedLeaseToken),local_receipt_id=job.LocalReceiptId},ct);
+
+    public Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct)
+        =>StartAsync(job,new StartRequestEnvelope(requestId,AgentVersionInfo.Current,4,job.AttemptId),ct);
 
     public Task<ApiResult> StartAsync(LocalJob job,StartRequestEnvelope request,CancellationToken ct)=>PostAsync<ApiResult>("start",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,attempt_id=request.AttemptId,lease_token=UnprotectLease(job.ProtectedLeaseToken)},ct);
 
