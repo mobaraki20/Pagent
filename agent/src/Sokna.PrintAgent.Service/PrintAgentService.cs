@@ -22,6 +22,7 @@ public sealed class PrintAgentService : BackgroundService
     private readonly PrintWakeSignal _wake;
     private readonly ReportDispatcher _reports;
     private readonly DurableMutationRequestStore _mutationRequests;
+    private readonly BridgeRuntimeState _bridgeRuntime;
     private readonly WorkerSupervisor _workerSupervisor;
     private readonly DateTimeOffset _started=DateTimeOffset.UtcNow;
     private readonly Mutex _mutex=new(false,@"Global\SoknaPrintAgentV6Service");
@@ -55,6 +56,7 @@ public sealed class PrintAgentService : BackgroundService
         PrintWakeSignal wake,
         ReportDispatcher reports,
         DurableMutationRequestStore mutationRequests,
+        BridgeRuntimeState bridgeRuntime,
         WorkerSupervisor workerSupervisor)
     {
         _paths=paths;
@@ -65,6 +67,7 @@ public sealed class PrintAgentService : BackgroundService
         _wake=wake;
         _reports=reports;
         _mutationRequests=mutationRequests;
+        _bridgeRuntime=bridgeRuntime;
         _workerSupervisor=workerSupervisor;
     }
 
@@ -653,8 +656,7 @@ public sealed class PrintAgentService : BackgroundService
         if(_api is null||DateTimeOffset.UtcNow<_nextHeartbeat)return;
         var queues=SafeQueues();
         _printerDiscoveryAt=DateTimeOffset.UtcNow;
-        var pairing=_options.LocalBridgeEnabled?LocalBridgeService.GetOrCreatePairingId(_paths):null;
-        var origin=ResolveBridgeOrigin();
+        var bridge=BridgeHeartbeatProjection.From(_bridgeRuntime.Snapshot);
         var reportCounts=await _store.GetReportStateCountsAsync(ct);
         var payload=new HeartbeatPayload(
             CryptoUtil.NewRequestId(),Environment.MachineName,AgentVersion,Environment.OSVersion.VersionString,
@@ -674,10 +676,10 @@ public sealed class PrintAgentService : BackgroundService
             _consecutiveApiFailures,
             _lastApiLatencyMs,
             _printerDiscoveryAt?.ToString("O"),
-            _options.LocalBridgeEnabled?1:0,
-            _options.LocalBridgeEnabled?_options.LocalBridgePort:0,
-            pairing,
-            origin,
+            bridge.ProtocolVersion,
+            bridge.Port,
+            bridge.PairingId,
+            bridge.Origin,
             reportCounts.Pending+reportCounts.Backoff,
             reportCounts.AuthBlocked,
             reportCounts.ReconciliationRequired);
@@ -690,13 +692,6 @@ public sealed class PrintAgentService : BackgroundService
         {
             _nextHeartbeat=DateTimeOffset.UtcNow.AddSeconds(Math.Max(10,_options.HeartbeatSeconds));
         }
-    }
-
-    private string? ResolveBridgeOrigin()
-    {
-        var raw=string.IsNullOrWhiteSpace(_options.LocalBridgeAllowedOrigin)?_options.ServerBaseUrl:_options.LocalBridgeAllowedOrigin;
-        if(!Uri.TryCreate(raw,UriKind.Absolute,out var uri))return null;
-        return new UriBuilder(uri.Scheme,uri.Host,uri.IsDefaultPort?-1:uri.Port).Uri.GetLeftPart(UriPartial.Authority);
     }
 
     private async Task<T> RunApiAsync<T>(string action,Func<Task<T>> call)
