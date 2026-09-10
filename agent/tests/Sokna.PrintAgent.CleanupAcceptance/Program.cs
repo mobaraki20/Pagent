@@ -128,10 +128,11 @@ async Task ShutdownDuringReportAsync()
     var service=env.CreateService(transport,noStart,workerTimeoutSeconds:20);
     using var stop=new CancellationTokenSource();
 
-    var dispatch=InvokePrivateAsync(service,"DispatchReportsAsync",stop.Token);
+    InvokePrivateVoid(service,"StartSideIo",stop.Token);
     await transport.ReportStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
     stop.Cancel();
-    try{await dispatch;}catch(OperationCanceledException){}
+    await transport.CancellationObserved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    InvokePrivateVoid(service,"ObserveSideIoResults");
 
     var outcome=await env.Store.GetOutcomeAsync(job.AttemptId);
     var after=await env.Store.GetOutboxForAttemptAsync(job.AttemptId)??throw new InvalidOperationException("A29 report outbox disappeared.");
@@ -231,6 +232,13 @@ static async Task InvokePrivateAsync(PrintAgentService service,string methodName
         ??throw new MissingMethodException(typeof(PrintAgentService).FullName,methodName);
     var task=method.Invoke(service,[ct]) as Task??throw new InvalidOperationException($"{methodName} did not return Task.");
     await task;
+}
+
+static void InvokePrivateVoid(PrintAgentService service,string methodName,params object?[] args)
+{
+    var method=typeof(PrintAgentService).GetMethod(methodName,BindingFlags.Instance|BindingFlags.NonPublic)
+        ??throw new MissingMethodException(typeof(PrintAgentService).FullName,methodName);
+    _=method.Invoke(service,args);
 }
 
 async Task WriteResult(string status,int exitCode,string? error)
@@ -349,11 +357,14 @@ sealed class TestEnvironment:IDisposable
     {
         store??=Store;
         var dispatcher=new ReportDispatcher(store,new ReportDeliveryPolicy(jitter:()=>0.5),Log);
-        var service=new PrintAgentService(Paths,store,new ReadyPrinterHealthProvider(),NullLogger<PrintAgentService>.Instance,Log,new PrintWakeSignal(),dispatcher,new DurableMutationRequestStore(store),new BridgeRuntimeState(),new WorkerSupervisor(factory));
+        var service=new PrintAgentService(Paths,store,new ReadyPrinterHealthReader(),NullLogger<PrintAgentService>.Instance,Log,new PrintWakeSignal(),dispatcher,new DurableMutationRequestStore(store),new BridgeRuntimeState(),new WorkerSupervisor(factory));
         SetField(service,"_api",transport);
         SetField(service,"_attemptStatusSupported",true);
         SetField(service,"_serverScope","server-a");
         SetField(service,"_boundServerScope","server-a");
+        SetField(service,"_configurationGeneration",1L);
+        SetField(service,"_nextHeartbeat",DateTimeOffset.MaxValue);
+        SetField(service,"_nextDestinationRefresh",DateTimeOffset.MaxValue);
         SetField(service,"_options",new AgentOptions{WorkerTimeoutSeconds=workerTimeoutSeconds,WorkerExitProofTimeoutMilliseconds=1500,WorkerShutdownExitProofTimeoutMilliseconds=1500});
         return service;
     }
@@ -371,9 +382,10 @@ sealed class TestEnvironment:IDisposable
     public void Dispose(){try{Directory.Delete(_root,true);}catch{}}
 }
 
-sealed class ReadyPrinterHealthProvider:IPrinterHealthProvider
+sealed class ReadyPrinterHealthReader:IPrinterHealthReader
 {
-    public IReadOnlyList<PrinterQueueHealth> GetQueues()=>[new("Test Queue",false,false,false,false,0,"Acceptance Driver","LPT1:")];
+    private static readonly IReadOnlyList<PrinterQueueHealth> Queues=[new("Test Queue",false,false,false,false,0,"Acceptance Driver","LPT1:")];
+    public PrinterHealthSnapshot Read(TimeSpan freshnessWindow)=>new(Queues,DateTimeOffset.UtcNow,null,null,0,true,1);
 }
 
 sealed class CountingNoStartFactory:IWorkerProcessFactory
@@ -385,16 +397,28 @@ sealed class CountingNoStartFactory:IWorkerProcessFactory
 sealed class BlockingReportTransport:IPrintTransport
 {
     public TaskCompletionSource<bool> ReportStarted{get;}=new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource<bool> CancellationObserved{get;}=new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     public Task<ApiResult> ReportAsync(LocalJob job,ReportRequestEnvelope request,CancellationToken ct)
     {
         ReportStarted.TrySetResult(true);
         return WaitForCancellationAsync(ct);
     }
-    private static async Task<ApiResult> WaitForCancellationAsync(CancellationToken ct)
+
+    private async Task<ApiResult> WaitForCancellationAsync(CancellationToken ct)
     {
-        await Task.Delay(Timeout.InfiniteTimeSpan,ct);
-        throw new UnreachableException();
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan,ct);
+            throw new UnreachableException();
+        }
+        catch(OperationCanceledException)
+        {
+            CancellationObserved.TrySetResult(true);
+            throw;
+        }
     }
+
     public Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct)=>throw new NotSupportedException();
     public Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct)=>throw new NotSupportedException();
     public Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct)=>throw new NotSupportedException();
