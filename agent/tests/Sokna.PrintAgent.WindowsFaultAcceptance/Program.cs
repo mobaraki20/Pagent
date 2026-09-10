@@ -304,7 +304,7 @@ sealed class WindowsServiceTestEnvironment:IDisposable
         store??=Store;
         var dispatcher=new ReportDispatcher(store,new ReportDeliveryPolicy(jitter:()=>0.5),Log);
         var service=new PrintAgentService(
-            Paths,store,new ReadyPrinterHealthProvider(),NullLogger<PrintAgentService>.Instance,Log,new PrintWakeSignal(),dispatcher,new DurableMutationRequestStore(store),new BridgeRuntimeState(),new WorkerSupervisor(factory));
+            Paths,store,new ReadyPrinterHealthReader(),NullLogger<PrintAgentService>.Instance,Log,new PrintWakeSignal(),dispatcher,new DurableMutationRequestStore(store),new BridgeRuntimeState(),new WorkerSupervisor(factory));
         SetField(service,"_api",transport);
         SetField(service,"_attemptStatusSupported",true);
         SetField(service,"_serverScope","server-a");
@@ -328,9 +328,10 @@ sealed class WindowsServiceTestEnvironment:IDisposable
     public void Dispose(){try{Directory.Delete(_root,true);}catch{}}
 }
 
-sealed class ReadyPrinterHealthProvider:IPrinterHealthProvider
+sealed class ReadyPrinterHealthReader:IPrinterHealthReader
 {
-    public IReadOnlyList<PrinterQueueHealth> GetQueues()=>[new("Test Queue",false,false,false,false,0,"Acceptance Driver","LPT1:")];
+    private static readonly IReadOnlyList<PrinterQueueHealth> Queues=[new("Test Queue",false,false,false,false,0,"Acceptance Driver","LPT1:")];
+    public PrinterHealthSnapshot Read(TimeSpan freshnessWindow)=>new(Queues,DateTimeOffset.UtcNow,null,null,0,true,1);
 }
 
 sealed class CountingNoStartFactory:IWorkerProcessFactory
