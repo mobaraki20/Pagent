@@ -14,9 +14,15 @@ public sealed class PrintAgentService : BackgroundService
     private const string ServerScopeBindingMetaKey="server_scope_binding_v1";
     private const string LegacyServerScope="legacy-unbound";
 
+    private static readonly TimeSpan ReportIoBudget=TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan HeartbeatIoBudget=TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan DestinationRefreshIoBudget=TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan EmptyReportInterval=TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan ActiveReportInterval=TimeSpan.FromMilliseconds(500);
+
     private readonly AgentPaths _paths;
     private readonly LocalQueueStore _store;
-    private readonly IPrinterHealthProvider _printers;
+    private readonly IPrinterHealthReader _printers;
     private readonly ILogger<PrintAgentService> _log;
     private readonly AgentLog _fileLog;
     private readonly PrintWakeSignal _wake;
@@ -26,6 +32,10 @@ public sealed class PrintAgentService : BackgroundService
     private readonly WorkerSupervisor _workerSupervisor;
     private readonly DateTimeOffset _started=DateTimeOffset.UtcNow;
     private readonly Mutex _mutex=new(false,@"Global\SoknaPrintAgentV6Service");
+    private readonly SemaphoreSlim _coordinatorGate=new(1,1);
+    private readonly SingleFlightWork<ReportDispatchSummary> _reportWork=new();
+    private readonly SingleFlightWork<ApiResult> _heartbeatWork=new();
+    private readonly SingleFlightWork<ProbeResponse> _destinationRefreshWork=new();
 
     private AgentOptions _options=new();
     private IPrintTransport? _api;
@@ -35,22 +45,26 @@ public sealed class PrintAgentService : BackgroundService
     private DateTimeOffset? _lastPoll;
     private DateTimeOffset? _lastSubmission;
     private DateTimeOffset? _lastApiSuccess;
-    private DateTimeOffset? _printerDiscoveryAt;
     private string? _lastSuccessfulAction;
     private string? _lastApiErrorCode;
     private int _consecutiveApiFailures;
     private long? _lastApiLatencyMs;
+    private DateTimeOffset _nextReportDispatch=DateTimeOffset.MinValue;
     private DateTimeOffset _nextHeartbeat=DateTimeOffset.MinValue;
     private DateTimeOffset _nextDestinationRefresh=DateTimeOffset.MinValue;
     private IReadOnlyList<DestinationConfig> _destinations=[];
     private string _serverScope=LegacyServerScope;
     private string _boundServerScope=LegacyServerScope;
     private bool _attemptStatusSupported;
+    private long _configurationGeneration;
+    private long _reportWorkGeneration;
+    private long _heartbeatWorkGeneration;
+    private long _destinationRefreshWorkGeneration;
 
     public PrintAgentService(
         AgentPaths paths,
         LocalQueueStore store,
-        IPrinterHealthProvider printers,
+        IPrinterHealthReader printers,
         ILogger<PrintAgentService> log,
         AgentLog fileLog,
         PrintWakeSignal wake,
@@ -90,28 +104,23 @@ public sealed class PrintAgentService : BackgroundService
                         continue;
                     }
 
-                    await AcceptAnyReservedAsync(stoppingToken);
-                    await DispatchReportsAsync(stoppingToken);
-                    await PromoteServerScopeWhenLegacyBacklogClearsAsync(stoppingToken);
+                    ObserveSideIoResults();
+                    StartSideIo(stoppingToken);
 
-                    var processed=await ProcessOneAsync(stoppingToken);
-                    var claimed=false;
-                    if(!processed)
-                    {
-                        claimed=await ClaimAsync(stoppingToken);
-                        if(claimed)
-                        {
-                            await AcceptAnyReservedAsync(stoppingToken);
-                            processed=await ProcessOneAsync(stoppingToken);
-                        }
-                    }
+                    var cycle=await RunCoordinatorWorkAsync(stoppingToken);
+                    await WriteLocalHealthAsync(
+                        _consecutiveApiFailures>0?"degraded":"running",
+                        true,
+                        true,
+                        null,
+                        stoppingToken);
 
-                    _lastPoll=DateTimeOffset.UtcNow;
-                    await MaybeHeartbeatAsync(stoppingToken);
-                    await MaybeRefreshDestinationsAsync(stoppingToken);
-                    await WriteLocalHealthAsync(_consecutiveApiFailures>0?"degraded":"running",true,true,null,stoppingToken);
+                    // A report may have been created by the just-completed Worker. Start its delivery
+                    // without placing any network wait in front of the next coordinator iteration.
+                    StartSideIo(stoppingToken);
+
                     await _wake.WaitOrDelayAsync(
-                        TimeSpan.FromMilliseconds(processed||claimed?_options.ActivePollMilliseconds:_options.IdlePollMilliseconds),
+                        TimeSpan.FromMilliseconds(cycle.Processed||cycle.Claimed?_options.ActivePollMilliseconds:_options.IdlePollMilliseconds),
                         stoppingToken);
                 }
                 catch(OperationCanceledException) when(stoppingToken.IsCancellationRequested)
@@ -120,13 +129,23 @@ public sealed class PrintAgentService : BackgroundService
                 }
                 catch(ApiOperationException e)
                 {
-                    await WriteLocalHealthAsync("degraded",_api is not null,File.Exists(_paths.SecretPath),Safe(e.InnerException?.Message??e.Message),stoppingToken);
+                    await WriteLocalHealthAsync(
+                        "degraded",
+                        _api is not null,
+                        File.Exists(_paths.SecretPath),
+                        Safe(e.InnerException?.Message??e.Message),
+                        stoppingToken);
                     await _wake.WaitOrDelayAsync(TimeSpan.FromSeconds(3),stoppingToken);
                 }
                 catch(Exception e)
                 {
                     LogSafe("loop",e);
-                    await WriteLocalHealthAsync("degraded",_api is not null,File.Exists(_paths.SecretPath),Safe(e.Message),stoppingToken);
+                    await WriteLocalHealthAsync(
+                        "degraded",
+                        _api is not null,
+                        File.Exists(_paths.SecretPath),
+                        Safe(e.Message),
+                        stoppingToken);
                     await _wake.WaitOrDelayAsync(TimeSpan.FromSeconds(3),stoppingToken);
                 }
             }
@@ -136,6 +155,42 @@ public sealed class PrintAgentService : BackgroundService
             try{await WriteLocalHealthAsync("stopped",_api is not null,File.Exists(_paths.SecretPath),null,CancellationToken.None);}catch{}
             _http?.Dispose();
             _mutex.ReleaseMutex();
+        }
+    }
+
+    /// <summary>
+    /// Single owner for Claim/Accept/Start/Worker decisions. Wake/Poll only cause another call to
+    /// this owner; they do not execute a second print path. The zero-time gate is also a defensive
+    /// boundary for tests/future callers that accidentally try to run two iterations concurrently.
+    /// </summary>
+    private async Task<CoordinatorCycleResult> RunCoordinatorWorkAsync(CancellationToken ct)
+    {
+        if(!await _coordinatorGate.WaitAsync(0,ct))return new(false,false,false);
+        try
+        {
+            await AcceptAnyReservedAsync(ct);
+            await PromoteServerScopeWhenLegacyBacklogClearsAsync(ct);
+
+            var processed=await ProcessOneAsync(ct);
+            var claimed=false;
+            if(!processed)
+            {
+                claimed=await ClaimAsync(ct);
+                if(claimed)
+                {
+                    // No idle/poll delay is permitted between a successful Claim and its
+                    // Accept/Process pass.
+                    await AcceptAnyReservedAsync(ct);
+                    processed=await ProcessOneAsync(ct);
+                }
+            }
+
+            _lastPoll=DateTimeOffset.UtcNow;
+            return new(true,processed,claimed);
+        }
+        finally
+        {
+            _coordinatorGate.Release();
         }
     }
 
@@ -163,7 +218,7 @@ public sealed class PrintAgentService : BackgroundService
             var token=SecretStore.Load(_paths.SecretPath);
             if(string.IsNullOrWhiteSpace(token))throw new InvalidDataException("Agent token خالی است.");
 
-            candidateHttp=new HttpClient();
+            candidateHttp=new HttpClient{Timeout=TimeSpan.FromSeconds(8)};
             var candidateApi=new HttpPrintTransport(candidateHttp,options.ServerBaseUrl,token);
             var probe=await RunApiAsync("probe_config",()=>candidateApi.ProbeAsync(ct));
             ValidateProbe(probe);
@@ -181,6 +236,8 @@ public sealed class PrintAgentService : BackgroundService
             _attemptStatusSupported=ServerScopeResolver.Supports(probe,"attempt_status");
             _configStampUtc=configStamp;
             _secretStampUtc=secretStamp;
+            _configurationGeneration++;
+            _nextReportDispatch=DateTimeOffset.MinValue;
             _nextDestinationRefresh=DateTimeOffset.UtcNow.AddSeconds(30);
             _nextHeartbeat=DateTimeOffset.MinValue;
 
@@ -231,24 +288,206 @@ public sealed class PrintAgentService : BackgroundService
         _fileLog.Info("server_scope_promoted",$"Legacy backlog پایان یافت؛ scope فعال={ScopeLabel(_serverScope)}.");
     }
 
-    private async Task MaybeRefreshDestinationsAsync(CancellationToken ct)
+    private void ObserveSideIoResults()
     {
-        if(_api is null||DateTimeOffset.UtcNow<_nextDestinationRefresh)return;
-        try
+        if(_reportWork.TryTakeCompleted(out var reportResult)&&reportResult is not null)
         {
-            var probe=await RunApiAsync("probe_refresh",()=>_api.ProbeAsync(ct));
-            ValidateProbe(probe);
-            var scope=ServerScopeResolver.Resolve(_options.ServerBaseUrl,probe.ServerInstanceId);
-            if(!string.Equals(scope,_boundServerScope,StringComparison.Ordinal))
-                throw new InvalidDataException("هویت server در probe_refresh تغییر کرده است؛ ادامه خودکار متوقف شد.");
-            _destinations=probe.Destinations;
-            _attemptStatusSupported=ServerScopeResolver.Supports(probe,"attempt_status");
-            _nextDestinationRefresh=DateTimeOffset.UtcNow.AddSeconds(30);
+            if(_reportWorkGeneration==_configurationGeneration)
+            {
+                if(reportResult.Error is not null)
+                {
+                    RecordSideFailure("report",reportResult.Error,reportResult.ElapsedMilliseconds);
+                    _nextReportDispatch=DateTimeOffset.UtcNow.AddSeconds(2);
+                }
+                else if(reportResult.Value is { } summary)
+                {
+                    _lastApiLatencyMs=reportResult.ElapsedMilliseconds;
+                    if(summary.LastErrorCode is not null)
+                    {
+                        _lastApiErrorCode=summary.LastErrorCode;
+                        _consecutiveApiFailures++;
+                    }
+                    else if(summary.Delivered>0)
+                    {
+                        RecordSideSuccess("report",reportResult.ElapsedMilliseconds);
+                        _fileLog.Info("report_ack",$"count={summary.Delivered}");
+                    }
+                    _nextReportDispatch=DateTimeOffset.UtcNow+(summary.Attempted==0?EmptyReportInterval:ActiveReportInterval);
+                }
+            }
         }
-        catch(ApiOperationException)
+
+        if(_heartbeatWork.TryTakeCompleted(out var heartbeatResult)&&heartbeatResult is not null)
         {
-            _nextDestinationRefresh=DateTimeOffset.UtcNow.AddSeconds(15);
+            if(_heartbeatWorkGeneration==_configurationGeneration)
+            {
+                if(heartbeatResult.Error is not null)
+                {
+                    RecordSideFailure("heartbeat",heartbeatResult.Error,heartbeatResult.ElapsedMilliseconds);
+                    _nextHeartbeat=DateTimeOffset.UtcNow.AddSeconds(Math.Max(10,_options.HeartbeatSeconds));
+                }
+                else
+                {
+                    RecordSideSuccess("heartbeat",heartbeatResult.ElapsedMilliseconds);
+                    _nextHeartbeat=DateTimeOffset.UtcNow.AddSeconds(_options.HeartbeatSeconds);
+                }
+            }
         }
+
+        if(_destinationRefreshWork.TryTakeCompleted(out var refreshResult)&&refreshResult is not null)
+        {
+            if(_destinationRefreshWorkGeneration==_configurationGeneration)
+            {
+                try
+                {
+                    if(refreshResult.Error is not null)throw refreshResult.Error;
+                    var probe=refreshResult.Value??throw new InvalidDataException("probe_refresh پاسخ خالی داد.");
+                    ValidateProbe(probe);
+                    var scope=ServerScopeResolver.Resolve(_options.ServerBaseUrl,probe.ServerInstanceId);
+                    if(!string.Equals(scope,_boundServerScope,StringComparison.Ordinal))
+                        throw new InvalidDataException("هویت server در probe_refresh تغییر کرده است؛ ادامه خودکار متوقف شد.");
+                    _destinations=probe.Destinations;
+                    _attemptStatusSupported=ServerScopeResolver.Supports(probe,"attempt_status");
+                    RecordSideSuccess("probe_refresh",refreshResult.ElapsedMilliseconds);
+                    _nextDestinationRefresh=DateTimeOffset.UtcNow.AddSeconds(30);
+                }
+                catch(Exception e)
+                {
+                    RecordSideFailure("probe_refresh",e,refreshResult.ElapsedMilliseconds);
+                    _nextDestinationRefresh=DateTimeOffset.UtcNow.AddSeconds(15);
+                }
+            }
+        }
+    }
+
+    private void StartSideIo(CancellationToken ct)
+    {
+        var api=_api;
+        if(api is null)return;
+        var generation=_configurationGeneration;
+        var now=DateTimeOffset.UtcNow;
+
+        if(now>=_nextReportDispatch)
+        {
+            var scope=_serverScope;
+            if(_reportWork.TryStart(
+                token=>RunWithBudgetAsync(t=>_reports.DispatchBatchAsync(api,scope,20,t),ReportIoBudget,token),
+                ct,
+                _wake.Pulse))
+            {
+                _reportWorkGeneration=generation;
+            }
+        }
+
+        if(now>=_nextHeartbeat)
+        {
+            var seed=CaptureHeartbeatSeed(generation);
+            if(_heartbeatWork.TryStart(
+                token=>RunWithBudgetAsync(t=>SendHeartbeatAsync(api,seed,t),HeartbeatIoBudget,token),
+                ct,
+                _wake.Pulse))
+            {
+                _heartbeatWorkGeneration=generation;
+            }
+        }
+
+        if(now>=_nextDestinationRefresh)
+        {
+            if(_destinationRefreshWork.TryStart(
+                token=>RunWithBudgetAsync(api.ProbeAsync,DestinationRefreshIoBudget,token),
+                ct,
+                _wake.Pulse))
+            {
+                _destinationRefreshWorkGeneration=generation;
+            }
+        }
+    }
+
+    private HeartbeatSeed CaptureHeartbeatSeed(long generation)
+    {
+        return new HeartbeatSeed(
+            generation,
+            (long)(DateTimeOffset.UtcNow-_started).TotalSeconds,
+            _lastPoll?.ToString("O"),
+            _lastSubmission?.ToString("O"),
+            _lastSuccessfulAction,
+            _lastApiSuccess?.ToString("O"),
+            _lastApiErrorCode,
+            _consecutiveApiFailures,
+            _lastApiLatencyMs,
+            ReadPrinterHealth(),
+            BridgeHeartbeatProjection.From(_bridgeRuntime.Snapshot),
+            DiskFreeMb(),
+            File.Exists(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","Worker","Sokna.PrintAgent.Worker.exe"))));
+    }
+
+    private async Task<ApiResult> SendHeartbeatAsync(IPrintTransport api,HeartbeatSeed seed,CancellationToken ct)
+    {
+        var reportCounts=await _store.GetReportStateCountsAsync(ct);
+        var payload=new HeartbeatPayload(
+            CryptoUtil.NewRequestId(),
+            Environment.MachineName,
+            AgentVersion,
+            Environment.OSVersion.VersionString,
+            seed.UptimeSeconds,
+            seed.LastPollSuccessAt,
+            await _store.CountOpenAsync(ct),
+            await _store.CountAmbiguousAsync(ct),
+            seed.LastSubmissionAt,
+            "ok",
+            seed.DiskFreeMb,
+            seed.WorkerOk,
+            true,
+            true,
+            seed.PrinterHealth.Queues.ToList(),
+            seed.LastSuccessfulAction,
+            seed.LastApiSuccessAt,
+            seed.LastApiErrorCode,
+            seed.ConsecutiveApiFailures,
+            seed.LastApiLatencyMs,
+            seed.PrinterHealth.LastSuccessAt?.ToString("O"),
+            seed.Bridge.ProtocolVersion,
+            seed.Bridge.Port,
+            seed.Bridge.PairingId,
+            seed.Bridge.Origin,
+            reportCounts.Pending+reportCounts.Backoff,
+            reportCounts.AuthBlocked,
+            reportCounts.ReconciliationRequired,
+            seed.PrinterHealth.LastFailureAt?.ToString("O"),
+            seed.PrinterHealth.LastError,
+            seed.PrinterHealth.AgeMilliseconds,
+            seed.PrinterHealth.IsFresh,
+            seed.PrinterHealth.Generation);
+        return await api.HeartbeatAsync(payload,ct);
+    }
+
+    private static async Task<T> RunWithBudgetAsync<T>(Func<CancellationToken,Task<T>> call,TimeSpan budget,CancellationToken serviceToken)
+    {
+        using var bounded=CancellationTokenSource.CreateLinkedTokenSource(serviceToken);
+        bounded.CancelAfter(budget);
+        return await call(bounded.Token);
+    }
+
+    private void RecordSideSuccess(string action,long elapsedMilliseconds)
+    {
+        _lastSuccessfulAction=action;
+        _lastApiSuccess=DateTimeOffset.UtcNow;
+        _lastApiErrorCode=null;
+        _lastApiLatencyMs=elapsedMilliseconds;
+        _consecutiveApiFailures=0;
+    }
+
+    private void RecordSideFailure(string action,Exception error,long elapsedMilliseconds)
+    {
+        _lastApiLatencyMs=elapsedMilliseconds;
+        _lastApiErrorCode=error is PrintApiException api&&!string.IsNullOrWhiteSpace(api.Code)?api.Code:error.GetType().Name;
+        _consecutiveApiFailures++;
+        if(error is OperationCanceledException)
+        {
+            _fileLog.Info(action,$"side I/O budget exceeded; elapsed_ms={elapsedMilliseconds}");
+            return;
+        }
+        LogSafe(action,error);
     }
 
     private async Task RecoverAsync(CancellationToken ct)
@@ -256,11 +495,7 @@ public sealed class PrintAgentService : BackgroundService
         foreach(var job in await _store.GetRecoverableAsync(ct))
         {
             var outcome=await _store.GetOutcomeAsync(job.AttemptId,ct);
-            if(outcome is not null)
-            {
-                // Outcome is authoritative. Delivery state is independent and will be replayed by ReportDispatcher.
-                continue;
-            }
+            if(outcome is not null)continue;
 
             if(job.State==LocalJobState.WorkerLaunching)
             {
@@ -274,11 +509,19 @@ public sealed class PrintAgentService : BackgroundService
 
                 if(File.Exists(FencePath(job)))
                 {
-                    await PersistOutcomeAndReportAsync(job,PrintOutcomeStatus.RecoveryHold,null,false,"service_restart_after_submission_fence","Service پس از Submission Fence بازیابی شد و نتیجه قابل اثبات نیست.","recovery:fence",ct);
+                    await PersistOutcomeAndReportAsync(
+                        job,PrintOutcomeStatus.RecoveryHold,null,false,
+                        "service_restart_after_submission_fence",
+                        "Service پس از Submission Fence بازیابی شد و نتیجه قابل اثبات نیست.",
+                        "recovery:fence",ct);
                 }
                 else
                 {
-                    await PersistOutcomeAndReportAsync(job,PrintOutcomeStatus.RecoveryHold,null,false,"service_restart_worker_state_ambiguous","WorkerLaunching پس از restart بدون شواهد قطعی مرگ child بازیابی شد؛ چاپ مجدد خودکار ممنوع است.","recovery:worker-launch",ct);
+                    await PersistOutcomeAndReportAsync(
+                        job,PrintOutcomeStatus.RecoveryHold,null,false,
+                        "service_restart_worker_state_ambiguous",
+                        "WorkerLaunching پس از restart بدون شواهد قطعی مرگ child بازیابی شد؛ چاپ مجدد خودکار ممنوع است.",
+                        "recovery:worker-launch",ct);
                 }
                 continue;
             }
@@ -310,7 +553,7 @@ public sealed class PrintAgentService : BackgroundService
         var pending=await LoadPendingClaimAsync(ct);
         if(pending is null)
         {
-            var health=SafeQueues();
+            var health=ReadyQueues();
             var ready=_destinations
                 .Where(d=>health.Any(p=>QueueReady(p,d.WindowsQueueName)))
                 .Select(d=>d.DestinationKey)
@@ -318,15 +561,23 @@ public sealed class PrintAgentService : BackgroundService
                 .ToArray();
             if(ready.Length==0)return false;
 
-            pending=new ClaimRequestEnvelope(CryptoUtil.NewRequestId(),AgentVersion,4,ready,_options.ClaimBatchSize,DateTimeOffset.UtcNow.ToString("O"));
+            pending=new ClaimRequestEnvelope(
+                CryptoUtil.NewRequestId(),
+                AgentVersion,
+                4,
+                ready,
+                _options.ClaimBatchSize,
+                DateTimeOffset.UtcNow.ToString("O"));
             await _store.SetMetaAsync(PendingClaimMetaKey,JsonSerializer.Serialize(pending,AgentOptions.JsonOptions()),ct);
         }
 
+        _fileLog.Info("claim_started",$"request={ShortId(pending.RequestId)}; destinations={pending.ReadyDestinationKeys.Length}");
         var response=await RunApiAsync("claim",()=>_api.ClaimAsync(pending,ct));
         ValidateClaimResponse(response,pending);
         foreach(var item in response.Jobs)
             await _store.PersistReservedAsync(item,CryptoUtil.NewLocalReceiptId(),_serverScope,ct);
         await _store.DeleteMetaAsync(PendingClaimMetaKey,ct);
+        _fileLog.Info("claim_completed",$"request={ShortId(pending.RequestId)}; jobs={response.Jobs.Count}");
         return response.Jobs.Count>0;
     }
 
@@ -381,6 +632,7 @@ public sealed class PrintAgentService : BackgroundService
                     {
                         await _store.SetStateAsync(local.AttemptId,LocalJobState.Claimed,ct:ct);
                         await _mutationRequests.CompleteAcceptAsync(local.AttemptId,ct);
+                        _fileLog.Info("accept_completed",$"job={local.ServerJobId}; attempt={local.AttemptId}; reconciled=1");
                         continue;
                     }
                     if(status.Terminal&&status.AttemptState is "expired" or "cancelled" or "failed")
@@ -393,7 +645,14 @@ public sealed class PrintAgentService : BackgroundService
                 catch(ApiOperationException){continue;}
             }
 
-            var destination=new DestinationConfig(local.DestinationKey,local.DestinationKey,local.QueueName,local.PaperWidthMm,local.PrintableWidthMm,local.Copies,local.LayoutMode);
+            var destination=new DestinationConfig(
+                local.DestinationKey,
+                local.DestinationKey,
+                local.QueueName,
+                local.PaperWidthMm,
+                local.PrintableWidthMm,
+                local.Copies,
+                local.LayoutMode);
             var item=new ClaimItem(
                 new((int)local.ServerJobId,"","",false,null,null,"",4,local.ContentSha256,local.PayloadJson),
                 new(local.AttemptId,local.AttemptNo,SecretStore.UnprotectText(local.ProtectedLeaseToken),local.LeaseExpiresAt.ToString("O")),
@@ -408,6 +667,7 @@ public sealed class PrintAgentService : BackgroundService
                 }
                 await _store.SetStateAsync(local.AttemptId,LocalJobState.Claimed,ct:ct);
                 await _mutationRequests.CompleteAcceptAsync(local.AttemptId,ct);
+                _fileLog.Info("accept_completed",$"job={local.ServerJobId}; attempt={local.AttemptId}; reconciled=0");
             }
             catch(ApiOperationException wrapped) when(wrapped.InnerException is PrintApiException {Code:"lease_expired"})
             {
@@ -446,7 +706,7 @@ public sealed class PrintAgentService : BackgroundService
     private async Task<bool> ProcessOneAsync(CancellationToken ct)
     {
         if(_api is null)return false;
-        var queues=SafeQueues();
+        var queues=ReadyQueues();
         var open=await _store.GetRecoverableAsync(ct);
         var job=open
             .Where(x=>x.State==LocalJobState.Claimed)
@@ -475,10 +735,21 @@ public sealed class PrintAgentService : BackgroundService
         }
 
         CleanupTransientBeforeLaunch(job);
-        var input=new WorkerInput(job.ServerJobId,job.AttemptId,job.LocalReceiptId,job.QueueName,job.PayloadJson,job.ContentSha256,job.PaperWidthMm,job.PrintableWidthMm,job.Copies,ResultPath(job),FencePath(job),StartSignalPath(job));
+        var input=new WorkerInput(
+            job.ServerJobId,
+            job.AttemptId,
+            job.LocalReceiptId,
+            job.QueueName,
+            job.PayloadJson,
+            job.ContentSha256,
+            job.PaperWidthMm,
+            job.PrintableWidthMm,
+            job.Copies,
+            ResultPath(job),
+            FencePath(job),
+            StartSignalPath(job));
         await DurableFile.WriteJsonAtomicAsync(InputPath(job),input,ct);
         await _store.SetStateAsync(job.AttemptId,LocalJobState.WorkerLaunching,markWorkerLaunching:true,ct:ct);
-        // The next durable local stage now exists; deleting start request before this point would create a crash window.
         await _mutationRequests.CompleteStartAsync(job.AttemptId,ct);
 
         var worker=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","Worker","Sokna.PrintAgent.Worker.exe"));
@@ -491,6 +762,7 @@ public sealed class PrintAgentService : BackgroundService
             TimeSpan.FromMilliseconds(_options.WorkerShutdownExitProofTimeoutMilliseconds),
             4096);
 
+        _fileLog.Info("worker_launch",$"job={job.ServerJobId}; attempt={job.AttemptId}; destination={Safe(job.DestinationKey)}");
         var supervised=await _workerSupervisor.RunAsync(
             spec,
             token=>DurableFile.TouchAtomicAsync(StartSignalPath(job),$"start:{job.AttemptId}",token),
@@ -516,7 +788,6 @@ public sealed class PrintAgentService : BackgroundService
                 supervised.Error??"پایان child در deadline اثبات نشد؛ شواهد حفظ و Retry خودکار ممنوع است.",
                 "supervisor:exit-unproven",
                 CancellationToken.None);
-            // Evidence files are intentionally retained when child death is not proven.
             return true;
         }
 
@@ -593,6 +864,7 @@ public sealed class PrintAgentService : BackgroundService
                     return;
                 }
                 _lastSubmission=DateTimeOffset.UtcNow;
+                _fileLog.Info("spooler_submitted",$"job={job.ServerJobId}; attempt={job.AttemptId}; spooler={Safe(result.SpoolerJobId)}");
                 await PersistOutcomeAndReportAsync(job,PrintOutcomeStatus.Submitted,result.SpoolerJobId,false,null,null,"worker:durable-result",ct);
                 return;
             case "failed":
@@ -630,68 +902,7 @@ public sealed class PrintAgentService : BackgroundService
             code,
             message);
         await _store.CommitOutcomeAndReportAsync(job,outcome,report,ct);
-    }
-
-    private async Task DispatchReportsAsync(CancellationToken ct)
-    {
-        if(_api is null)return;
-        var summary=await _reports.DispatchBatchAsync(_api,_serverScope,20,ct);
-        if(summary.Attempted==0)return;
-        if(summary.LastErrorCode is not null)
-        {
-            _lastApiErrorCode=summary.LastErrorCode;
-            _consecutiveApiFailures++;
-        }
-        else if(summary.Delivered>0)
-        {
-            _lastSuccessfulAction="report";
-            _lastApiSuccess=DateTimeOffset.UtcNow;
-            _lastApiErrorCode=null;
-            _consecutiveApiFailures=0;
-        }
-    }
-
-    private async Task MaybeHeartbeatAsync(CancellationToken ct)
-    {
-        if(_api is null||DateTimeOffset.UtcNow<_nextHeartbeat)return;
-        var queues=SafeQueues();
-        _printerDiscoveryAt=DateTimeOffset.UtcNow;
-        var bridge=BridgeHeartbeatProjection.From(_bridgeRuntime.Snapshot);
-        var reportCounts=await _store.GetReportStateCountsAsync(ct);
-        var payload=new HeartbeatPayload(
-            CryptoUtil.NewRequestId(),Environment.MachineName,AgentVersion,Environment.OSVersion.VersionString,
-            (long)(DateTimeOffset.UtcNow-_started).TotalSeconds,
-            _lastPoll?.ToString("O"),
-            await _store.CountOpenAsync(ct),
-            await _store.CountAmbiguousAsync(ct),
-            _lastSubmission?.ToString("O"),
-            "ok",
-            DiskFreeMb(),
-            File.Exists(Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","Worker","Sokna.PrintAgent.Worker.exe"))),
-            true,true,
-            queues.ToList(),
-            _lastSuccessfulAction,
-            _lastApiSuccess?.ToString("O"),
-            _lastApiErrorCode,
-            _consecutiveApiFailures,
-            _lastApiLatencyMs,
-            _printerDiscoveryAt?.ToString("O"),
-            bridge.ProtocolVersion,
-            bridge.Port,
-            bridge.PairingId,
-            bridge.Origin,
-            reportCounts.Pending+reportCounts.Backoff,
-            reportCounts.AuthBlocked,
-            reportCounts.ReconciliationRequired);
-        try
-        {
-            await RunApiAsync("heartbeat",()=>_api.HeartbeatAsync(payload,ct));
-            _nextHeartbeat=DateTimeOffset.UtcNow.AddSeconds(_options.HeartbeatSeconds);
-        }
-        catch(ApiOperationException)
-        {
-            _nextHeartbeat=DateTimeOffset.UtcNow.AddSeconds(Math.Max(10,_options.HeartbeatSeconds));
-        }
+        _nextReportDispatch=DateTimeOffset.MinValue;
     }
 
     private async Task<T> RunApiAsync<T>(string action,Func<Task<T>> call)
@@ -726,6 +937,7 @@ public sealed class PrintAgentService : BackgroundService
             var serviceAccount=OperatingSystem.IsWindows()&&WindowsIdentity.GetCurrent().IsSystem;
             var counts=await _store.GetReportStateCountsAsync(ct);
             var oldest=await _store.GetOldestUndeliveredReportAgeSecondsAsync(ct);
+            var printerHealth=ReadPrinterHealth();
             var snapshot=new LocalHealthSnapshot(
                 AgentVersion,
                 Environment.MachineName,
@@ -737,7 +949,7 @@ public sealed class PrintAgentService : BackgroundService
                 DateTimeOffset.UtcNow.ToString("O"),
                 await _store.CountOpenAsync(ct),
                 await _store.CountAmbiguousAsync(ct),
-                SafeQueues().ToList(),
+                printerHealth.Queues.ToList(),
                 _lastSuccessfulAction,
                 _lastApiSuccess?.ToString("O"),
                 _lastApiErrorCode,
@@ -747,7 +959,13 @@ public sealed class PrintAgentService : BackgroundService
                 counts.Backoff,
                 counts.AuthBlocked,
                 counts.ReconciliationRequired,
-                oldest);
+                oldest,
+                printerHealth.LastSuccessAt?.ToString("O"),
+                printerHealth.LastFailureAt?.ToString("O"),
+                printerHealth.LastError,
+                printerHealth.AgeMilliseconds,
+                printerHealth.IsFresh,
+                printerHealth.Generation);
             await DurableFile.WriteJsonAtomicAsync(_paths.HealthPath,snapshot,ct);
         }
         catch(Exception e)
@@ -756,14 +974,24 @@ public sealed class PrintAgentService : BackgroundService
         }
     }
 
-    private IReadOnlyList<PrinterQueueHealth> SafeQueues()
+    private PrinterHealthSnapshot ReadPrinterHealth()
     {
-        try{return _printers.GetQueues();}
-        catch(Exception e){LogSafe("printer_health",e);return[];}
+        try{return _printers.Read(PrinterDiscoveryService.FreshnessWindow);}
+        catch(Exception e)
+        {
+            LogSafe("printer_health_cache",e);
+            return PrinterHealthSnapshot.Unavailable(Safe(e.Message));
+        }
+    }
+
+    private IReadOnlyList<PrinterQueueHealth> ReadyQueues()
+    {
+        var snapshot=ReadPrinterHealth();
+        return snapshot.IsFresh?snapshot.Queues:[];
     }
 
     private static bool QueueReady(PrinterQueueHealth printer,string queue)
-        => string.Equals(printer.Name,queue,StringComparison.OrdinalIgnoreCase)&&!printer.Offline&&!printer.Paused&&!printer.PaperOut&&!printer.Error;
+        =>string.Equals(printer.Name,queue,StringComparison.OrdinalIgnoreCase)&&!printer.Offline&&!printer.Paused&&!printer.PaperOut&&!printer.Error;
 
     private long DiskFreeMb()
     {
@@ -814,8 +1042,26 @@ public sealed class PrintAgentService : BackgroundService
     }
 
     private static string ScopeLabel(string value)=>value.Length<=16?value:value[..16]+"…";
+    private static string ShortId(string value)=>value.Length<=12?value:value[..12];
     private static string Safe(string value)=>SafeLogText.Sanitize(value,400);
     private static void TryDelete(string path){try{if(File.Exists(path))File.Delete(path);}catch{}}
+
+    private sealed record CoordinatorCycleResult(bool OwnerAcquired,bool Processed,bool Claimed);
+
+    private sealed record HeartbeatSeed(
+        long Generation,
+        long UptimeSeconds,
+        string? LastPollSuccessAt,
+        string? LastSubmissionAt,
+        string? LastSuccessfulAction,
+        string? LastApiSuccessAt,
+        string? LastApiErrorCode,
+        int ConsecutiveApiFailures,
+        long? LastApiLatencyMs,
+        PrinterHealthSnapshot PrinterHealth,
+        BridgeHeartbeatFields Bridge,
+        long DiskFreeMb,
+        bool WorkerOk);
 
     private sealed class ApiOperationException : Exception
     {
