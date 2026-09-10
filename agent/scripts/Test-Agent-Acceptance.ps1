@@ -25,8 +25,10 @@ $contractProject=Join-Path $root 'tests\Sokna.PrintAgent.ContractAcceptance\Sokn
 $windowsFaultProject=Join-Path $root 'tests\Sokna.PrintAgent.WindowsFaultAcceptance\Sokna.PrintAgent.WindowsFaultAcceptance.csproj'
 $cleanupProject=Join-Path $root 'tests\Sokna.PrintAgent.CleanupAcceptance\Sokna.PrintAgent.CleanupAcceptance.csproj'
 $bridgeProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeAcceptance\Sokna.PrintAgent.BridgeAcceptance.csproj'
+$bridgeSecurityProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeSecurityAcceptance\Sokna.PrintAgent.BridgeSecurityAcceptance.csproj'
+$bridgeLoadProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeLoadAcceptance\Sokna.PrintAgent.BridgeLoadAcceptance.csproj'
 $realApiProject=Join-Path $root 'tests\Sokna.PrintAgent.RealApiIntegration\Sokna.PrintAgent.RealApiIntegration.csproj'
-foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject,$bridgeProject,$realApiProject)){
+foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject,$bridgeProject,$bridgeSecurityProject,$bridgeLoadProject,$realApiProject)){
   if(!(Test-Path $required -PathType Leaf)){throw "Acceptance project missing: $required"}
 }
 $sourceSha=(& git -C $root rev-parse HEAD).Trim()
@@ -38,7 +40,9 @@ $serviceCases=@('A12','A13','A14','A15','A16')
 $contractCases=@('A18')
 $windowsFaultCases=@('A25','A26','A27')
 $cleanupCases=@('A29')
-$bridgeCases=@('A32','A33','A34','A36')
+$bridgeCases=@('A32','A33')
+$bridgeSecurityCases=@('A34')
+$bridgeLoadCases=@('A36')
 $integrationCases=@('A49')
 # A32 has a partial harness but is intentionally NOT in implementedAutomated until heartbeat
 # consumes BridgeRuntimeState rather than configuration intent.
@@ -71,7 +75,7 @@ function Invoke-Case([string]$id){
   }
   $caseDir=Join-Path $results $id
   New-Item $caseDir -ItemType Directory -Force | Out-Null
-  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}elseif($bridgeCases -contains $id){$bridgeProject}elseif($integrationCases -contains $id){$realApiProject}else{$project}
+  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}elseif($bridgeSecurityCases -contains $id){$bridgeSecurityProject}elseif($bridgeLoadCases -contains $id){$bridgeLoadProject}elseif($bridgeCases -contains $id){$bridgeProject}elseif($integrationCases -contains $id){$realApiProject}else{$project}
   & dotnet run --project $selectedProject -c $Configuration -- --case $id --results $caseDir
   return $LASTEXITCODE
 }
