@@ -400,6 +400,7 @@ sealed class ServiceTestEnvironment:IDisposable
             new PrintWakeSignal(),
             dispatcher,
             new DurableMutationRequestStore(store),
+            new BridgeRuntimeState(),
             new WorkerSupervisor(processFactory));
         SetPrivateField(service,"_api",transport);
         SetPrivateField(service,"_attemptStatusSupported",attemptStatusSupported);
