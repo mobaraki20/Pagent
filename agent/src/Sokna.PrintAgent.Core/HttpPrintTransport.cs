@@ -91,13 +91,13 @@ public sealed class HttpPrintTransport : IPrintTransport
 
     public Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct)=>PostAsync<ClaimResponse>("claim",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,limit=request.Limit,ready_destination_keys=request.ReadyDestinationKeys},ct);
 
-    public Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct)=>PostAsync<ApiResult>("accept",new{request_id=requestId,agent_version=AgentVersionInfo.Current,protocol_version=4,attempt_id=item.Attempt.Id,lease_token=item.Attempt.LeaseToken,local_receipt_id=localReceiptId,content_sha256=item.Job.ContentSha256},ct);
+    public Task<ApiResult> AcceptAsync(ClaimItem item,AcceptRequestEnvelope request,CancellationToken ct)=>PostAsync<ApiResult>("accept",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,attempt_id=request.AttemptId,lease_token=item.Attempt.LeaseToken,local_receipt_id=request.LocalReceiptId,content_sha256=request.ContentSha256},ct);
 
-    public Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct)=>PostAsync<ApiResult>("renew",new{request_id=requestId,agent_version=AgentVersionInfo.Current,protocol_version=4,attempt_id=item.Attempt.Id,lease_token=item.Attempt.LeaseToken},ct);
+    public Task<ApiResult> RenewAsync(ClaimItem item,RenewRequestEnvelope request,CancellationToken ct)=>PostAsync<ApiResult>("renew",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,attempt_id=request.AttemptId,lease_token=item.Attempt.LeaseToken},ct);
 
     public Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct)=>PostAsync<AttemptStatusResult>("attempt_status",new{agent_version=AgentVersionInfo.Current,protocol_version=4,attempt_id=job.AttemptId,lease_token=UnprotectLease(job.ProtectedLeaseToken),local_receipt_id=job.LocalReceiptId},ct);
 
-    public Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct)=>PostAsync<ApiResult>("start",new{request_id=requestId,agent_version=AgentVersionInfo.Current,protocol_version=4,attempt_id=job.AttemptId,lease_token=UnprotectLease(job.ProtectedLeaseToken)},ct);
+    public Task<ApiResult> StartAsync(LocalJob job,StartRequestEnvelope request,CancellationToken ct)=>PostAsync<ApiResult>("start",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,attempt_id=request.AttemptId,lease_token=UnprotectLease(job.ProtectedLeaseToken)},ct);
 
     public Task<ApiResult> ReportAsync(LocalJob job,ReportRequestEnvelope request,CancellationToken ct)=>PostAsync<ApiResult>("report",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,attempt_id=request.AttemptId,lease_token=UnprotectLease(job.ProtectedLeaseToken),local_receipt_id=request.LocalReceiptId,status=request.Status,spooler_job_id=request.SpoolerJobId,retryable=request.Retryable,error_code=request.ErrorCode,error_message=request.ErrorMessage},ct);
 
