@@ -47,12 +47,19 @@ jobs:
         working-directory: agent
         run: ./scripts/Build-Agent.ps1
 
+      - name: Baseline remediation reproduction (expected failure evidence)
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Test-Remediation-Baseline.ps1
+
       - name: Windows install gate
+        if: always()
         shell: pwsh
         working-directory: agent
         run: ./scripts/Test-Windows-Install.ps1 -Artifacts "$PWD/artifacts" -Version "$env:AGENT_VERSION"
 
       - name: Package tracked source
+        if: always()
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
@@ -62,6 +69,7 @@ jobs:
           if($LASTEXITCODE -ne 0 -or !(Test-Path $zip -PathType Leaf)){throw 'Tracked source archive failed.'}
 
       - name: Verify required artifacts
+        if: always()
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
