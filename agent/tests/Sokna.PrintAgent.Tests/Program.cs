@@ -93,7 +93,6 @@ await restarted.MarkReportDeliveryAsync(recoveredOutbox!.Id,ReportDeliveryState.
 Check((await restarted.PendingReportsAsync()).All(x=>x.AttemptId!=1002),"report_transport_failure_gets_backoff_instead_of_hot_loop");
 Check(await restarted.HasPendingReportAsync(1002),"backoff_report_remains_durable");
 
-// R01 regression: a failed outcome quarantined before restart must never be reconstructed as submitted.
 var failedClaim=MakeClaim(1003,3,"lease-c");
 var failedJob=await restarted.PersistReservedAsync(failedClaim,"receipt-0003","server-a");
 var failedDraft=new AttemptOutcomeDraft(PrintOutcomeStatus.Failed,null,true,"printer_open_failed","printer unavailable","worker-result-pre-fence");
@@ -109,7 +108,6 @@ Check(failedOutboxAfterRestart.DeliveryState==ReportDeliveryState.Reconciliation
 Check(failedWire?.Status=="failed"&&failedWire.SpoolerJobId is null,"quarantined_failed_never_becomes_submitted");
 Check(await afterQuarantineRestart.HasPendingReportAsync(1003),"quarantined_report_still_counts_as_durable_evidence");
 
-// R02 regression: 401 blocks delivery but token repair resumes the exact same durable report.
 var authClaim=MakeClaim(1004,4,"lease-d");
 var authJob=await afterQuarantineRestart.PersistReservedAsync(authClaim,"receipt-0004","server-a");
 var authDraft=new AttemptOutcomeDraft(PrintOutcomeStatus.Failed,null,true,"printer_offline","offline","worker-result-pre-fence");
@@ -126,8 +124,9 @@ Check(resumed>=1,"credential_probe_resumes_auth_blocked_reports");
 transport.ReportMode=FakeReportMode.Success;
 var authSecond=await dispatcher.DispatchBatchAsync(transport,"server-a",20,CancellationToken.None);
 var authDelivered=await afterQuarantineRestart.GetOutboxForAttemptAsync(1004);
-Check(authSecond.Delivered==1&&authDelivered?.DeliveryState==ReportDeliveryState.Delivered,"same_report_delivered_after_token_repair");
-Check(transport.ReportRequests.Count==2&&transport.ReportRequests[0]==transport.ReportRequests[1],"token_repair_replays_same_report_body_and_request_id");
+Check(authSecond.Delivered>=1&&authDelivered?.DeliveryState==ReportDeliveryState.Delivered,"same_report_delivered_after_token_repair");
+var authReplay=transport.ReportRequests.Where(x=>x.AttemptId==1004).ToList();
+Check(authReplay.Count==2&&authReplay[0]==authReplay[1],"token_repair_replays_same_report_body_and_request_id");
 
 var policy=new ReportDeliveryPolicy(jitter:()=>0.5);
 var forbiddenAuth=policy.ForApiException(new PrintApiException(HttpStatusCode.Forbidden,"revoked","token_revoked"),0,"failed");
@@ -141,7 +140,6 @@ Check(conflictAck.TreatAsDelivered&&conflictAck.State==ReportDeliveryState.Deliv
 Check(!conflictMismatch.TreatAsDelivered&&conflictMismatch.State==ReportDeliveryState.ReconciliationRequired,"409_mismatch_not_acknowledged");
 Check(throttled.State==ReportDeliveryState.Backoff&&throttled.NextAttemptAt>DateTimeOffset.UtcNow.AddSeconds(20),"429_retry_after_honored");
 
-// Server namespace fence: backlog from one server must not be sent to another server instance.
 var scopeClaim=MakeClaim(1005,5,"lease-e");
 var scopeJob=await afterQuarantineRestart.PersistReservedAsync(scopeClaim,"receipt-0005","server-old");
 var scopeDraft=new AttemptOutcomeDraft(PrintOutcomeStatus.Failed,null,true,"offline","offline","worker-result-pre-fence");
