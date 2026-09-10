@@ -11,4 +11,5 @@
   <Project Path="tests/Sokna.PrintAgent.TransportAcceptance/Sokna.PrintAgent.TransportAcceptance.csproj" />
   <Project Path="tests/Sokna.PrintAgent.ContractAcceptance/Sokna.PrintAgent.ContractAcceptance.csproj" />
   <Project Path="tests/Sokna.PrintAgent.ServiceAcceptance/Sokna.PrintAgent.ServiceAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.SubprocessFixture/Sokna.PrintAgent.SubprocessFixture.csproj" />
 </Solution>
