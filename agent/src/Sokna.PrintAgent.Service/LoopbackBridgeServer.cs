@@ -34,6 +34,7 @@ internal sealed class BridgeBindException:Exception
 internal sealed class LoopbackBridgeServer:IDisposable
 {
     private const int MaxHeaderBytes=16*1024;
+    private static readonly TimeSpan BusyDrainTimeout=TimeSpan.FromMilliseconds(250);
     private readonly TcpListener _listener;
     private readonly SemaphoreSlim _slots;
     private readonly TimeSpan _headerTimeout;
@@ -274,10 +275,25 @@ internal sealed class LoopbackBridgeServer:IDisposable
             try
             {
                 client.NoDelay=true;
+                var stream=client.GetStream();
                 var response=Status(503);
                 response.ContentType="application/json; charset=utf-8";
                 response.Body=Encoding.UTF8.GetBytes("{\"success\":false,\"code\":\"bridge_busy\"}");
-                await WriteResponseAsync(client.GetStream(),response,CancellationToken.None);
+                await WriteResponseAsync(stream,response,CancellationToken.None);
+
+                // A close with unread receive data can become a TCP RST on Windows and erase the
+                // already-written HTTP status from the client's point of view. Half-close Send first,
+                // then give the peer a strictly bounded window to finish/close its request side.
+                try{client.Client.Shutdown(SocketShutdown.Send);}catch{}
+                using var drain=new CancellationTokenSource(BusyDrainTimeout);
+                var buffer=new byte[2048];
+                try
+                {
+                    while(await stream.ReadAsync(buffer,drain.Token)>0){}
+                }
+                catch(OperationCanceledException) when(drain.IsCancellationRequested){}
+                catch(IOException){}
+                catch(SocketException){}
             }
             catch{}
         }
