@@ -5,6 +5,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj" />
-    <ProjectReference Include="../../src/Sokna.PrintAgent.Service/Sokna.PrintAgent.Service.csproj" />
+    <ProjectReference Include="../../src/Sokna.PrintAgent.Runtime/Sokna.PrintAgent.Runtime.csproj" />
   </ItemGroup>
 </Project>
