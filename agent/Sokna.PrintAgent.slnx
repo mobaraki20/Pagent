@@ -14,4 +14,5 @@
   <Project Path="tests/Sokna.PrintAgent.SubprocessFixture/Sokna.PrintAgent.SubprocessFixture.csproj" />
   <Project Path="tests/Sokna.PrintAgent.WindowsFaultAcceptance/Sokna.PrintAgent.WindowsFaultAcceptance.csproj" />
   <Project Path="tests/Sokna.PrintAgent.CleanupAcceptance/Sokna.PrintAgent.CleanupAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.RealApiIntegration/Sokna.PrintAgent.RealApiIntegration.csproj" />
 </Solution>
