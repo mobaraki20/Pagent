@@ -14,6 +14,7 @@ public sealed class LocalBridgeService : BackgroundService
     private const int MaxConnections=24;
     private static readonly TimeSpan ReloadProbeInterval=TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan BodyReadTimeout=TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan GenerationDrainTimeout=TimeSpan.FromSeconds(2);
     private static readonly TimeSpan PreviewTimeout=TimeSpan.FromSeconds(10);
     private static readonly TimeSpan PreviewExitProofTimeout=TimeSpan.FromSeconds(2);
 
@@ -125,9 +126,16 @@ public sealed class LocalBridgeService : BackgroundService
         var configStamp=FileStamp(_paths.ConfigPath);
         var pairingPath=PairingPath(_paths);
         var pairingStamp=FileStamp(pairingPath);
+        using var generationCancellation=CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var handlers=new List<Task>(MaxConnections);
         using var listener=new HttpListener();
         _listener=listener;
+        listener.IgnoreWriteExceptions=true;
         listener.Prefixes.Add($"http://127.0.0.1:{options.LocalBridgePort}/");
+        // HTTP.sys owns the actual socket on Windows. Do not rely only on managed StreamReader
+        // cancellation for slow/incomplete request bodies; enforce the same bound in the kernel path.
+        listener.TimeoutManager.EntityBody=BodyReadTimeout;
+        listener.TimeoutManager.DrainEntityBody=TimeSpan.FromSeconds(1);
         listener.Start();
         _runtime.MarkListening(options.LocalBridgePort,origin,pairing);
 
@@ -155,16 +163,25 @@ public sealed class LocalBridgeService : BackgroundService
                     Reject(context,503,"bridge_busy");
                     continue;
                 }
-                _=HandleTrackedAsync(context,origin,pairing,ct);
+                handlers.RemoveAll(t=>t.IsCompleted);
+                handlers.Add(HandleTrackedAsync(context,origin,pairing,generationCancellation.Token));
             }
         }
         finally
         {
+            // A config/pairing rotation creates a security boundary: old in-flight handlers must not
+            // continue indefinitely with the previous credential/origin after the listener generation ends.
+            generationCancellation.Cancel();
             try{listener.Stop();}catch{}
             try{listener.Close();}catch{}
             if(acceptTask is not null)
             {
                 try{await acceptTask;}catch{}
+            }
+            var pending=handlers.Where(t=>!t.IsCompleted).ToArray();
+            if(pending.Length>0)
+            {
+                try{await Task.WhenAll(pending).WaitAsync(GenerationDrainTimeout);}catch{}
             }
             _runtime.MarkStopped(true,null);
             if(ReferenceEquals(_listener,listener))_listener=null;
@@ -209,8 +226,8 @@ public sealed class LocalBridgeService : BackgroundService
 
             var path=ctx.Request.Url?.AbsolutePath??"";
             var max=path=="/v1/preview"?262144:8192;
-            if(ctx.Request.ContentLength64<0){ctx.Response.StatusCode=411;return;}
-            if(ctx.Request.ContentLength64>max){ctx.Response.StatusCode=413;return;}
+            if(ctx.Request.ContentLength64<0){ctx.Response.StatusCode=411;ctx.Response.KeepAlive=false;return;}
+            if(ctx.Request.ContentLength64>max){ctx.Response.StatusCode=413;ctx.Response.KeepAlive=false;return;}
 
             string raw;
             using(var bodyTimeout=CancellationTokenSource.CreateLinkedTokenSource(serviceToken))
@@ -224,10 +241,21 @@ public sealed class LocalBridgeService : BackgroundService
                 catch(OperationCanceledException) when(!serviceToken.IsCancellationRequested)
                 {
                     ctx.Response.StatusCode=408;
+                    ctx.Response.KeepAlive=false;
+                    return;
+                }
+                catch(HttpListenerException) when(!serviceToken.IsCancellationRequested)
+                {
+                    // HTTP.sys EntityBody timeout may terminate the incomplete request before a 408 body can
+                    // be written. The important invariant is bounded resource ownership, not a synthetic ACK.
+                    return;
+                }
+                catch(IOException) when(!serviceToken.IsCancellationRequested)
+                {
                     return;
                 }
             }
-            if(Encoding.UTF8.GetByteCount(raw)>max){ctx.Response.StatusCode=413;return;}
+            if(Encoding.UTF8.GetByteCount(raw)>max){ctx.Response.StatusCode=413;ctx.Response.KeepAlive=false;return;}
 
             using var doc=JsonDocument.Parse(raw);
             var root=doc.RootElement;
@@ -432,6 +460,7 @@ public sealed class LocalBridgeService : BackgroundService
         {
             var bytes=JsonSerializer.SerializeToUtf8Bytes(new{success=false,code},AgentOptions.JsonOptions());
             ctx.Response.StatusCode=status;
+            ctx.Response.KeepAlive=false;
             ctx.Response.ContentType="application/json; charset=utf-8";
             ctx.Response.ContentLength64=bytes.Length;
             ctx.Response.OutputStream.Write(bytes,0,bytes.Length);
