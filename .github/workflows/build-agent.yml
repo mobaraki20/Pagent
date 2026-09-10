@@ -76,7 +76,7 @@ jobs:
           )
           foreach($p in $required){if(!(Test-Path $p -PathType Leaf)){throw "Required artifact missing: $p"}}
           $acceptance=Get-ChildItem 'agent/artifacts/acceptance-smoke' -Recurse -Filter '*.result.json' -ErrorAction Stop
-          if($acceptance.Count -lt 11){throw "Acceptance smoke evidence incomplete: expected at least 11 result files, found $($acceptance.Count)."}
+          if($acceptance.Count -lt 13){throw "Acceptance smoke evidence incomplete: expected at least 13 result files, found $($acceptance.Count)."}
 
       - name: Upload artifacts and evidence
         if: always()
