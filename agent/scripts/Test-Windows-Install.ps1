@@ -29,6 +29,17 @@ function Invoke-SetupQuiet([string]$Stdout,[string]$Stderr){
   return Start-Process -FilePath $setup -ArgumentList '/quiet' -Wait -PassThru -RedirectStandardOutput $Stdout -RedirectStandardError $Stderr
 }
 
+function Test-UsersReadExecuteAcl([string]$Path){
+  $usersSid='S-1-5-32-545'
+  $needed=[int][Security.AccessControl.FileSystemRights]::ReadAndExecute
+  foreach($rule in (Get-Acl $Path -ErrorAction Stop).Access){
+    try{$sid=$rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value}catch{continue}
+    $rights=[int]$rule.FileSystemRights
+    if($sid -eq $usersSid -and $rule.AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow -and (($rights -band $needed) -eq $needed)){return $true}
+  }
+  return $false
+}
+
 function New-FailureInjectedPackage(){
   $package=Join-Path $Artifacts 'package'
   if(-not (Test-Path $package -PathType Container)){throw "Build package directory missing: $package"}
@@ -122,6 +133,8 @@ foreach($required in @(
 }
 if(-not (Test-Path $startShortcut -PathType Leaf)){throw 'Start Menu shortcut was not created.'}
 if(-not (Test-Path $desktopShortcut -PathType Leaf)){throw 'Desktop shortcut was not created.'}
+if(-not (Test-UsersReadExecuteAcl $installRoot)){throw 'Built-in Users does not have ReadAndExecute on Program Files installation.'}
+"program_files_users_read_execute=True" | Out-File $gateEvidence -Append
 $controlExe=Join-Path $installRoot 'Control\Sokna.PrintAgent.Control.exe'
 $shortcutShell=New-Object -ComObject WScript.Shell
 try{
@@ -165,6 +178,26 @@ finally{
   if(-not $controlProcess.HasExited){Stop-Process -Id $controlProcess.Id -Force -ErrorAction SilentlyContinue}
   $controlProcess.Dispose()
 }
+
+Write-Host '== Same-version repair with intentionally restricted Program Files ACL =='
+& icacls.exe $installRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)RX' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+if($LASTEXITCODE -ne 0){throw "Unable to inject restricted ACL: $LASTEXITCODE"}
+if(Test-UsersReadExecuteAcl $installRoot){throw 'Restricted ACL injection did not remove Users ReadAndExecute.'}
+$repairStdout=Join-Path $env:RUNNER_TEMP 'sokna-same-version-repair.stdout.log'
+$repairStderr=Join-Path $env:RUNNER_TEMP 'sokna-same-version-repair.stderr.log'
+$repairProc=Invoke-SetupQuiet $repairStdout $repairStderr
+"same_version_repair_exit=$($repairProc.ExitCode)" | Out-File $gateEvidence -Append
+if($repairProc.ExitCode -ne 0){
+  if(Test-Path $repairStdout){Write-Host '=== Repair stdout ===';Get-Content $repairStdout -ErrorAction SilentlyContinue}
+  if(Test-Path $repairStderr){Write-Host '=== Repair stderr ===';Get-Content $repairStderr -ErrorAction SilentlyContinue}
+  throw "Same-version repair failed: $($repairProc.ExitCode)"
+}
+$repairService=Get-Service $service -ErrorAction Stop
+if($repairService.Status -ne 'Running'){throw "Service not running after same-version repair: $($repairService.Status)"}
+if(-not (Test-UsersReadExecuteAcl $installRoot)){throw 'Same-version repair did not restore Users ReadAndExecute ACL.'}
+if(-not (Test-Path $desktopShortcut -PathType Leaf)){throw 'Desktop shortcut missing after same-version repair.'}
+"same_version_repair_service_running=True" | Out-File $gateEvidence -Append
+"same_version_repair_acl_restored=True" | Out-File $gateEvidence -Append
 
 $agentReg=Get-ItemProperty $regPath -ErrorAction Stop
 if([string]$agentReg.Version -ne $Version){throw "Registry version mismatch: $($agentReg.Version) != $Version"}
@@ -256,4 +289,4 @@ if(Get-Service $service -ErrorAction SilentlyContinue){throw 'Service still exis
 Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $setupLogRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $regPath -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host 'PASS Windows Setup/Service/Uninstall/Rollback smoke test' -ForegroundColor Green
+Write-Host 'PASS Windows Setup/Service/Uninstall/Rollback/Repair smoke test' -ForegroundColor Green
