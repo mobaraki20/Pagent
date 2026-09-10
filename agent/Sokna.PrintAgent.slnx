@@ -8,4 +8,5 @@
   <Project Path="tests/Sokna.PrintAgent.Tests/Sokna.PrintAgent.Tests.csproj" />
   <Project Path="tests/Sokna.PrintAgent.Worker.Tests/Sokna.PrintAgent.Worker.Tests.csproj" />
   <Project Path="tests/Sokna.PrintAgent.Acceptance/Sokna.PrintAgent.Acceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.TransportAcceptance/Sokna.PrintAgent.TransportAcceptance.csproj" />
 </Solution>
