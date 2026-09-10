@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Net;
-using System.Net.Http.Headers;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -147,11 +146,13 @@ async Task RunSecurityAsync()
     Check((int)(await SendAsync(port,origin,pairing,HttpMethod.Post,"/v1/wake",tooFuture)).StatusCode==422,"far-future wake is rejected by TTL policy");
 
     const string replayId="a34-replay-000001";
-    var first=await SendAsync(port,origin,pairing,HttpMethod.Post,"/v1/wake",WakeJson(replayId));
-    var second=await SendAsync(port,origin,pairing,HttpMethod.Post,"/v1/wake",WakeJson(replayId));
+    var replayBody=WakeJson(replayId);
+    var first=await SendAsync(port,origin,pairing,HttpMethod.Post,"/v1/wake",replayBody);
+    var second=await SendAsync(port,origin,pairing,HttpMethod.Post,"/v1/wake",replayBody);
     var secondBody=await second.Content.ReadAsStringAsync();
-    Check(first.StatusCode==HttpStatusCode.OK&&second.StatusCode==HttpStatusCode.OK,"valid wake and exact replay receive controlled success");
-    Check(secondBody.Contains("\"idempotent\":true",StringComparison.OrdinalIgnoreCase),"replayed wake is idempotently suppressed");
+    Log("A34 replay response: "+SafeLogText.Sanitize(secondBody,300));
+    Check(first.StatusCode==HttpStatusCode.OK&&second.StatusCode==HttpStatusCode.OK,"valid wake and byte-identical replay receive controlled success");
+    Check(secondBody.Contains("\"idempotent\":true",StringComparison.OrdinalIgnoreCase),"byte-identical replayed wake is idempotently suppressed");
 
     var oversized=new string('x',9000);
     var tooLarge=await SendAsync(port,origin,pairing,HttpMethod.Post,"/v1/wake",oversized);
