@@ -10,7 +10,7 @@ var parsed=ParseArgs(args);
 if(!parsed.TryGetValue("case",out var caseId)||string.IsNullOrWhiteSpace(caseId) ||
    !parsed.TryGetValue("results",out var resultsDirectory)||string.IsNullOrWhiteSpace(resultsDirectory))
 {
-    Console.Error.WriteLine("Usage: --case A13|A14 --results <directory>");
+    Console.Error.WriteLine("Usage: --case A12|A13|A14|A15|A16 --results <directory>");
     return 64;
 }
 
@@ -27,8 +27,11 @@ try
 {
     switch(caseId.ToUpperInvariant())
     {
+        case "A12": await RunA12(); break;
         case "A13": await RunA13(); break;
         case "A14": await RunA14(); break;
+        case "A15": await RunA15(); break;
+        case "A16": await RunA16(); break;
         default:
             await WriteResult("NOT_RUN",3,$"Service acceptance case {caseId} is not implemented.");
             return 3;
@@ -49,6 +52,48 @@ catch(Exception e)
     Log($"FAIL {e.GetType().Name}: {SafeLogText.Sanitize(e.Message,400)}");
     await WriteResult("FAIL",1,$"{e.GetType().Name}: {SafeLogText.Sanitize(e.Message,400)}");
     return 1;
+}
+
+async Task RunA12()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a12-accept-lost-response");
+    var leaseExpiry=DateTimeOffset.UtcNow.AddSeconds(2);
+    var job=await env.CreateJobAsync(2612,"receipt-a12",leaseExpiry);
+    await using var server=new LoopbackPrintApiServer([
+        LoopbackResponseKind.DisconnectAfterCommit,
+        LoopbackResponseKind.AttemptStatusClaimed]);
+    using var http=new HttpClient();
+    var transport=new HttpPrintTransport(http,server.BaseUrl,"acceptance-token",env.Protector);
+    var processFactory=new CountingNoStartFactory();
+    var firstService=env.CreateService(transport,true,processFactory);
+
+    var firstFailed=await TryInvokePrivateAsync(firstService,"AcceptAnyReservedAsync");
+    var afterLostAck=await env.Store.GetByAttemptAsync(job.AttemptId);
+    var durableAccept=await env.Store.GetMetaAsync($"accept_request_v2:{job.AttemptId}");
+    Check(firstFailed,"lost accept response surfaces as unresolved API operation");
+    Check(afterLostAck?.State==LocalJobState.Reserved,"lost accept response keeps reservation unresolved");
+    Check(server.Requests.Count==1&&IsAccept(server.Requests[0]),"first pass traverses real accept HTTP request");
+    Check(!string.IsNullOrWhiteSpace(durableAccept),"accept request identity/body remains durable after lost ACK");
+    using(var wire=JsonDocument.Parse(server.Requests[0].Body))
+    using(var stored=JsonDocument.Parse(durableAccept!))
+    {
+        Check(wire.RootElement.GetProperty("request_id").GetString()==stored.RootElement.GetProperty("request_id").GetString(),"wire accept request_id equals durable request_id");
+        Check(wire.RootElement.GetProperty("attempt_id").GetInt64()==stored.RootElement.GetProperty("attempt_id").GetInt64(),"wire accept attempt identity equals durable identity");
+        Check(wire.RootElement.GetProperty("local_receipt_id").GetString()==stored.RootElement.GetProperty("local_receipt_id").GetString(),"wire accept receipt equals durable receipt");
+    }
+
+    var remaining=leaseExpiry-DateTimeOffset.UtcNow+TimeSpan.FromMilliseconds(150);
+    if(remaining>TimeSpan.Zero)await Task.Delay(remaining);
+    var restartedStore=await env.CreateRestartedStoreAsync();
+    var restartedService=env.CreateService(transport,true,processFactory,restartedStore);
+    await InvokePrivateAsync(restartedService,"AcceptAnyReservedAsync");
+    var reconciled=await restartedStore.GetByAttemptAsync(job.AttemptId);
+
+    Check(reconciled?.State==LocalJobState.Claimed,"same attempt continues only after authoritative claimed confirmation");
+    Check(server.Requests.Count==2&&IsAttemptStatus(server.Requests[1]),"restart reconciles through attempt_status instead of issuing a second accept");
+    Check(server.Requests.Count(r=>IsAccept(r))==1,"lost accept ACK never creates a second accept mutation");
+    Check(processFactory.StartCount==0,"accept reconciliation itself never invokes worker submission");
+    Check(await restartedStore.GetMetaAsync($"accept_request_v2:{job.AttemptId}") is null,"durable accept request clears only after authoritative continuation is confirmed");
 }
 
 async Task RunA13()
@@ -119,8 +164,6 @@ async Task RunA14()
         Check(server.Requests.Count==1&&IsAttemptStatus(server.Requests[0]),$"{scenario.Name}: production service used real attempt_status transport");
         Check(server.Requests.All(r=>!IsStart(r)),$"{scenario.Name}: invalid status never reaches start endpoint");
 
-        // Verify the stable protocol diagnostic at the transport boundary as well. The service intentionally
-        // treats this as unresolved and keeps the reservation instead of inventing an outcome.
         await using var diagnosticServer=new LoopbackPrintApiServer([scenario.Response]);
         using var diagnosticHttp=new HttpClient();
         var diagnosticTransport=new HttpPrintTransport(diagnosticHttp,diagnosticServer.BaseUrl,"acceptance-token",env.Protector);
@@ -131,10 +174,99 @@ async Task RunA14()
     }
 }
 
+async Task RunA15()
+{
+    using(var env=await ServiceTestEnvironment.CreateAsync("a15-lost-start-ack"))
+    {
+        var job=await env.CreateJobAsync(2615,"receipt-a15-lost",DateTimeOffset.UtcNow.AddMinutes(5));
+        await env.Store.SetStateAsync(job.AttemptId,LocalJobState.Claimed);
+        await using var server=new LoopbackPrintApiServer([LoopbackResponseKind.DisconnectAfterCommit,LoopbackResponseKind.Success]);
+        using var http=new HttpClient();
+        var transport=new HttpPrintTransport(http,server.BaseUrl,"acceptance-token",env.Protector);
+        var processFactory=new CountingNoStartFactory();
+        var firstService=env.CreateService(transport,true,processFactory);
+
+        var lost=await TryInvokePrivateAsync(firstService,"ProcessOneAsync");
+        var afterLost=await env.Store.GetByAttemptAsync(job.AttemptId);
+        var durableStart=await env.Store.GetMetaAsync($"start_request_v2:{job.AttemptId}");
+        Check(lost,"lost start response leaves mutation unresolved");
+        Check(afterLost?.State==LocalJobState.Claimed,"lost start ACK does not advance to WorkerLaunching");
+        Check(!string.IsNullOrWhiteSpace(durableStart),"start request survives lost ACK durably");
+        Check(server.Requests.Count==1&&IsStart(server.Requests[0]),"lost-ACK pass traverses real start HTTP request");
+        Check(processFactory.StartCount==0,"worker cannot launch before valid start confirmation");
+
+        var restartedStore=await env.CreateRestartedStoreAsync();
+        var restartedService=env.CreateService(transport,true,processFactory,restartedStore);
+        await InvokePrivateAsync(restartedService,"ProcessOneAsync");
+        var outcome=await restartedStore.GetOutcomeAsync(job.AttemptId);
+        Check(server.Requests.Count==2&&server.Requests.All(IsStart),"restart replays only the start mutation before local worker launch");
+        Check(server.Requests[0].Body==server.Requests[1].Body,"lost start ACK replay preserves request body byte-for-byte");
+        Check(processFactory.StartCount==1,"valid replay confirmation permits exactly one worker launch attempt");
+        Check(outcome is {Status:PrintOutcomeStatus.Failed,Retryable:true},"simulated worker launch failure remains a proven pre-fence failure");
+    }
+
+    using(var env=await ServiceTestEnvironment.CreateAsync("a15-post-ack-crash-window"))
+    {
+        var job=await env.CreateJobAsync(2715,"receipt-a15-crash",DateTimeOffset.UtcNow.AddMinutes(5));
+        await env.Store.SetStateAsync(job.AttemptId,LocalJobState.Claimed);
+        var collision=env.InputPath(job);
+        Directory.CreateDirectory(collision);
+        await using var server=new LoopbackPrintApiServer([LoopbackResponseKind.Success,LoopbackResponseKind.Success]);
+        using var http=new HttpClient();
+        var transport=new HttpPrintTransport(http,server.BaseUrl,"acceptance-token",env.Protector);
+        var processFactory=new CountingNoStartFactory();
+        var firstService=env.CreateService(transport,true,processFactory);
+
+        var writeFault=await TryInvokePrivateAsync(firstService,"ProcessOneAsync");
+        var afterFault=await env.Store.GetByAttemptAsync(job.AttemptId);
+        Check(writeFault,"fault after start ACK and before durable WorkerLaunching record is observable");
+        Check(afterFault?.State==LocalJobState.Claimed,"post-ACK local persistence fault leaves attempt at last durable state");
+        Check(processFactory.StartCount==0,"post-ACK persistence fault launches no worker");
+        Check(await env.Store.GetMetaAsync($"start_request_v2:{job.AttemptId}") is not null,"start request is retained across post-ACK crash window");
+        Check(server.Requests.Count==1&&IsStart(server.Requests[0]),"server received first start before injected local persistence fault");
+
+        Directory.Delete(collision,true);
+        var restartedStore=await env.CreateRestartedStoreAsync();
+        var restartedService=env.CreateService(transport,true,processFactory,restartedStore);
+        await InvokePrivateAsync(restartedService,"ProcessOneAsync");
+        Check(server.Requests.Count==2&&server.Requests.All(IsStart),"restart replays start with same durable idempotency identity");
+        Check(server.Requests[0].Body==server.Requests[1].Body,"post-ACK crash replay preserves start body byte-for-byte");
+        Check(processFactory.StartCount==1,"post-ACK crash recovery still permits at most one worker launch attempt");
+    }
+}
+
+async Task RunA16()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a16-legacy-server");
+    var job=await env.CreateJobAsync(2616,"receipt-a16",DateTimeOffset.UtcNow.AddMinutes(-1));
+    await using var server=new LoopbackPrintApiServer([LoopbackResponseKind.ProbeLegacyNoAttemptStatus]);
+    using var http=new HttpClient();
+    var transport=new HttpPrintTransport(http,server.BaseUrl,"acceptance-token",env.Protector);
+    var probe=await transport.ProbeAsync(CancellationToken.None);
+    var supports=ServerScopeResolver.Supports(probe,"attempt_status");
+    Check(probe.Success&&probe.ProtocolVersion==4,"legacy fixture is a valid v4 probe response");
+    Check(!supports,"legacy fixture explicitly lacks attempt_status capability");
+
+    var processFactory=new CountingNoStartFactory();
+    var service=env.CreateService(transport,false,processFactory);
+    await InvokePrivateAsync(service,"AcceptAnyReservedAsync");
+    await InvokePrivateAsync(service,"AcceptAnyReservedAsync");
+    var after=await env.Store.GetByAttemptAsync(job.AttemptId);
+    Check(after?.State==LocalJobState.RecoveryHold,"expired reservation on server without attempt_status enters explicit safe incompatibility hold");
+    Check(after?.LastError?.Contains("attempt_status",StringComparison.OrdinalIgnoreCase)==true,"operator-visible hold reason names missing attempt_status capability");
+    Check(processFactory.StartCount==0,"legacy capability fallback never launches worker by guess");
+    Check(server.Requests.Count==1&&IsProbe(server.Requests[0]),"legacy server receives probe only; no repeated 404 attempt_status loop");
+    Check(server.Requests.All(r=>!IsAttemptStatus(r)&&!IsStart(r)),"missing capability causes neither attempt_status request nor guessed start");
+}
+
+static bool IsAccept(CapturedHttpRequest request)
+    => request.Method=="POST"&&request.Target.Contains("action=accept",StringComparison.OrdinalIgnoreCase);
 static bool IsAttemptStatus(CapturedHttpRequest request)
     => request.Method=="POST"&&request.Target.Contains("action=attempt_status",StringComparison.OrdinalIgnoreCase);
 static bool IsStart(CapturedHttpRequest request)
-    => request.Target.Contains("action=start",StringComparison.OrdinalIgnoreCase);
+    => request.Method=="POST"&&request.Target.Contains("action=start",StringComparison.OrdinalIgnoreCase);
+static bool IsProbe(CapturedHttpRequest request)
+    => request.Method=="POST"&&request.Target.Contains("action=probe",StringComparison.OrdinalIgnoreCase);
 
 static async Task InvokePrivateAsync(PrintAgentService service,string methodName)
 {
@@ -143,6 +275,12 @@ static async Task InvokePrivateAsync(PrintAgentService service,string methodName
     var task=method.Invoke(service,[CancellationToken.None]) as Task
         ?? throw new InvalidOperationException($"{methodName} did not return Task.");
     await task;
+}
+
+static async Task<bool> TryInvokePrivateAsync(PrintAgentService service,string methodName)
+{
+    try{await InvokePrivateAsync(service,methodName);return false;}
+    catch{return true;}
 }
 
 async Task WriteResult(string status,int exitCode,string? error)
@@ -229,6 +367,13 @@ sealed class ServiceTestEnvironment:IDisposable
         return env;
     }
 
+    public async Task<LocalQueueStore> CreateRestartedStoreAsync()
+    {
+        var store=new LocalQueueStore(Paths.DatabasePath,Protector);
+        await store.InitializeAsync();
+        return store;
+    }
+
     public async Task<LocalJob> CreateJobAsync(long attemptId,string receipt,DateTimeOffset leaseExpiresAt)
     {
         var payload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"Service Acceptance\"}";
@@ -240,18 +385,21 @@ sealed class ServiceTestEnvironment:IDisposable
         return await Store.PersistReservedAsync(claim,receipt,"server-a");
     }
 
-    public PrintAgentService CreateService(IPrintTransport transport,bool attemptStatusSupported,CountingNoStartFactory processFactory)
+    public string InputPath(LocalJob job)=>Path.Combine(Paths.WorkPath,$"input-{job.ServerJobId}-{job.AttemptId}.json");
+
+    public PrintAgentService CreateService(IPrintTransport transport,bool attemptStatusSupported,CountingNoStartFactory processFactory,LocalQueueStore? store=null)
     {
-        var dispatcher=new ReportDispatcher(Store,new ReportDeliveryPolicy(jitter:()=>0.5),Log);
+        store??=Store;
+        var dispatcher=new ReportDispatcher(store,new ReportDeliveryPolicy(jitter:()=>0.5),Log);
         var service=new PrintAgentService(
             Paths,
-            Store,
+            store,
             new ReadyPrinterHealthProvider(),
             NullLogger<PrintAgentService>.Instance,
             Log,
             new PrintWakeSignal(),
             dispatcher,
-            new DurableMutationRequestStore(Store),
+            new DurableMutationRequestStore(store),
             new WorkerSupervisor(processFactory));
         SetPrivateField(service,"_api",transport);
         SetPrivateField(service,"_attemptStatusSupported",attemptStatusSupported);
@@ -281,7 +429,7 @@ sealed class CountingNoStartFactory:IWorkerProcessFactory
     public IWorkerProcess Start(WorkerLaunchSpec spec)
     {
         StartCount++;
-        throw new InvalidOperationException("Worker launch is forbidden in this acceptance scenario.");
+        throw new InvalidOperationException("simulated worker launch failure before child ownership");
     }
 }
 
