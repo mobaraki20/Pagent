@@ -50,7 +50,7 @@ $bridgeAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeAcceptanc
 $bridgeSecurityAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeSecurityAcceptance\Sokna.PrintAgent.BridgeSecurityAcceptance.csproj'
 $bridgeLoadAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeLoadAcceptance\Sokna.PrintAgent.BridgeLoadAcceptance.csproj'
 $transportAcceptanceCases=@('A04','A06','A17')
-$serviceAcceptanceCases=@('A12','A13','A14','A15','A16')
+$serviceAcceptanceCases=@('A12','A13','A14','A15','A16','A19','A20','A21','A22','A23')
 $contractAcceptanceCases=@('A18')
 $windowsFaultAcceptanceCases=@('A25','A26','A27')
 $cleanupAcceptanceCases=@('A29')
@@ -60,7 +60,7 @@ $bridgeSecurityAcceptanceCases=@('A34')
 $bridgeLoadAcceptanceCases=@('A36')
 $acceptanceResults=Join-Path $Output 'acceptance-smoke'
 New-Item $acceptanceResults -ItemType Directory -Force|Out-Null
-$implementedAcceptance=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A24','A25','A26','A27','A28','A29','A32','A33','A34','A36','A44','A46')
+$implementedAcceptance=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A19','A20','A21','A22','A23','A24','A25','A26','A27','A28','A29','A32','A33','A34','A36','A44','A46')
 foreach($caseId in $implementedAcceptance){
   $caseDir=Join-Path $acceptanceResults $caseId
   New-Item $caseDir -ItemType Directory -Force|Out-Null
