@@ -4,7 +4,7 @@ namespace Sokna.PrintAgent.Core;
 /// A syntactically or structurally invalid successful HTTP response from the Print API.
 /// This is a contract/reconciliation fault, not proof that the network operation was not applied.
 /// </summary>
-public sealed class PrintProtocolException : InvalidDataException
+public sealed class PrintProtocolException : Exception
 {
     public string Code { get; }
     public string Action { get; }
