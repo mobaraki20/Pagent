@@ -16,4 +16,5 @@
   <Project Path="tests/Sokna.PrintAgent.CleanupAcceptance/Sokna.PrintAgent.CleanupAcceptance.csproj" />
   <Project Path="tests/Sokna.PrintAgent.RealApiIntegration/Sokna.PrintAgent.RealApiIntegration.csproj" />
   <Project Path="tests/Sokna.PrintAgent.BridgeAcceptance/Sokna.PrintAgent.BridgeAcceptance.csproj" />
+  <Project Path="tests/Sokna.PrintAgent.BridgeSecurityAcceptance/Sokna.PrintAgent.BridgeSecurityAcceptance.csproj" />
 </Solution>
