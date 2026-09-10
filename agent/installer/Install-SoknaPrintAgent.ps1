@@ -9,6 +9,9 @@ $regPath='HKLM:\SOFTWARE\Sokna\PrintAgent'
 $script:InstallStage='setup_bootstrap_start'
 $referenceId=[Guid]::NewGuid().ToString('N')
 $shortcutCleanupCandidates=@()
+$systemSid='*S-1-5-18'
+$administratorsSid='*S-1-5-32-544'
+$usersSid='*S-1-5-32-545'
 
 function Get-Sha256Hex([string]$Path){
   $sha=[Security.Cryptography.SHA256]::Create()
@@ -36,6 +39,54 @@ function Get-SafeMessage([string]$Text){
 }
 function Assert-NativeExit([string]$Operation){
   if($LASTEXITCODE -ne 0){throw "$Operation failed: $LASTEXITCODE"}
+}
+function Set-ProgramDataAcl([string]$Path){
+  & icacls.exe $Path /inheritance:r /grant:r "$systemSid`:(OI)(CI)F" "$administratorsSid`:(OI)(CI)F" | Out-Null
+  Assert-NativeExit 'icacls ProgramData'
+}
+function Set-ProgramFilesAcl([string]$Path){
+  # Program binaries are immutable to standard users but must remain readable/executable so Explorer can
+  # resolve the public shortcut/icon and the elevated Control app can be launched without manual ACL repair.
+  & icacls.exe $Path /inheritance:r /grant:r "$systemSid`:(OI)(CI)RX" "$administratorsSid`:(OI)(CI)F" "$usersSid`:(OI)(CI)RX" | Out-Null
+  Assert-NativeExit 'icacls Program Files'
+}
+function Move-DirectoryWithRetry([string]$Source,[string]$Destination,[int]$Attempts=8){
+  $last=$null
+  for($i=1;$i -le $Attempts;$i++){
+    try{
+      Move-Item -LiteralPath $Source -Destination $Destination -ErrorAction Stop
+      return
+    }
+    catch{
+      $last=$_
+      if($i -ge $Attempts){break}
+      Start-Sleep -Milliseconds ([Math]::Min(1500,200*$i))
+    }
+  }
+  throw $last
+}
+function Stop-AgentProcesses(){
+  foreach($name in @('Sokna.PrintAgent.Control','Sokna.PrintAgent.Worker')){
+    Get-Process $name -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+  }
+  $deadline=(Get-Date).AddSeconds(5)
+  do{
+    $remaining=@(Get-Process 'Sokna.PrintAgent.Control','Sokna.PrintAgent.Worker' -ErrorAction SilentlyContinue)
+    if($remaining.Count -eq 0){return}
+    Start-Sleep -Milliseconds 200
+  }while((Get-Date) -lt $deadline)
+  if($remaining.Count -gt 0){throw "Agent process did not exit before upgrade: $($remaining.ProcessName -join ', ')"}
+}
+function Get-ServiceStartupDiagnostic([string]$Root){
+  $fatal=Join-Path $Root 'logs\startup-fatal.json'
+  if(-not (Test-Path $fatal -PathType Leaf)){return 'startup diagnostic unavailable'}
+  try{
+    $d=Get-Content $fatal -Raw | ConvertFrom-Json
+    $type=Get-SafeMessage ([string]$d.exception_type)
+    $message=Get-SafeMessage ([string]$d.message)
+    return "$type`: $message"
+  }
+  catch{return 'startup diagnostic unreadable'}
 }
 function Set-AgentShortcut([string]$Path,[string]$Target){
   if(-not (Test-Path $Target -PathType Leaf)){throw "Shortcut target is missing: $Target"}
@@ -120,8 +171,7 @@ New-Item (Join-Path $DataRoot 'logs') -ItemType Directory -Force|Out-Null
 New-Item (Join-Path $DataRoot 'work') -ItemType Directory -Force|Out-Null
 
 Set-InstallStage 'programdata_acl'
-& icacls $DataRoot /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null
-Assert-NativeExit 'icacls ProgramData'
+Set-ProgramDataAcl $DataRoot
 
 $stage="$InstallRoot.__stage_$([Guid]::NewGuid().ToString('N'))"
 $backup="$InstallRoot.__backup_$([Guid]::NewGuid().ToString('N'))"
@@ -131,6 +181,15 @@ $installedNew=$false
 $registryChanged=$false
 
 try{
+  if($hadPrevious){
+    Set-InstallStage 'existing_install_acl_repair'
+    Set-ProgramFilesAcl $InstallRoot
+  }
+
+  Set-InstallStage 'program_files_parent_preflight'
+  $parentProbe=Join-Path $parent ('.sokna-install-probe-'+[Guid]::NewGuid().ToString('N'))
+  try{New-Item $parentProbe -ItemType Directory -ErrorAction Stop|Out-Null}finally{Remove-Item $parentProbe -Recurse -Force -ErrorAction SilentlyContinue}
+
   Set-InstallStage 'payload_copy'
   New-Item $stage -ItemType Directory -Force|Out-Null
   Copy-Item (Join-Path $source '*') $stage -Recurse -Force
@@ -149,19 +208,26 @@ try{
   }
 
   Set-InstallStage 'program_files_acl'
-  & icacls $stage /inheritance:r /grant:r 'SYSTEM:(OI)(CI)RX' 'Administrators:(OI)(CI)F' | Out-Null
-  Assert-NativeExit 'icacls staged Program Files'
+  Set-ProgramFilesAcl $stage
 
   Set-InstallStage 'previous_service_handling'
-  Get-Process 'Sokna.PrintAgent.Control' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-  if($previousService){Stop-Service $service -Force -ErrorAction Stop}
+  Stop-AgentProcesses
+  if($previousService){
+    Stop-Service $service -Force -ErrorAction Stop
+    $stopDeadline=(Get-Date).AddSeconds(15)
+    do{
+      Start-Sleep -Milliseconds 250
+      $stopped=Get-Service $service -ErrorAction Stop
+    }while($stopped.Status -ne 'Stopped' -and (Get-Date) -lt $stopDeadline)
+    if($stopped.Status -ne 'Stopped'){throw "Previous Service did not reach Stopped state: $($stopped.Status)"}
+  }
+  Stop-AgentProcesses
 
   Set-InstallStage 'program_files_swap'
-  if($hadPrevious){Move-Item $InstallRoot $backup}
-  Move-Item $stage $InstallRoot
+  if($hadPrevious){Move-DirectoryWithRetry $InstallRoot $backup}
+  Move-DirectoryWithRetry $stage $InstallRoot
   $installedNew=$true
-  & icacls $InstallRoot /inheritance:r /grant:r 'SYSTEM:(OI)(CI)RX' 'Administrators:(OI)(CI)F' | Out-Null
-  Assert-NativeExit 'icacls installed Program Files'
+  Set-ProgramFilesAcl $InstallRoot
 
   Set-InstallStage 'configuration_registry'
   New-Item $regPath -Force|Out-Null
@@ -203,14 +269,28 @@ try{
   if(-not $SkipStart){
     Set-InstallStage 'service_start'
     $health=Join-Path $DataRoot 'health.json'
-    Remove-Item $health -Force -ErrorAction SilentlyContinue
-    Start-Service $service
+    $startupFatal=Join-Path $DataRoot 'logs\startup-fatal.json'
+    Remove-Item $health,$startupFatal -Force -ErrorAction SilentlyContinue
+    try{Start-Service $service -ErrorAction Stop}
+    catch{
+      Start-Sleep -Milliseconds 500
+      $diag=Get-ServiceStartupDiagnostic $DataRoot
+      throw "Failed to start Service. diagnostic=$diag original=$(Get-SafeMessage ([string]$_.Exception.Message))"
+    }
     $deadline=(Get-Date).AddSeconds(20)
+    $s=Get-Service $service -ErrorAction Stop
     do{
       Start-Sleep -Milliseconds 500
-      $s=Get-Service $service
-      if($s.Status -ne 'Running'){throw "Service did not stay running: $($s.Status)"}
-    }while((-not (Test-Path $health)) -and (Get-Date) -lt $deadline)
+      $s=Get-Service $service -ErrorAction Stop
+      if($s.Status -eq 'Stopped'){
+        $diag=Get-ServiceStartupDiagnostic $DataRoot
+        throw "Service stopped during startup. diagnostic=$diag"
+      }
+    }while((($s.Status -ne 'Running') -or (-not (Test-Path $health))) -and (Get-Date) -lt $deadline)
+    if($s.Status -ne 'Running'){
+      $diag=Get-ServiceStartupDiagnostic $DataRoot
+      throw "Service did not reach Running state: $($s.Status). diagnostic=$diag"
+    }
 
     Set-InstallStage 'health_json'
     if(-not (Test-Path $health -PathType Leaf)){throw 'Service is running but a fresh health.json was not produced within 20 seconds.'}
@@ -261,10 +341,12 @@ catch{
   $recoveryFailure=$null
   try{
     try{Get-Service $service -ErrorAction SilentlyContinue | Stop-Service -Force -ErrorAction SilentlyContinue}catch{}
+    Stop-AgentProcesses
     foreach($shortcutPath in $shortcutCleanupCandidates){Remove-Item $shortcutPath -Force -ErrorAction SilentlyContinue}
     if($installedNew -and (Test-Path $InstallRoot)){Remove-Item $InstallRoot -Recurse -Force -ErrorAction Stop}
-    if(Test-Path $backup){Move-Item $backup $InstallRoot -Force -ErrorAction Stop}
+    if(Test-Path $backup){Move-DirectoryWithRetry $backup $InstallRoot}
     if(Test-Path $stage){Remove-Item $stage -Recurse -Force -ErrorAction SilentlyContinue}
+    if(Test-Path $InstallRoot){Set-ProgramFilesAcl $InstallRoot}
 
     if($registryChanged){
       if($oldRegExists){
