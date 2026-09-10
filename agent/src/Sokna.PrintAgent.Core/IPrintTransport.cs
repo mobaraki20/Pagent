@@ -83,7 +83,12 @@ public sealed record HeartbeatPayload(
     string? BridgeOrigin=null,
     int PendingReportCount=0,
     int AuthBlockedReportCount=0,
-    int ReconciliationReportCount=0);
+    int ReconciliationReportCount=0,
+    string? PrinterDiscoveryLastFailureAt=null,
+    string? PrinterDiscoveryError=null,
+    long? PrinterDiscoveryAgeMilliseconds=null,
+    bool PrinterDiscoveryFresh=false,
+    long PrinterDiscoveryGeneration=0);
 
 public sealed record ProbeResponse(
     bool Success,
