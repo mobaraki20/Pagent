@@ -24,6 +24,8 @@ public sealed class ReportDeliveryPolicy
     public ReportDeliveryDecision ForException(Exception exception,int previousErrorCount,string expectedOutcomeStatus)
     {
         if(exception is PrintApiException api)return ForApiException(api,previousErrorCount,expectedOutcomeStatus);
+        if(exception is PrintProtocolException protocol)
+            return new(ReportDeliveryState.ReconciliationRequired,null,false,false,protocol.Code);
         if(exception is HttpRequestException or TaskCanceledException or TimeoutException)
         {
             return Backoff(previousErrorCount,null,"transport_transient");
