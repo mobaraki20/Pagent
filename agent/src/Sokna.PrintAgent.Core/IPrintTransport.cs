@@ -3,10 +3,10 @@ namespace Sokna.PrintAgent.Core;
 public interface IPrintTransport
 {
     Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct);
-    Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct);
-    Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct);
+    Task<ApiResult> AcceptAsync(ClaimItem item,AcceptRequestEnvelope request,CancellationToken ct);
+    Task<ApiResult> RenewAsync(ClaimItem item,RenewRequestEnvelope request,CancellationToken ct);
     Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct);
-    Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct);
+    Task<ApiResult> StartAsync(LocalJob job,StartRequestEnvelope request,CancellationToken ct);
     Task<ApiResult> ReportAsync(LocalJob job,ReportRequestEnvelope request,CancellationToken ct);
     Task<ApiResult> HeartbeatAsync(HeartbeatPayload payload,CancellationToken ct);
     Task<ProbeResponse> ProbeAsync(CancellationToken ct);
@@ -19,6 +19,26 @@ public sealed record ClaimRequestEnvelope(
     string[] ReadyDestinationKeys,
     int Limit,
     string CreatedAt);
+
+public sealed record AcceptRequestEnvelope(
+    string RequestId,
+    string AgentVersion,
+    int ProtocolVersion,
+    long AttemptId,
+    string LocalReceiptId,
+    string ContentSha256);
+
+public sealed record RenewRequestEnvelope(
+    string RequestId,
+    string AgentVersion,
+    int ProtocolVersion,
+    long AttemptId);
+
+public sealed record StartRequestEnvelope(
+    string RequestId,
+    string AgentVersion,
+    int ProtocolVersion,
+    long AttemptId);
 
 public sealed record HeartbeatPayload(
     string RequestId,
