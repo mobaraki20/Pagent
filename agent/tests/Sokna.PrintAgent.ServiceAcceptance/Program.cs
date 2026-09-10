@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
@@ -10,7 +11,7 @@ var parsed=ParseArgs(args);
 if(!parsed.TryGetValue("case",out var caseId)||string.IsNullOrWhiteSpace(caseId) ||
    !parsed.TryGetValue("results",out var resultsDirectory)||string.IsNullOrWhiteSpace(resultsDirectory))
 {
-    Console.Error.WriteLine("Usage: --case A12|A13|A14|A15|A16 --results <directory>");
+    Console.Error.WriteLine("Usage: --case A12|A13|A14|A15|A16|A19|A20|A21|A22|A23 --results <directory>");
     return 64;
 }
 
@@ -32,6 +33,11 @@ try
         case "A14": await RunA14(); break;
         case "A15": await RunA15(); break;
         case "A16": await RunA16(); break;
+        case "A19": await RunA19(); break;
+        case "A20": await RunA20(); break;
+        case "A21": await RunA21(); break;
+        case "A22": await RunA22(); break;
+        case "A23": await RunA23(); break;
         default:
             await WriteResult("NOT_RUN",3,$"Service acceptance case {caseId} is not implemented.");
             return 3;
@@ -259,22 +265,208 @@ async Task RunA16()
     Check(server.Requests.All(r=>!IsAttemptStatus(r)&&!IsStart(r)),"missing capability causes neither attempt_status request nor guessed start");
 }
 
+async Task RunA19()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a19-no-post-claim-delay");
+    var events=new ConcurrentQueue<string>();
+    var claim=env.CreateClaimItem(3019);
+    var transport=new CoordinatorTransport(claim,events);
+    var processFactory=new CountingNoStartFactory(events);
+    var service=env.CreateService(transport,true,processFactory,destinations:[ServiceTestEnvironment.TestDestination]);
+
+    var sw=Stopwatch.StartNew();
+    await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    sw.Stop();
+    var sequence=events.ToArray();
+
+    Check(transport.ClaimCount==1,"coordinator performs one claim");
+    Check(transport.AcceptCount==1,"successful claim is accepted in the same coordinator iteration");
+    Check(transport.StartCount==1,"accepted work reaches start in the same coordinator iteration");
+    Check(processFactory.StartCount==1,"same iteration reaches exactly one worker launch attempt");
+    Check(IsOrdered(sequence,"claim","accept","start","worker"),"event order is claim -> accept -> start -> worker without an idle poll between stages");
+    Check(sw.Elapsed<TimeSpan.FromMilliseconds(500),$"lab coordinator path stays below 500ms without injected I/O delay; actual={sw.ElapsedMilliseconds}ms");
+}
+
+async Task RunA20()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a20-wake-coalescing-owner");
+    var job=await env.CreateJobAsync(3020,"receipt-a20",DateTimeOffset.UtcNow.AddMinutes(5));
+    await env.Store.SetStateAsync(job.AttemptId,LocalJobState.Claimed);
+    var events=new ConcurrentQueue<string>();
+    var transport=new CoordinatorTransport(null,events){StartGate=new(TaskCreationOptions.RunContinuationsAsynchronously)};
+    var wake=new PrintWakeSignal();
+    var processFactory=new CountingNoStartFactory(events);
+    var service=env.CreateService(transport,true,processFactory,wake:wake);
+
+    var first=InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    await transport.StartEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    for(var i=0;i<100;i++)wake.Pulse();
+
+    var second=InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    var secondCompleted=await Task.WhenAny(second,Task.Delay(300))==second;
+    Check(secondCompleted,"concurrent poll attempt is rejected by the single coordinator owner instead of waiting behind it");
+
+    transport.StartGate.TrySetResult(true);
+    await first;
+    Check(transport.StartCount==1,"concurrent wake/poll pressure creates one start mutation for the attempt");
+    Check(processFactory.StartCount==1,"concurrent wake/poll pressure creates one worker launch attempt");
+
+    var firstWake=Stopwatch.StartNew();
+    await wake.WaitOrDelayAsync(TimeSpan.FromSeconds(1),CancellationToken.None);
+    firstWake.Stop();
+    Check(firstWake.Elapsed<TimeSpan.FromMilliseconds(150),"at least one wake raised while busy is retained");
+
+    var drained=Stopwatch.StartNew();
+    await wake.WaitOrDelayAsync(TimeSpan.FromMilliseconds(120),CancellationToken.None);
+    drained.Stop();
+    Check(drained.Elapsed>=TimeSpan.FromMilliseconds(80),"repeated wake storm is coalesced instead of creating an unbounded wake backlog");
+}
+
+async Task RunA21()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a21-slow-diagnostics");
+    var job=await env.CreateJobAsync(3021,"receipt-a21",DateTimeOffset.UtcNow.AddMinutes(5));
+    await env.Store.SetStateAsync(job.AttemptId,LocalJobState.Claimed);
+
+    var clock=new SystemAgentTimeSource();
+    var printerState=new PrinterHealthState(clock);
+    printerState.MarkSuccess([ServiceTestEnvironment.ReadyQueue]);
+    var wake=new PrintWakeSignal();
+    using var blockingProvider=new BlockingPrinterProvider();
+    var discovery=new PrinterDiscoveryService(blockingProvider,printerState,wake,NullLogger<PrinterDiscoveryService>.Instance);
+    await discovery.StartAsync(CancellationToken.None);
+    await blockingProvider.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+    var transport=new CoordinatorTransport(null,new ConcurrentQueue<string>())
+    {
+        HeartbeatGate=new(TaskCreationOptions.RunContinuationsAsynchronously),
+        ProbeGate=new(TaskCreationOptions.RunContinuationsAsynchronously)
+    };
+    var processFactory=new CountingNoStartFactory();
+    var service=env.CreateService(transport,true,processFactory,health:printerState,wake:wake);
+
+    InvokePrivateVoid(service,"StartSideIo",CancellationToken.None);
+    await transport.HeartbeatEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+    await transport.ProbeEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+    var sw=Stopwatch.StartNew();
+    await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    sw.Stop();
+
+    Check(!transport.HeartbeatGate.Task.IsCompleted,"heartbeat is still deliberately blocked while print coordinator finishes");
+    Check(!transport.ProbeGate.Task.IsCompleted,"destination refresh is still deliberately blocked while print coordinator finishes");
+    Check(processFactory.StartCount==1,"ready work reaches worker while heartbeat/probe are blocked");
+    Check(sw.Elapsed<TimeSpan.FromMilliseconds(500),$"ready work does not inherit diagnostics timeout; actual={sw.ElapsedMilliseconds}ms");
+    Check(blockingProvider.CallCount==1,"blocked native discovery has one in-flight owner and is not fanned out");
+
+    transport.HeartbeatGate.TrySetResult(true);
+    transport.ProbeGate.TrySetResult(true);
+    blockingProvider.Release();
+    await discovery.StopAsync(CancellationToken.None);
+    discovery.Dispose();
+}
+
+async Task RunA22()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a22-offline-idle");
+    var health=new MutablePrinterHealthReader(PrinterHealthSnapshots.Fresh(ServiceTestEnvironment.OfflineQueue));
+    var transport=new CoordinatorTransport(env.CreateClaimItem(3022),new ConcurrentQueue<string>());
+    var processFactory=new CountingNoStartFactory();
+    var service=env.CreateService(transport,true,processFactory,health:health,destinations:[ServiceTestEnvironment.TestDestination]);
+
+    for(var i=0;i<20;i++)await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    Check(transport.ClaimCount==0,"offline destination suppresses claim API calls across repeated idle coordinator checks");
+    Check(transport.AcceptCount==0&&transport.StartCount==0,"offline idle state creates no accept/start churn");
+    Check(processFactory.StartCount==0,"offline idle state creates no worker churn");
+
+    health.Set(PrinterHealthSnapshots.Fresh(ServiceTestEnvironment.ReadyQueue));
+    await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    Check(transport.ClaimCount==1,"when cached discovery becomes online/fresh the next owner iteration resumes claim");
+    Check(transport.AcceptCount==1&&transport.StartCount==1,"online transition proceeds through accept/start exactly once");
+    Check(processFactory.StartCount==1,"online transition reaches one worker launch attempt");
+}
+
+async Task RunA23()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a23-printer-freshness");
+    var clock=new FakeAgentClock(new DateTimeOffset(2026,9,10,12,0,0,TimeSpan.Zero));
+    var state=new PrinterHealthState(clock);
+    state.MarkSuccess([ServiceTestEnvironment.ReadyQueue]);
+    var first=state.Read(PrinterDiscoveryService.FreshnessWindow);
+    var firstSuccess=first.LastSuccessAt;
+
+    clock.Advance(TimeSpan.FromSeconds(5));
+    state.MarkFailure("synthetic_discovery_failure");
+    var afterFailure=state.Read(PrinterDiscoveryService.FreshnessWindow);
+    Check(afterFailure.LastSuccessAt==firstSuccess,"discovery failure does not fabricate a new successful discovery timestamp");
+    Check(afterFailure.LastFailureAt==clock.UtcNow,"discovery failure records a separate failure timestamp");
+    Check(afterFailure.LastError=="synthetic_discovery_failure","discovery failure reason remains separately observable");
+    Check(afterFailure.IsFresh&&afterFailure.AgeMilliseconds is >=4900 and <=5100,"freshness age continues from last success after a failure");
+
+    clock.Advance(TimeSpan.FromSeconds(16));
+    var stale=state.Read(PrinterDiscoveryService.FreshnessWindow);
+    Check(!stale.IsFresh&&stale.AgeMilliseconds is >20000,"snapshot becomes stale strictly by monotonic age without wall-clock refresh");
+
+    var transport=new CoordinatorTransport(env.CreateClaimItem(3023),new ConcurrentQueue<string>());
+    var processFactory=new CountingNoStartFactory();
+    var service=env.CreateService(transport,true,processFactory,health:state,destinations:[ServiceTestEnvironment.TestDestination]);
+    await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    Check(transport.ClaimCount==0,"stale printer snapshot is never used as readiness permission");
+
+    await InvokePrivateTaskAsync(service,"WriteLocalHealthAsync","running",true,true,null,CancellationToken.None);
+    var healthJson=await File.ReadAllTextAsync(env.Paths.HealthPath);
+    var localHealth=JsonSerializer.Deserialize<LocalHealthSnapshot>(healthJson,AgentOptions.JsonOptions());
+    Check(localHealth?.PrinterDiscoveryFresh==false,"health.json exposes stale discovery explicitly");
+    Check(localHealth?.PrinterDiscoveryLastSuccessAt==firstSuccess?.ToString("O"),"health.json preserves the real last successful discovery time");
+    Check(localHealth?.PrinterDiscoveryError=="synthetic_discovery_failure","health.json exposes discovery failure separately from queue state");
+    Check(localHealth?.PrinterDiscoveryAgeMilliseconds is >20000,"health.json exposes discovery age instead of a fabricated current timestamp");
+
+    state.MarkSuccess([ServiceTestEnvironment.OfflineQueue]);
+    await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    Check(transport.ClaimCount==0,"fresh-but-offline queue is distinct from stale discovery and still blocks readiness");
+
+    state.MarkSuccess([ServiceTestEnvironment.ReadyQueue]);
+    await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    Check(transport.ClaimCount==1,"fresh online queue restores readiness");
+    Check(processFactory.StartCount==1,"restored readiness reaches exactly one worker launch attempt");
+}
+
 static bool IsAccept(CapturedHttpRequest request)
-    => request.Method=="POST"&&request.Target.Contains("action=accept",StringComparison.OrdinalIgnoreCase);
+    =>request.Method=="POST"&&request.Target.Contains("action=accept",StringComparison.OrdinalIgnoreCase);
 static bool IsAttemptStatus(CapturedHttpRequest request)
-    => request.Method=="POST"&&request.Target.Contains("action=attempt_status",StringComparison.OrdinalIgnoreCase);
+    =>request.Method=="POST"&&request.Target.Contains("action=attempt_status",StringComparison.OrdinalIgnoreCase);
 static bool IsStart(CapturedHttpRequest request)
-    => request.Method=="POST"&&request.Target.Contains("action=start",StringComparison.OrdinalIgnoreCase);
+    =>request.Method=="POST"&&request.Target.Contains("action=start",StringComparison.OrdinalIgnoreCase);
 static bool IsProbe(CapturedHttpRequest request)
-    => request.Method=="POST"&&request.Target.Contains("action=probe",StringComparison.OrdinalIgnoreCase);
+    =>request.Method=="POST"&&request.Target.Contains("action=probe",StringComparison.OrdinalIgnoreCase);
+
+static bool IsOrdered(string[] events,params string[] expected)
+{
+    var index=0;
+    foreach(var item in events)
+    {
+        if(index<expected.Length&&item==expected[index])index++;
+    }
+    return index==expected.Length;
+}
 
 static async Task InvokePrivateAsync(PrintAgentService service,string methodName)
+    =>await InvokePrivateTaskAsync(service,methodName,CancellationToken.None);
+
+static async Task InvokePrivateTaskAsync(PrintAgentService service,string methodName,params object?[] args)
 {
     var method=typeof(PrintAgentService).GetMethod(methodName,BindingFlags.Instance|BindingFlags.NonPublic)
-        ?? throw new MissingMethodException(typeof(PrintAgentService).FullName,methodName);
-    var task=method.Invoke(service,[CancellationToken.None]) as Task
-        ?? throw new InvalidOperationException($"{methodName} did not return Task.");
+        ??throw new MissingMethodException(typeof(PrintAgentService).FullName,methodName);
+    var task=method.Invoke(service,args) as Task
+        ??throw new InvalidOperationException($"{methodName} did not return Task.");
     await task;
+}
+
+static void InvokePrivateVoid(PrintAgentService service,string methodName,params object?[] args)
+{
+    var method=typeof(PrintAgentService).GetMethod(methodName,BindingFlags.Instance|BindingFlags.NonPublic)
+        ??throw new MissingMethodException(typeof(PrintAgentService).FullName,methodName);
+    _=method.Invoke(service,args);
 }
 
 static async Task<bool> TryInvokePrivateAsync(PrintAgentService service,string methodName)
@@ -338,6 +530,10 @@ static string ResolveSourceSha()
 sealed class ServiceTestEnvironment:IDisposable
 {
     private readonly string _root;
+    public static readonly DestinationConfig TestDestination=new("prep","Test","Test Queue",80,72,1,"combined");
+    public static readonly PrinterQueueHealth ReadyQueue=new("Test Queue",false,false,false,false,0,"Acceptance Driver","LPT1:");
+    public static readonly PrinterQueueHealth OfflineQueue=new("Test Queue",true,false,false,false,0,"Acceptance Driver","LPT1:");
+
     public AgentPaths Paths{get;}
     public string DatabasePath=>Paths.DatabasePath;
     public TestLeaseProtector Protector{get;}=new();
@@ -374,30 +570,44 @@ sealed class ServiceTestEnvironment:IDisposable
         return store;
     }
 
-    public async Task<LocalJob> CreateJobAsync(long attemptId,string receipt,DateTimeOffset leaseExpiresAt)
+    public ClaimItem CreateClaimItem(long attemptId)
     {
         var payload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"Service Acceptance\"}";
         var hash=CryptoUtil.Sha256Hex(payload);
-        var claim=new ClaimItem(
+        return new ClaimItem(
             new ClaimedJob(9000+(int)(attemptId%1000),"pub","prep_order",true,"order","1",DateTimeOffset.UtcNow.ToString("O"),4,hash,payload),
-            new ClaimAttempt(attemptId,(int)(attemptId%1000),"lease-test",leaseExpiresAt.ToString("O")),
-            new DestinationConfig("prep","Test","Test Queue",80,72,1,"combined"));
+            new ClaimAttempt(attemptId,(int)(attemptId%1000),"lease-test",DateTimeOffset.UtcNow.AddMinutes(5).ToString("O")),
+            TestDestination);
+    }
+
+    public async Task<LocalJob> CreateJobAsync(long attemptId,string receipt,DateTimeOffset leaseExpiresAt)
+    {
+        var claim=CreateClaimItem(attemptId) with{Attempt=new ClaimAttempt(attemptId,(int)(attemptId%1000),"lease-test",leaseExpiresAt.ToString("O"))};
         return await Store.PersistReservedAsync(claim,receipt,"server-a");
     }
 
     public string InputPath(LocalJob job)=>Path.Combine(Paths.WorkPath,$"input-{job.ServerJobId}-{job.AttemptId}.json");
 
-    public PrintAgentService CreateService(IPrintTransport transport,bool attemptStatusSupported,CountingNoStartFactory processFactory,LocalQueueStore? store=null)
+    public PrintAgentService CreateService(
+        IPrintTransport transport,
+        bool attemptStatusSupported,
+        IWorkerProcessFactory processFactory,
+        LocalQueueStore? store=null,
+        IPrinterHealthReader? health=null,
+        IReadOnlyList<DestinationConfig>? destinations=null,
+        PrintWakeSignal? wake=null)
     {
         store??=Store;
+        health??=new MutablePrinterHealthReader(PrinterHealthSnapshots.Fresh(ReadyQueue));
+        wake??=new PrintWakeSignal();
         var dispatcher=new ReportDispatcher(store,new ReportDeliveryPolicy(jitter:()=>0.5),Log);
         var service=new PrintAgentService(
             Paths,
             store,
-            new ReadyPrinterHealthProvider(),
+            health,
             NullLogger<PrintAgentService>.Instance,
             Log,
-            new PrintWakeSignal(),
+            wake,
             dispatcher,
             new DurableMutationRequestStore(store),
             new BridgeRuntimeState(),
@@ -406,31 +616,150 @@ sealed class ServiceTestEnvironment:IDisposable
         SetPrivateField(service,"_attemptStatusSupported",attemptStatusSupported);
         SetPrivateField(service,"_serverScope","server-a");
         SetPrivateField(service,"_boundServerScope","server-a");
+        SetPrivateField(service,"_destinations",destinations??new[]{TestDestination});
+        SetPrivateField(service,"_configurationGeneration",1L);
         return service;
     }
 
     private static void SetPrivateField(object instance,string name,object value)
     {
         var field=instance.GetType().GetField(name,BindingFlags.Instance|BindingFlags.NonPublic)
-            ?? throw new MissingFieldException(instance.GetType().FullName,name);
+            ??throw new MissingFieldException(instance.GetType().FullName,name);
         field.SetValue(instance,value);
     }
 
     public void Dispose(){try{Directory.Delete(_root,true);}catch{}}
 }
 
-sealed class ReadyPrinterHealthProvider:IPrinterHealthProvider
+static class PrinterHealthSnapshots
 {
-    public IReadOnlyList<PrinterQueueHealth> GetQueues()=>[new("Test Queue",false,false,false,false,0,"Acceptance Driver","LPT1:")];
+    public static PrinterHealthSnapshot Fresh(params PrinterQueueHealth[] queues)
+        =>new(queues,DateTimeOffset.UtcNow,null,null,0,true,1);
+}
+
+sealed class MutablePrinterHealthReader:IPrinterHealthReader
+{
+    private PrinterHealthSnapshot _snapshot;
+    public MutablePrinterHealthReader(PrinterHealthSnapshot snapshot)=>_snapshot=snapshot;
+    public void Set(PrinterHealthSnapshot snapshot)=>_snapshot=snapshot;
+    public PrinterHealthSnapshot Read(TimeSpan freshnessWindow)=>_snapshot;
+}
+
+sealed class FakeAgentClock:IAgentTimeSource
+{
+    public FakeAgentClock(DateTimeOffset utcNow){UtcNow=utcNow;MonotonicNow=TimeSpan.Zero;}
+    public DateTimeOffset UtcNow{get;private set;}
+    public TimeSpan MonotonicNow{get;private set;}
+    public void Advance(TimeSpan elapsed){UtcNow+=elapsed;MonotonicNow+=elapsed;}
+}
+
+sealed class BlockingPrinterProvider:IPrinterHealthProvider,IDisposable
+{
+    private readonly ManualResetEventSlim _release=new(false);
+    private int _calls;
+    public int CallCount=>Volatile.Read(ref _calls);
+    public TaskCompletionSource<bool> Entered{get;}=new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public IReadOnlyList<PrinterQueueHealth> GetQueues()
+    {
+        Interlocked.Increment(ref _calls);
+        Entered.TrySetResult(true);
+        _release.Wait();
+        return [ServiceTestEnvironment.ReadyQueue];
+    }
+    public void Release()=>_release.Set();
+    public void Dispose(){_release.Set();_release.Dispose();}
 }
 
 sealed class CountingNoStartFactory:IWorkerProcessFactory
 {
-    public int StartCount{get;private set;}
+    private readonly ConcurrentQueue<string>? _events;
+    private int _starts;
+    public CountingNoStartFactory(ConcurrentQueue<string>? events=null)=>_events=events;
+    public int StartCount=>Volatile.Read(ref _starts);
     public IWorkerProcess Start(WorkerLaunchSpec spec)
     {
-        StartCount++;
+        Interlocked.Increment(ref _starts);
+        _events?.Enqueue("worker");
         throw new InvalidOperationException("simulated worker launch failure before child ownership");
+    }
+}
+
+sealed class CoordinatorTransport:IPrintTransport
+{
+    private readonly ClaimItem? _claim;
+    private readonly ConcurrentQueue<string> _events;
+    private int _claimDelivered;
+    private int _claimCount,_acceptCount,_startCount,_reportCount,_heartbeatCount,_probeCount;
+
+    public CoordinatorTransport(ClaimItem? claim,ConcurrentQueue<string> events){_claim=claim;_events=events;}
+    public int ClaimCount=>Volatile.Read(ref _claimCount);
+    public int AcceptCount=>Volatile.Read(ref _acceptCount);
+    public int StartCount=>Volatile.Read(ref _startCount);
+    public int ReportCount=>Volatile.Read(ref _reportCount);
+    public int HeartbeatCount=>Volatile.Read(ref _heartbeatCount);
+    public int ProbeCount=>Volatile.Read(ref _probeCount);
+
+    public TaskCompletionSource<bool> StartEntered{get;}=new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource<bool> HeartbeatEntered{get;}=new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource<bool> ProbeEntered{get;}=new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public TaskCompletionSource<bool>? StartGate{get;set;}
+    public TaskCompletionSource<bool>? HeartbeatGate{get;set;}
+    public TaskCompletionSource<bool>? ProbeGate{get;set;}
+
+    public Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct)
+    {
+        Interlocked.Increment(ref _claimCount);
+        _events.Enqueue("claim");
+        var jobs=new List<ClaimItem>();
+        if(_claim is not null&&Interlocked.Exchange(ref _claimDelivered,1)==0)jobs.Add(_claim);
+        return Task.FromResult(new ClaimResponse(true,request.RequestId,jobs,DateTimeOffset.UtcNow.ToString("O"),false));
+    }
+
+    public Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct)
+    {
+        Interlocked.Increment(ref _acceptCount);
+        _events.Enqueue("accept");
+        return Task.FromResult(new ApiResult(true,"claimed",AttemptId:item.Attempt.Id,JobId:item.Job.Id,LocalReceiptId:localReceiptId,ServerTime:DateTimeOffset.UtcNow.ToString("O")));
+    }
+
+    public Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct)
+        =>Task.FromResult(new ApiResult(true,"claimed",AttemptId:item.Attempt.Id,JobId:item.Job.Id,ServerTime:DateTimeOffset.UtcNow.ToString("O")));
+
+    public Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct)
+        =>Task.FromResult(new AttemptStatusResult(true,job.AttemptId,job.ServerJobId,"claimed","open",true,"start",false,false,job.LeaseExpiresAt.ToString("O"),DateTimeOffset.UtcNow.ToString("O")));
+
+    public async Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct)
+    {
+        Interlocked.Increment(ref _startCount);
+        _events.Enqueue("start");
+        StartEntered.TrySetResult(true);
+        if(StartGate is not null)await StartGate.Task.WaitAsync(ct);
+        return new ApiResult(true,"started",AttemptId:job.AttemptId,JobId:job.ServerJobId,LocalReceiptId:job.LocalReceiptId,ServerTime:DateTimeOffset.UtcNow.ToString("O"));
+    }
+
+    public Task<ApiResult> ReportAsync(LocalJob job,ReportRequestEnvelope request,CancellationToken ct)
+    {
+        Interlocked.Increment(ref _reportCount);
+        _events.Enqueue("report");
+        return Task.FromResult(new ApiResult(true,request.Status,AttemptId:job.AttemptId,JobId:job.ServerJobId,LocalReceiptId:job.LocalReceiptId));
+    }
+
+    public async Task<ApiResult> HeartbeatAsync(HeartbeatPayload payload,CancellationToken ct)
+    {
+        Interlocked.Increment(ref _heartbeatCount);
+        _events.Enqueue("heartbeat");
+        HeartbeatEntered.TrySetResult(true);
+        if(HeartbeatGate is not null)await HeartbeatGate.Task.WaitAsync(ct);
+        return new ApiResult(true,"ok");
+    }
+
+    public async Task<ProbeResponse> ProbeAsync(CancellationToken ct)
+    {
+        Interlocked.Increment(ref _probeCount);
+        _events.Enqueue("probe");
+        ProbeEntered.TrySetResult(true);
+        if(ProbeGate is not null)await ProbeGate.Task.WaitAsync(ct);
+        return new ProbeResponse(true,4,"6.0.0","6.2.0",[ServiceTestEnvironment.TestDestination],["attempt_status"],"acceptance-side-server",DateTimeOffset.UtcNow.ToString("O"));
     }
 }
 
