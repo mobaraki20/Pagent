@@ -41,14 +41,16 @@ if($LASTEXITCODE -ne 0){throw 'Worker raster tests failed.'}
 # until every automated A-case is implemented; CI must not turn missing cases into PASS.
 $acceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.Acceptance\Sokna.PrintAgent.Acceptance.csproj'
 $transportAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.TransportAcceptance\Sokna.PrintAgent.TransportAcceptance.csproj'
+$serviceAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.ServiceAcceptance\Sokna.PrintAgent.ServiceAcceptance.csproj'
 $transportAcceptanceCases=@('A04','A06','A17')
+$serviceAcceptanceCases=@('A13','A14')
 $acceptanceResults=Join-Path $Output 'acceptance-smoke'
 New-Item $acceptanceResults -ItemType Directory -Force|Out-Null
-$implementedAcceptance=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A17','A24','A28','A44','A46')
+$implementedAcceptance=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A13','A14','A17','A24','A28','A44','A46')
 foreach($caseId in $implementedAcceptance){
   $caseDir=Join-Path $acceptanceResults $caseId
   New-Item $caseDir -ItemType Directory -Force|Out-Null
-  $caseProject=if($transportAcceptanceCases -contains $caseId){$transportAcceptanceProject}else{$acceptanceProject}
+  $caseProject=if($transportAcceptanceCases -contains $caseId){$transportAcceptanceProject}elseif($serviceAcceptanceCases -contains $caseId){$serviceAcceptanceProject}else{$acceptanceProject}
   Write-Host "== Acceptance $caseId ==" -ForegroundColor Cyan
   & $dotnet run --project $caseProject -c $Configuration --no-build -- --case $caseId --results $caseDir
   if($LASTEXITCODE -ne 0){throw "Acceptance case failed: $caseId"}
