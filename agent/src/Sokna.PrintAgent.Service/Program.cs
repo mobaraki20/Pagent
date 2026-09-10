@@ -21,6 +21,8 @@ builder.Services.AddSingleton<ReportDispatcher>();
 builder.Services.AddSingleton<DurableMutationRequestStore>();
 builder.Services.AddSingleton<IWorkerProcessFactory,SystemWorkerProcessFactory>();
 builder.Services.AddSingleton<WorkerSupervisor>();
+builder.Services.AddSingleton<IPreviewExecutor,SystemPreviewExecutor>();
+builder.Services.AddSingleton(sp=>new PreviewScheduler(sp.GetRequiredService<IPreviewExecutor>()));
 // Configuration/token are intentionally NOT loaded during DI construction. A fresh installation must
 // start as a healthy-but-unconfigured Windows Service so the Control App can configure it afterwards.
 builder.Services.AddHostedService<PrinterDiscoveryService>();
