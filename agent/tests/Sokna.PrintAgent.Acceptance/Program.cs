@@ -29,7 +29,9 @@ try
     switch(caseId.ToUpperInvariant())
     {
         case "A01": await RunA01(); break;
+        case "A02": await RunA02(); break;
         case "A04": await RunA04(); break;
+        case "A05": await RunA05(); break;
         case "A06": await RunA06(); break;
         case "A07": RunA07(); break;
         case "A08": RunA08(); break;
@@ -82,6 +84,59 @@ async Task RunA01()
     Check((await restarted.GetOutcomeAsync(job.AttemptId))?.Status!=PrintOutcomeStatus.Submitted,"restart never synthesizes submitted");
 }
 
+async Task RunA02()
+{
+    using var env=await TestEnvironment.CreateAsync("a02");
+    var submitted=await env.CreateJobAsync(2101,"server-a","receipt-a02-submitted");
+    var submittedOutbox=await env.Store.CommitOutcomeAndReportAsync(
+        submitted,
+        new AttemptOutcomeDraft(PrintOutcomeStatus.Submitted,"spool-2101",false,null,null,"worker:durable-result"),
+        env.Report(submitted,"a02-submitted","submitted","spool-2101",false,null,null));
+
+    var retryable=await env.CreateJobAsync(2102,"server-a","receipt-a02-retryable");
+    var retryableOutbox=await env.Store.CommitOutcomeAndReportAsync(
+        retryable,
+        new AttemptOutcomeDraft(PrintOutcomeStatus.Failed,null,true,"printer_offline","offline","worker:durable-result"),
+        env.Report(retryable,"a02-retryable","failed",null,true,"printer_offline","offline"));
+    await env.Store.MarkReportDeliveryAsync(retryableOutbox.Id,ReportDeliveryState.Backoff,"temporary",503,"server_busy",DateTimeOffset.UtcNow.AddMinutes(2));
+
+    var nonretryable=await env.CreateJobAsync(2103,"server-a","receipt-a02-nonretryable");
+    var nonretryableOutbox=await env.Store.CommitOutcomeAndReportAsync(
+        nonretryable,
+        new AttemptOutcomeDraft(PrintOutcomeStatus.Failed,null,false,"invalid_payload","invalid","worker:durable-result"),
+        env.Report(nonretryable,"a02-nonretryable","failed",null,false,"invalid_payload","invalid"));
+    await env.Store.MarkReportDeliveryAsync(nonretryableOutbox.Id,ReportDeliveryState.ReconciliationRequired,"schema conflict",422,"schema_mismatch",null);
+
+    var unknown=await env.CreateJobAsync(2104,"server-a","receipt-a02-unknown");
+    var unknownOutbox=await env.Store.CommitOutcomeAndReportAsync(
+        unknown,
+        new AttemptOutcomeDraft(PrintOutcomeStatus.Unknown,null,false,"after_fence","ambiguous","worker:fence"),
+        env.Report(unknown,"a02-unknown","unknown",null,false,"after_fence","ambiguous"));
+    await env.Store.MarkReportDeliveryAsync(unknownOutbox.Id,ReportDeliveryState.AuthBlocked,"token invalid",401,"invalid_token",null);
+
+    var hold=await env.CreateJobAsync(2105,"server-a","receipt-a02-hold");
+    var holdOutbox=await env.Store.CommitOutcomeAndReportAsync(
+        hold,
+        new AttemptOutcomeDraft(PrintOutcomeStatus.RecoveryHold,null,false,"recovery_hold","hold","recovery:test"),
+        env.Report(hold,"a02-hold","recovery_hold",null,false,"recovery_hold","hold"));
+    await env.Store.MarkReportDeliveryAsync(holdOutbox.Id,ReportDeliveryState.ReconciliationRequired,"manual reconciliation",409,"conflict",null);
+
+    var restarted=new LocalQueueStore(env.DatabasePath,env.Protector);
+    await restarted.InitializeAsync();
+    Check((await restarted.GetOutcomeAsync(2101))?.Status==PrintOutcomeStatus.Submitted,"submitted outcome survives restart");
+    Check((await restarted.GetOutboxForAttemptAsync(2101))?.DeliveryState==ReportDeliveryState.Pending,"submitted pending delivery survives restart");
+    Check((await restarted.GetOutcomeAsync(2102)) is {Status:PrintOutcomeStatus.Failed,Retryable:true},"retryable failed outcome survives restart");
+    Check((await restarted.GetOutboxForAttemptAsync(2102))?.DeliveryState==ReportDeliveryState.Backoff,"backoff survives restart");
+    Check((await restarted.GetOutcomeAsync(2103)) is {Status:PrintOutcomeStatus.Failed,Retryable:false},"nonretryable failed outcome survives restart");
+    Check((await restarted.GetOutboxForAttemptAsync(2103))?.DeliveryState==ReportDeliveryState.ReconciliationRequired,"quarantine survives restart");
+    Check((await restarted.GetOutcomeAsync(2104))?.Status==PrintOutcomeStatus.Unknown,"unknown outcome survives restart");
+    Check((await restarted.GetOutboxForAttemptAsync(2104))?.DeliveryState==ReportDeliveryState.AuthBlocked,"auth blocked survives restart");
+    Check((await restarted.GetOutcomeAsync(2105))?.Status==PrintOutcomeStatus.RecoveryHold,"recovery hold survives restart");
+    Check((await restarted.GetOutboxForAttemptAsync(2105))?.DeliveryState==ReportDeliveryState.ReconciliationRequired,"hold reconciliation survives restart");
+    Check((await restarted.GetOutcomeAsync(2102))?.Status!=PrintOutcomeStatus.Submitted,"failed retryable meaning is not rewritten");
+    _=submittedOutbox;
+}
+
 async Task RunA04()
 {
     using var env=await TestEnvironment.CreateAsync("a04");
@@ -101,6 +156,42 @@ async Task RunA04()
     Check(transport.ReportRequests.Count==2,"report transport invoked twice");
     Check(transport.ReportRequests[0]==transport.ReportRequests[1],"same request id and body replayed");
     Check(transport.PrintInvocationCount==0,"report retry never invokes printing");
+}
+
+async Task RunA05()
+{
+    using var env=await TestEnvironment.CreateAsync("a05");
+
+    var missing=await env.CreateJobAsync(2201,"server-a","receipt-a05-missing");
+    await env.Store.SetStateAsync(missing.AttemptId,LocalJobState.ReportPending);
+    var restartMissing=new LocalQueueStore(env.DatabasePath,env.Protector);
+    await restartMissing.InitializeAsync();
+    var missingOutcome=await restartMissing.GetOutcomeAsync(missing.AttemptId);
+    var missingReport=await restartMissing.GetOutboxForAttemptAsync(missing.AttemptId);
+    Check(missingOutcome?.Status==PrintOutcomeStatus.RecoveryHold,"legacy ReportPending without report becomes hold");
+    Check(missingOutcome?.ErrorCode=="legacy_reportpending_missing_report","missing legacy report has explicit reason");
+    Check(missingReport is not null&&missingReport.DeliveryState==ReportDeliveryState.ReconciliationRequired,"missing evidence creates durable reconciliation report");
+    Check(missingOutcome?.Status!=PrintOutcomeStatus.Submitted,"missing evidence never guesses submitted");
+
+    var conflicting=await env.CreateJobAsync(2202,"server-a","receipt-a05-conflict");
+    await env.Store.SetStateAsync(conflicting.AttemptId,LocalJobState.ReportPending);
+    var failedWire=env.Report(conflicting,"a05-conflict-failed","failed",null,true,"printer_offline","offline");
+    var submittedWire=env.Report(conflicting,"a05-conflict-submitted","submitted","spool-conflict",false,null,null);
+    await env.Store.EnqueueReportAsync(conflicting.ServerJobId,conflicting.AttemptId,failedWire.RequestId,JsonSerializer.Serialize(failedWire,AgentOptions.JsonOptions()));
+    await env.Store.EnqueueReportAsync(conflicting.ServerJobId,conflicting.AttemptId,submittedWire.RequestId,JsonSerializer.Serialize(submittedWire,AgentOptions.JsonOptions()));
+    var restartConflict=new LocalQueueStore(env.DatabasePath,env.Protector);
+    await restartConflict.InitializeAsync();
+    var conflictOutcome=await restartConflict.GetOutcomeAsync(conflicting.AttemptId);
+    Check(conflictOutcome?.Status==PrintOutcomeStatus.RecoveryHold,"conflicting legacy reports become hold");
+    Check(conflictOutcome?.ErrorCode=="legacy_conflicting_report_evidence","conflicting evidence has explicit reason");
+    Check(await restartConflict.HasPendingReportAsync(conflicting.AttemptId),"conflicting report rows remain durable evidence");
+    Check(conflictOutcome?.Status!=PrintOutcomeStatus.Submitted,"conflicting evidence never guesses submitted");
+
+    var identity=await env.CreateJobAsync(2203,"server-a","receipt-a05-identity");
+    var identityDraft=new AttemptOutcomeDraft(PrintOutcomeStatus.Failed,null,true,"safe_failed","failed","test");
+    var wrongIdentity=env.Report(identity,"a05-wrong-identity","failed",null,true,"safe_failed","failed") with{LocalReceiptId="wrong-receipt"};
+    await ExpectThrowsAsync(()=>env.Store.CommitOutcomeAndReportAsync(identity,identityDraft,wrongIdentity),"mismatched durable report identity rejected");
+    Check(await env.Store.GetOutcomeAsync(identity.AttemptId) is null,"identity mismatch does not commit an outcome");
 }
 
 async Task RunA06()
