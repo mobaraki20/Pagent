@@ -10,6 +10,8 @@ public sealed record AgentOptions
     public int HeartbeatSeconds {get;init;}=15;
     public int ClaimBatchSize {get;init;}=3;
     public int WorkerTimeoutSeconds {get;init;}=25;
+    public int WorkerExitProofTimeoutMilliseconds {get;init;}=3000;
+    public int WorkerShutdownExitProofTimeoutMilliseconds {get;init;}=5000;
     public bool RequireHttps {get;init;}=true;
     public bool LocalBridgeEnabled {get;init;}=true;
     public int LocalBridgePort {get;init;}=17653;
@@ -41,6 +43,8 @@ public sealed record AgentOptions
         if(IdlePollMilliseconds is <1500 or >30000)throw new InvalidDataException("IdlePollMilliseconds خارج از محدوده مجاز است.");
         if(HeartbeatSeconds is <10 or >60)throw new InvalidDataException("HeartbeatSeconds باید بین 10 و 60 باشد.");
         if(WorkerTimeoutSeconds is <10 or >120)throw new InvalidDataException("WorkerTimeoutSeconds باید بین 10 و 120 باشد.");
+        if(WorkerExitProofTimeoutMilliseconds is <500 or >15000)throw new InvalidDataException("WorkerExitProofTimeoutMilliseconds باید بین 500 و 15000 باشد.");
+        if(WorkerShutdownExitProofTimeoutMilliseconds is <500 or >20000)throw new InvalidDataException("WorkerShutdownExitProofTimeoutMilliseconds باید بین 500 و 20000 باشد.");
         if(LocalBridgePort is <1024 or >65535)throw new InvalidDataException("LocalBridgePort معتبر نیست.");
         if(LocalBridgeEnabled && !string.IsNullOrWhiteSpace(LocalBridgeAllowedOrigin))
         {
