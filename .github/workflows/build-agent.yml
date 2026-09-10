@@ -26,7 +26,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          foreach($p in @('agent/global.json','agent/Directory.Build.props','agent/scripts/Build-Agent.ps1','agent/scripts/Test-Windows-Install.ps1')){
+          foreach($p in @('agent/global.json','agent/Directory.Build.props','agent/scripts/Build-Agent.ps1','agent/scripts/Test-Windows-Install.ps1','agent/tests/Sokna.PrintAgent.PreviewAcceptance/Sokna.PrintAgent.PreviewAcceptance.csproj')){
             if(!(Test-Path $p -PathType Leaf)){throw "Required source missing: $p"}
           }
           if(Test-Path 'agent6.zip'){throw 'Legacy agent6.zip must not be part of the active source tree.'}
@@ -76,7 +76,14 @@ jobs:
           )
           foreach($p in $required){if(!(Test-Path $p -PathType Leaf)){throw "Required artifact missing: $p"}}
           $acceptance=Get-ChildItem 'agent/artifacts/acceptance-smoke' -Recurse -Filter '*.result.json' -ErrorAction Stop
-          if($acceptance.Count -lt 13){throw "Acceptance smoke evidence incomplete: expected at least 13 result files, found $($acceptance.Count)."}
+          if($acceptance.Count -lt 37){throw "Acceptance smoke evidence incomplete: expected at least 37 result files, found $($acceptance.Count)."}
+          foreach($id in @('A35','A37','A38','A47')){
+            $result=Get-ChildItem "agent/artifacts/acceptance-smoke/$id" -Filter "$id.result.json" -ErrorAction Stop | Select-Object -First 1
+            if($null -eq $result){throw "Required preview acceptance evidence missing: $id"}
+            $json=Get-Content $result.FullName -Raw | ConvertFrom-Json
+            if($json.status -ne 'PASS'){throw "Preview acceptance case did not PASS: $id => $($json.status)"}
+          }
+          if(!(Test-Path 'agent/artifacts/acceptance-smoke/A47/A47.samples.json' -PathType Leaf)){throw 'A47 raw latency samples are missing.'}
 
       - name: Upload artifacts and evidence
         if: always()
