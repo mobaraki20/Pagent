@@ -29,11 +29,17 @@ public sealed class HttpPrintTransport : IPrintTransport
         T result;
         try
         {
-            result=JsonSerializer.Deserialize<T>(text,AgentOptions.JsonOptions()) ?? throw new InvalidDataException($"Print API {action} JSON خالی/نامعتبر است.");
+            result=JsonSerializer.Deserialize<T>(text,AgentOptions.JsonOptions())
+                ?? throw new PrintProtocolException(action,"empty_success_response",$"Print API {action} پاسخ موفق خالی برگرداند.");
         }
+        catch(PrintProtocolException){throw;}
         catch(JsonException e)
         {
-            throw new InvalidDataException($"Print API {action} JSON نامعتبر است.",e);
+            throw new PrintProtocolException(action,"invalid_success_json",$"Print API {action} پاسخ HTTP موفق با JSON نامعتبر/ناسازگار برگرداند.",e);
+        }
+        catch(NotSupportedException e)
+        {
+            throw new PrintProtocolException(action,"unsupported_success_json",$"Print API {action} پاسخ HTTP موفق با نوع دادهٔ پشتیبانی‌نشده برگرداند.",e);
         }
 
         if(result is ApiResult api && !api.Success)
