@@ -15,7 +15,15 @@ internal enum LoopbackResponseKind
     BusinessFailure,
     MalformedJson,
     InvalidTypes,
-    MismatchedReport
+    MismatchedReport,
+    AttemptStatusSuccessFalse,
+    AttemptStatusReceiptMismatch,
+    AttemptStatusIdentityMismatch,
+    AttemptStatusHumanResolution,
+    AttemptStatusBadAction,
+    AttemptStatusUnknownState,
+    AttemptStatusOffsetless,
+    AttemptStatusExpired
 }
 
 internal sealed record CapturedHttpRequest(string Method,string Target,string? Authorization,string Body);
@@ -99,10 +107,7 @@ internal sealed class LoopbackPrintApiServer : IAsyncDisposable
 
         LoopbackResponseKind response;
         lock(_gate)response=_responses.Count>0?_responses.Dequeue():LoopbackResponseKind.Success;
-        if(response==LoopbackResponseKind.DisconnectAfterCommit)
-        {
-            return;
-        }
+        if(response==LoopbackResponseKind.DisconnectAfterCommit)return;
 
         var payload=response switch
         {
@@ -112,10 +117,51 @@ internal sealed class LoopbackPrintApiServer : IAsyncDisposable
             LoopbackResponseKind.MalformedJson=>"{not-json",
             LoopbackResponseKind.InvalidTypes=>"{\"success\":\"yes\",\"attempt_id\":\"not-a-number\",\"local_receipt_id\":17}",
             LoopbackResponseKind.MismatchedReport=>"{\"success\":true,\"status\":\"submitted\",\"attempt_id\":999999,\"job_id\":999999,\"local_receipt_id\":\"wrong\"}",
+            LoopbackResponseKind.AttemptStatusSuccessFalse=>BuildAttemptStatus(body,success:false),
+            LoopbackResponseKind.AttemptStatusReceiptMismatch=>BuildAttemptStatus(body,receiptMatches:false),
+            LoopbackResponseKind.AttemptStatusIdentityMismatch=>BuildAttemptStatus(body,attemptOverride:999999,jobOverride:999999),
+            LoopbackResponseKind.AttemptStatusHumanResolution=>BuildAttemptStatus(body,human:true),
+            LoopbackResponseKind.AttemptStatusBadAction=>BuildAttemptStatus(body,nextAction:"delete"),
+            LoopbackResponseKind.AttemptStatusUnknownState=>BuildAttemptStatus(body,state:"mystery",nextAction:"continue"),
+            LoopbackResponseKind.AttemptStatusOffsetless=>BuildAttemptStatus(body,serverTime:"2026-09-10T08:00:00"),
+            LoopbackResponseKind.AttemptStatusExpired=>BuildAttemptStatus(body,state:"expired",nextAction:"stop",terminal:true,leaseExpiresAt:"2026-09-10T07:55:00Z"),
             _=>BuildSuccess(body)
         };
         var status=response==LoopbackResponseKind.Unauthorized?"401 Unauthorized":"200 OK";
         await WriteResponseAsync(stream,status,payload,ct);
+    }
+
+    private static string BuildAttemptStatus(
+        string requestBody,
+        bool success=true,
+        bool receiptMatches=true,
+        long? attemptOverride=null,
+        long? jobOverride=null,
+        bool human=false,
+        string state="claimed",
+        string nextAction="start",
+        bool terminal=false,
+        string serverTime="2026-09-10T08:00:00Z",
+        string leaseExpiresAt="2026-09-10T08:05:00Z")
+    {
+        using var request=JsonDocument.Parse(requestBody);
+        var root=request.RootElement;
+        var attempt=root.TryGetProperty("attempt_id",out var a)&&a.TryGetInt64(out var av)?av:0;
+        var job=9000+(attempt%1000);
+        return JsonSerializer.Serialize(new
+        {
+            success,
+            attempt_id=attemptOverride??attempt,
+            job_id=jobOverride??job,
+            attempt_state=state,
+            job_state="open",
+            receipt_matches=receiptMatches,
+            next_action=nextAction,
+            terminal,
+            requires_human_resolution=human,
+            lease_expires_at=leaseExpiresAt,
+            server_time=serverTime
+        });
     }
 
     private static string BuildSuccess(string requestBody)
