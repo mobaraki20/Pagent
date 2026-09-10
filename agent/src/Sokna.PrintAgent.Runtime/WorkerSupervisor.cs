@@ -9,7 +9,8 @@ public sealed record WorkerLaunchSpec(
     TimeSpan ExecutionTimeout,
     TimeSpan ExitProofTimeout,
     TimeSpan ShutdownExitProofTimeout,
-    int StandardErrorLimit=4096);
+    int StandardErrorLimit=4096,
+    int StandardOutputLimit=16384);
 
 public enum WorkerStopKind
 {
@@ -31,6 +32,7 @@ public sealed record WorkerSupervisionResult(
     string? Error)
 {
     public bool SafeNoChildCreated => StopKind==WorkerStopKind.LaunchFailed&&!ProcessStarted;
+    public string StandardOutput {get;init;}=string.Empty;
 }
 
 public interface IWorkerProcess : IAsyncDisposable
@@ -41,6 +43,7 @@ public interface IWorkerProcess : IAsyncDisposable
     void KillTree();
     Task WaitForExitAsync(CancellationToken cancellationToken);
     string GetBoundedStandardError();
+    string GetBoundedStandardOutput()=>string.Empty;
 }
 
 public interface IWorkerProcessFactory
@@ -49,8 +52,9 @@ public interface IWorkerProcessFactory
 }
 
 /// <summary>
-/// Owns the bounded lifecycle of one isolated print worker. It never decides print outcome;
-/// callers combine exit proof with the durable worker result and submission fence.
+/// Owns the bounded lifecycle of one isolated worker. It never decides print outcome;
+/// callers combine exit proof with durable result/fence evidence. Preview reuses the same
+/// process ownership so cancellation/timeout cannot create a second, weaker child lifecycle.
 /// </summary>
 public sealed class WorkerSupervisor
 {
@@ -103,7 +107,16 @@ public sealed class WorkerSupervisor
             try
             {
                 await process.WaitForExitAsync(linked.Token);
-                return new(WorkerStopKind.Exited,true,true,process.ExitCode,Bound(process.GetBoundedStandardError(),spec.StandardErrorLimit),null);
+                return new(
+                    WorkerStopKind.Exited,
+                    true,
+                    true,
+                    process.ExitCode,
+                    Bound(process.GetBoundedStandardError(),spec.StandardErrorLimit),
+                    null)
+                {
+                    StandardOutput=Bound(process.GetBoundedStandardOutput(),spec.StandardOutputLimit)
+                };
             }
             catch(OperationCanceledException) when(serviceCancellation.IsCancellationRequested)
             {
@@ -163,7 +176,10 @@ public sealed class WorkerSupervisor
             exitProven,
             exitProven?process.ExitCode:null,
             Bound(process.GetBoundedStandardError(),spec.StandardErrorLimit),
-            error);
+            error)
+        {
+            StandardOutput=Bound(process.GetBoundedStandardOutput(),spec.StandardOutputLimit)
+        };
     }
 
     private static string? JoinErrors(Exception? first,Exception? second)
