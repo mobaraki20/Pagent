@@ -11,7 +11,7 @@ public static class ApiTimestampPolicy
         var text=value.Trim();
         var t=text.IndexOf('T');
         if(t<0)return false;
-        var hasZulu=text.EndsWith('Z',StringComparison.OrdinalIgnoreCase);
+        var hasZulu=text.EndsWith("Z",StringComparison.OrdinalIgnoreCase);
         var plus=text.LastIndexOf('+');
         var minus=text.LastIndexOf('-');
         var offsetIndex=Math.Max(plus,minus);
