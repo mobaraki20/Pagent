@@ -17,6 +17,20 @@ public sealed record AgentOptions
     public int LocalBridgePort {get;init;}=17653;
     public string LocalBridgeAllowedOrigin {get;init;}="";
 
+    // Preview is deliberately a small, read-only side workload. These defaults implement the
+    // documented R07 policy: one active renderer globally, at most one queued revision per
+    // session, and a small bounded global pending set. None of these settings grant print rights.
+    public int PreviewMaxPendingGlobal {get;init;}=4;
+    public int PreviewTimeoutSeconds {get;init;}=10;
+    public int PreviewExitProofTimeoutMilliseconds {get;init;}=2000;
+    public int PreviewMaxPayloadBytes {get;init;}=240000;
+    public int PreviewMaxTextCharacters {get;init;}=100000;
+    public int PreviewMaxItems {get;init;}=500;
+    public int PreviewMaxHeightPixels {get;init;}=24000;
+    public long PreviewMaxPixelArea {get;init;}=24000000;
+    public int PreviewMaxOutputBytes {get;init;}=2000000;
+    public int PreviewRevisionTtlSeconds {get;init;}=600;
+
     public static AgentOptions Load(string path)=>JsonSerializer.Deserialize<AgentOptions>(File.ReadAllText(path,Encoding.UTF8),JsonOptions())??throw new InvalidDataException("config.json معتبر نیست.");
 
     public void Save(string path)
@@ -50,6 +64,16 @@ public sealed record AgentOptions
         {
             if(!Uri.TryCreate(LocalBridgeAllowedOrigin,UriKind.Absolute,out var origin)||origin.Scheme is not ("https" or "http")||origin.AbsolutePath!="/"||!string.IsNullOrEmpty(origin.Query)||!string.IsNullOrEmpty(origin.Fragment))throw new InvalidDataException("LocalBridgeAllowedOrigin باید Origin دقیق سایت باشد.");
         }
+        if(PreviewMaxPendingGlobal is <1 or >16)throw new InvalidDataException("PreviewMaxPendingGlobal باید بین 1 و 16 باشد.");
+        if(PreviewTimeoutSeconds is <2 or >30)throw new InvalidDataException("PreviewTimeoutSeconds باید بین 2 و 30 باشد.");
+        if(PreviewExitProofTimeoutMilliseconds is <500 or >10000)throw new InvalidDataException("PreviewExitProofTimeoutMilliseconds باید بین 500 و 10000 باشد.");
+        if(PreviewMaxPayloadBytes is <16384 or >262144)throw new InvalidDataException("PreviewMaxPayloadBytes خارج از محدوده امن است.");
+        if(PreviewMaxTextCharacters is <4096 or >200000)throw new InvalidDataException("PreviewMaxTextCharacters خارج از محدوده امن است.");
+        if(PreviewMaxItems is <20 or >1000)throw new InvalidDataException("PreviewMaxItems خارج از محدوده امن است.");
+        if(PreviewMaxHeightPixels is <2000 or >48000)throw new InvalidDataException("PreviewMaxHeightPixels خارج از محدوده امن است.");
+        if(PreviewMaxPixelArea is <2000000 or >48000000)throw new InvalidDataException("PreviewMaxPixelArea خارج از محدوده امن است.");
+        if(PreviewMaxOutputBytes is <262144 or >8000000)throw new InvalidDataException("PreviewMaxOutputBytes خارج از محدوده امن است.");
+        if(PreviewRevisionTtlSeconds is <60 or >3600)throw new InvalidDataException("PreviewRevisionTtlSeconds باید بین 60 و 3600 باشد.");
     }
     public static JsonSerializerOptions JsonOptions()=>new(){PropertyNamingPolicy=JsonNamingPolicy.SnakeCaseLower,WriteIndented=true};
 }
