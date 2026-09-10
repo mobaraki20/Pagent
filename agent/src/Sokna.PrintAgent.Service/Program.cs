@@ -10,6 +10,9 @@ paths.EnsureDirectories();
 builder.Services.AddSingleton(paths);
 builder.Services.AddSingleton(sp=>new LocalQueueStore(paths.DatabasePath));
 builder.Services.AddSingleton<IPrinterHealthProvider,WindowsPrinterHealthProvider>();
+builder.Services.AddSingleton<IAgentTimeSource,SystemAgentTimeSource>();
+builder.Services.AddSingleton<PrinterHealthState>();
+builder.Services.AddSingleton<IPrinterHealthReader>(sp=>sp.GetRequiredService<PrinterHealthState>());
 builder.Services.AddSingleton(sp=>new AgentLog(paths.LogsPath));
 builder.Services.AddSingleton<PrintWakeSignal>();
 builder.Services.AddSingleton<BridgeRuntimeState>();
@@ -20,6 +23,7 @@ builder.Services.AddSingleton<IWorkerProcessFactory,SystemWorkerProcessFactory>(
 builder.Services.AddSingleton<WorkerSupervisor>();
 // Configuration/token are intentionally NOT loaded during DI construction. A fresh installation must
 // start as a healthy-but-unconfigured Windows Service so the Control App can configure it afterwards.
+builder.Services.AddHostedService<PrinterDiscoveryService>();
 builder.Services.AddHostedService<PrintAgentService>();
 builder.Services.AddHostedService<LocalBridgeService>();
 builder.Services.AddHostedService<WorkerEvidenceJanitor>();
