@@ -14,6 +14,7 @@ internal enum LoopbackResponseKind
     ProbeSuccess,
     BusinessFailure,
     MalformedJson,
+    InvalidTypes,
     MismatchedReport
 }
 
@@ -100,8 +101,6 @@ internal sealed class LoopbackPrintApiServer : IAsyncDisposable
         lock(_gate)response=_responses.Count>0?_responses.Dequeue():LoopbackResponseKind.Success;
         if(response==LoopbackResponseKind.DisconnectAfterCommit)
         {
-            // Request is already captured above; closing without any status line simulates
-            // a server commit whose response was lost on the wire.
             return;
         }
 
@@ -111,6 +110,7 @@ internal sealed class LoopbackPrintApiServer : IAsyncDisposable
             LoopbackResponseKind.ProbeSuccess=>"{\"success\":true,\"protocol_version\":4,\"minimum_agent_version\":\"6.0.0\",\"recommended_agent_version\":\"6.2.0\",\"destinations\":[],\"capabilities\":[\"attempt_status\"],\"server_instance_id\":\"acceptance-server\",\"server_time\":\"2026-09-10T08:00:00Z\"}",
             LoopbackResponseKind.BusinessFailure=>"{\"success\":false,\"code\":\"destination_forbidden\",\"message\":\"business rejected\"}",
             LoopbackResponseKind.MalformedJson=>"{not-json",
+            LoopbackResponseKind.InvalidTypes=>"{\"success\":\"yes\",\"attempt_id\":\"not-a-number\",\"local_receipt_id\":17}",
             LoopbackResponseKind.MismatchedReport=>"{\"success\":true,\"status\":\"submitted\",\"attempt_id\":999999,\"job_id\":999999,\"local_receipt_id\":\"wrong\"}",
             _=>BuildSuccess(body)
         };
