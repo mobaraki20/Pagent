@@ -1,3 +1,5 @@
+using Sokna.PrintAgent.Core;
+
 namespace Sokna.PrintAgent.Service;
 
 public sealed record WorkerLaunchSpec(
@@ -172,11 +174,11 @@ public sealed class WorkerSupervisor
         return Safe(first.Message+" | "+second.Message);
     }
 
-    private static string Safe(string value)=>Core.SafeLogText.Sanitize(value,400);
+    private static string Safe(string value)=>SafeLogText.Sanitize(value,400);
     private static string Bound(string value,int limit)
     {
         if(string.IsNullOrEmpty(value))return string.Empty;
-        var safe=Core.SafeLogText.Sanitize(value,Math.Max(64,limit));
+        var safe=SafeLogText.Sanitize(value,Math.Max(64,limit));
         return safe.Length<=limit?safe:safe[..limit];
     }
 }
