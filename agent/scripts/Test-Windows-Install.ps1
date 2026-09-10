@@ -180,7 +180,9 @@ finally{
 }
 
 Write-Host '== Same-version repair with intentionally restricted Program Files ACL =='
-& icacls.exe $installRoot /inheritance:r /grant:r '*S-1-5-18:(OI)(CI)RX' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
+& icacls.exe $installRoot /inheritance:r /remove:g '*S-1-5-32-545' | Out-Null
+if($LASTEXITCODE -ne 0){throw "Unable to remove Users ACL for regression injection: $LASTEXITCODE"}
+& icacls.exe $installRoot /grant:r '*S-1-5-18:(OI)(CI)RX' '*S-1-5-32-544:(OI)(CI)F' | Out-Null
 if($LASTEXITCODE -ne 0){throw "Unable to inject restricted ACL: $LASTEXITCODE"}
 if(Test-UsersReadExecuteAcl $installRoot){throw 'Restricted ACL injection did not remove Users ReadAndExecute.'}
 $repairStdout=Join-Path $env:RUNNER_TEMP 'sokna-same-version-repair.stdout.log'
