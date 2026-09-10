@@ -304,7 +304,7 @@ sealed class WindowsServiceTestEnvironment:IDisposable
         store??=Store;
         var dispatcher=new ReportDispatcher(store,new ReportDeliveryPolicy(jitter:()=>0.5),Log);
         var service=new PrintAgentService(
-            Paths,store,new ReadyPrinterHealthProvider(),NullLogger<PrintAgentService>.Instance,Log,new PrintWakeSignal(),dispatcher,new DurableMutationRequestStore(store),new WorkerSupervisor(factory));
+            Paths,store,new ReadyPrinterHealthProvider(),NullLogger<PrintAgentService>.Instance,Log,new PrintWakeSignal(),dispatcher,new DurableMutationRequestStore(store),new BridgeRuntimeState(),new WorkerSupervisor(factory));
         SetField(service,"_api",transport);
         SetField(service,"_attemptStatusSupported",true);
         SetField(service,"_serverScope","server-a");
