@@ -158,4 +158,10 @@ public sealed record LocalHealthSnapshot(
     int BackoffReportCount=0,
     int AuthBlockedReportCount=0,
     int ReconciliationReportCount=0,
-    long? OldestUndeliveredReportAgeSeconds=null);
+    long? OldestUndeliveredReportAgeSeconds=null,
+    string? PrinterDiscoveryLastSuccessAt=null,
+    string? PrinterDiscoveryLastFailureAt=null,
+    string? PrinterDiscoveryError=null,
+    long? PrinterDiscoveryAgeMilliseconds=null,
+    bool PrinterDiscoveryFresh=false,
+    long PrinterDiscoveryGeneration=0);
