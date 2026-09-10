@@ -147,8 +147,8 @@ internal sealed class LoopbackBridgeServer:IDisposable
 
     private async Task<(BridgeHttpRequest? Request,BridgeHttpResponse? Response)> ReadRequestAsync(NetworkStream stream,CancellationToken ct)
     {
-        byte[] received;
-        int headerEnd;
+        byte[] received=[];
+        var headerEnd=-1;
         using(var headerCts=CancellationTokenSource.CreateLinkedTokenSource(ct))
         {
             headerCts.CancelAfter(_headerTimeout);
@@ -174,7 +174,7 @@ internal sealed class LoopbackBridgeServer:IDisposable
             }
         }
 
-        received=received!;
+        if(headerEnd<0)return (null,Status(400));
         if(headerEnd>MaxHeaderBytes)return (null,Status(431));
         var headerText=Encoding.ASCII.GetString(received,0,headerEnd);
         if(!TryParseHead(headerText,out var method,out var path,out var headers))return (null,Status(400));
