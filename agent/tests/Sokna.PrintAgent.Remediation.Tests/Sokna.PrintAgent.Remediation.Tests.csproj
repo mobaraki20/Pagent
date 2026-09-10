@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/Sokna.PrintAgent.Core/Sokna.PrintAgent.Core.csproj"/></ItemGroup>
+</Project>
