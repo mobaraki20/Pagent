@@ -12,6 +12,7 @@ builder.Services.AddSingleton(sp=>new LocalQueueStore(paths.DatabasePath));
 builder.Services.AddSingleton<IPrinterHealthProvider,WindowsPrinterHealthProvider>();
 builder.Services.AddSingleton(sp=>new AgentLog(paths.LogsPath));
 builder.Services.AddSingleton<PrintWakeSignal>();
+builder.Services.AddSingleton<BridgeRuntimeState>();
 builder.Services.AddSingleton<ReportDeliveryPolicy>();
 builder.Services.AddSingleton<ReportDispatcher>();
 builder.Services.AddSingleton<DurableMutationRequestStore>();
