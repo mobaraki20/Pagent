@@ -85,7 +85,10 @@ try
         if(DateTimeOffset.UtcNow>=deadline)throw new TimeoutException("Start signal از Service دریافت نشد؛ هیچ تماس Spooler انجام نشد.");
         await Task.Delay(50);
     }
-    var result=await new WinspoolAdapter().SubmitAsync(input,CancellationToken.None);
+    IPrinterAdapter adapter=VirtualPrinterQueues.IsPdfTestQueue(input.QueueName)
+        ?new PdfTestSinkAdapter()
+        :new WinspoolAdapter();
+    var result=await adapter.SubmitAsync(input,CancellationToken.None);
     await DurableFile.WriteJsonAtomicAsync(input.ResultPath,result);
     return result.Status=="submitted"?0:result.Status=="failed"?10:20;
 }
