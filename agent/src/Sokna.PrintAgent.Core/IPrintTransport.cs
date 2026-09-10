@@ -3,10 +3,24 @@ namespace Sokna.PrintAgent.Core;
 public interface IPrintTransport
 {
     Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct);
-    Task<ApiResult> AcceptAsync(ClaimItem item,AcceptRequestEnvelope request,CancellationToken ct);
-    Task<ApiResult> RenewAsync(ClaimItem item,RenewRequestEnvelope request,CancellationToken ct);
+
+    [Obsolete("Use the durable AcceptRequestEnvelope overload.")]
+    Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct);
+    Task<ApiResult> AcceptAsync(ClaimItem item,AcceptRequestEnvelope request,CancellationToken ct)
+        => AcceptAsync(item,request.LocalReceiptId,request.RequestId,ct);
+
+    [Obsolete("Use the durable RenewRequestEnvelope overload.")]
+    Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct);
+    Task<ApiResult> RenewAsync(ClaimItem item,RenewRequestEnvelope request,CancellationToken ct)
+        => RenewAsync(item,request.RequestId,ct);
+
     Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct);
-    Task<ApiResult> StartAsync(LocalJob job,StartRequestEnvelope request,CancellationToken ct);
+
+    [Obsolete("Use the durable StartRequestEnvelope overload.")]
+    Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct);
+    Task<ApiResult> StartAsync(LocalJob job,StartRequestEnvelope request,CancellationToken ct)
+        => StartAsync(job,request.RequestId,ct);
+
     Task<ApiResult> ReportAsync(LocalJob job,ReportRequestEnvelope request,CancellationToken ct);
     Task<ApiResult> HeartbeatAsync(HeartbeatPayload payload,CancellationToken ct);
     Task<ProbeResponse> ProbeAsync(CancellationToken ct);
