@@ -132,7 +132,7 @@ public sealed class LocalBridgeService : BackgroundService
         _listener=listener;
         listener.Start();
         _runtime.MarkListening(options.LocalBridgePort,origin,pairing);
-        var serveTask=listener.RunAsync(request=>HandleAsync(request,origin,pairing,generationCancellation.Token),generationCancellation.Token);
+        var serveTask=listener.RunAsync((request,requestToken)=>HandleAsync(request,origin,pairing,requestToken),generationCancellation.Token);
 
         try
         {
