@@ -24,7 +24,8 @@ $serviceProject=Join-Path $root 'tests\Sokna.PrintAgent.ServiceAcceptance\Sokna.
 $contractProject=Join-Path $root 'tests\Sokna.PrintAgent.ContractAcceptance\Sokna.PrintAgent.ContractAcceptance.csproj'
 $windowsFaultProject=Join-Path $root 'tests\Sokna.PrintAgent.WindowsFaultAcceptance\Sokna.PrintAgent.WindowsFaultAcceptance.csproj'
 $cleanupProject=Join-Path $root 'tests\Sokna.PrintAgent.CleanupAcceptance\Sokna.PrintAgent.CleanupAcceptance.csproj'
-foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject)){
+$realApiProject=Join-Path $root 'tests\Sokna.PrintAgent.RealApiIntegration\Sokna.PrintAgent.RealApiIntegration.csproj'
+foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject,$realApiProject)){
   if(!(Test-Path $required -PathType Leaf)){throw "Acceptance project missing: $required"}
 }
 $sourceSha=(& git -C $root rev-parse HEAD).Trim()
@@ -36,6 +37,7 @@ $serviceCases=@('A12','A13','A14','A15','A16')
 $contractCases=@('A18')
 $windowsFaultCases=@('A25','A26','A27')
 $cleanupCases=@('A29')
+$integrationCases=@('A49')
 $implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A24','A25','A26','A27','A28','A29','A44','A46')
 $allAutomated=1..47 | ForEach-Object {'A{0:D2}' -f $_}
 $allAutomated+=@('A52')
@@ -60,7 +62,7 @@ function Invoke-Case([string]$id){
   if($manualUat -contains $id){return (Write-ManualUatResult $id)}
   $caseDir=Join-Path $results $id
   New-Item $caseDir -ItemType Directory -Force | Out-Null
-  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}else{$project}
+  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}elseif($integrationCases -contains $id){$realApiProject}else{$project}
   & dotnet run --project $selectedProject -c $Configuration -- --case $id --results $caseDir
   return $LASTEXITCODE
 }
@@ -73,12 +75,19 @@ if($PSCmdlet.ParameterSetName -eq 'Case'){
 
 $caseIds=if($Suite -eq 'Automated'){$allAutomated}else{@('A49')}
 if($Suite -eq 'Integration'){
-  if([string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_SERVER_URL) -or [string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_TOKEN_FILE)){
+  $missing=@()
+  if([string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_SERVER_URL)){$missing+='SOKNA_ACCEPTANCE_SERVER_URL'}
+  if([string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_FAULT_PROXY_URL)){$missing+='SOKNA_ACCEPTANCE_FAULT_PROXY_URL'}
+  if([string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_TOKEN_FILE)){$missing+='SOKNA_ACCEPTANCE_TOKEN_FILE'}
+  if([string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_DESTINATION_KEY)){$missing+='SOKNA_ACCEPTANCE_DESTINATION_KEY'}
+  if($env:SOKNA_ACCEPTANCE_ALLOW_MUTATION -ne 'I_UNDERSTAND_THIS_MUTATES_ACCEPTANCE_API'){$missing+='SOKNA_ACCEPTANCE_ALLOW_MUTATION'}
+  if($missing.Count -gt 0){
     $path=Join-Path $results 'A49.result.json'
+    $blocker='A49 real integration is guarded and remains NOT_RUN. Missing/invalid: '+($missing -join ', ')+'. The fault proxy must forward the request, wait for upstream commit/response, then drop the client response when X-Sokna-Acceptance-Drop-Response=after-commit is present.'
     [ordered]@{
-      case_id='A49';status='NOT_RUN';source_sha=$sourceSha;run_started_at=(Get-Date).ToUniversalTime().ToString('o');run_finished_at=(Get-Date).ToUniversalTime().ToString('o');exit_code=3;evidence=@();blocker='Set SOKNA_ACCEPTANCE_SERVER_URL and SOKNA_ACCEPTANCE_TOKEN_FILE for the real API integration gate.'
+      case_id='A49';status='NOT_RUN';source_sha=$sourceSha;run_started_at=(Get-Date).ToUniversalTime().ToString('o');run_finished_at=(Get-Date).ToUniversalTime().ToString('o');exit_code=3;evidence=@();blocker=$blocker
     } | ConvertTo-Json -Depth 5 | Set-Content $path -Encoding utf8NoBOM
-    Write-Error 'Integration configuration is missing. A49 remains NOT_RUN.'
+    Write-Error $blocker
     exit 3
   }
 }
