@@ -83,6 +83,7 @@ public sealed class PreviewScheduler : IAsyncDisposable
 {
     private readonly object _gate=new();
     private readonly IPreviewExecutor _executor;
+    private readonly IAgentTimeSource _clock;
     private readonly Dictionary<string,SessionState> _sessions=new(StringComparer.Ordinal);
     private readonly LinkedList<string> _pendingSessions=new();
     private readonly CancellationTokenSource _shutdown=new();
@@ -95,9 +96,14 @@ public sealed class PreviewScheduler : IAsyncDisposable
     private long _busyRejected;
     private long _superseded;
 
-    public PreviewScheduler(IPreviewExecutor executor,int maxPendingGlobal=4,TimeSpan? revisionTtl=null)
+    public PreviewScheduler(
+        IPreviewExecutor executor,
+        int maxPendingGlobal=4,
+        TimeSpan? revisionTtl=null,
+        IAgentTimeSource? clock=null)
     {
         _executor=executor??throw new ArgumentNullException(nameof(executor));
+        _clock=clock??new SystemAgentTimeSource();
         _maxPendingGlobal=ValidateMaxPending(maxPendingGlobal);
         _revisionTtl=ValidateTtl(revisionTtl??TimeSpan.FromMinutes(10));
     }
@@ -109,7 +115,7 @@ public sealed class PreviewScheduler : IAsyncDisposable
             ThrowIfDisposed();
             _maxPendingGlobal=ValidateMaxPending(maxPendingGlobal);
             _revisionTtl=ValidateTtl(revisionTtl);
-            PruneSessionsNoLock(DateTimeOffset.UtcNow);
+            PruneSessionsNoLock(_clock.UtcNow);
         }
     }
 
@@ -143,11 +149,11 @@ public sealed class PreviewScheduler : IAsyncDisposable
         lock(_gate)
         {
             ThrowIfDisposed();
-            var now=DateTimeOffset.UtcNow;
+            var now=_clock.UtcNow;
             PruneSessionsNoLock(now);
             if(!_sessions.TryGetValue(request.SessionId,out var session))
             {
-                session=new SessionState();
+                session=new SessionState(now);
                 _sessions.Add(request.SessionId,session);
             }
 
@@ -189,7 +195,10 @@ public sealed class PreviewScheduler : IAsyncDisposable
             Interlocked.Increment(ref _superseded);
             replaced.Completion.TrySetResult(PreviewScheduleResult.Superseded(replaced.Request));
         }
-        activeToCancel?.Cancellation.Cancel();
+        if(activeToCancel is not null)
+        {
+            try{activeToCancel.Cancellation.Cancel();}catch(ObjectDisposedException){}
+        }
         return pending.Completion.Task;
     }
 
@@ -222,7 +231,7 @@ public sealed class PreviewScheduler : IAsyncDisposable
                 if(pending is null)
                 {
                     _pump=null;
-                    PruneSessionsNoLock(DateTimeOffset.UtcNow);
+                    PruneSessionsNoLock(_clock.UtcNow);
                     return;
                 }
             }
@@ -250,7 +259,7 @@ public sealed class PreviewScheduler : IAsyncDisposable
                 if(ReferenceEquals(_active,active))_active=null;
                 if(_sessions.TryGetValue(pending.Request.SessionId,out var session))
                 {
-                    session.LastSeen=DateTimeOffset.UtcNow;
+                    session.LastSeen=_clock.UtcNow;
                     superseded=session.LatestRevision>pending.Request.Revision;
                 }
             }
@@ -288,7 +297,7 @@ public sealed class PreviewScheduler : IAsyncDisposable
             if(_disposed)return;
             _disposed=true;
             _shutdown.Cancel();
-            _active?.Cancellation.Cancel();
+            try{_active?.Cancellation.Cancel();}catch(ObjectDisposedException){}
             pending=_sessions.Values.Where(x=>x.Pending is not null).Select(x=>x.Pending!).ToArray();
             foreach(var session in _sessions.Values){session.Pending=null;session.QueueNode=null;}
             _pendingSessions.Clear();
@@ -309,9 +318,10 @@ public sealed class PreviewScheduler : IAsyncDisposable
     private sealed class SessionState
     {
         public long LatestRevision;
-        public DateTimeOffset LastSeen=DateTimeOffset.UtcNow;
+        public DateTimeOffset LastSeen;
         public PendingWork? Pending;
         public LinkedListNode<string>? QueueNode;
+        public SessionState(DateTimeOffset now)=>LastSeen=now;
     }
 
     private sealed class PendingWork
