@@ -1,6 +1,4 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -16,23 +14,37 @@ public sealed class LocalBridgeService : BackgroundService
     private static readonly TimeSpan HeaderReadTimeout=TimeSpan.FromSeconds(3);
     private static readonly TimeSpan BodyReadTimeout=TimeSpan.FromSeconds(5);
     private static readonly TimeSpan GenerationDrainTimeout=TimeSpan.FromSeconds(2);
-    private static readonly TimeSpan PreviewTimeout=TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan PreviewExitProofTimeout=TimeSpan.FromSeconds(2);
     private static readonly UTF8Encoding StrictUtf8=new(false,true);
 
     private readonly AgentPaths _paths;
     private readonly PrintWakeSignal _wake;
     private readonly BridgeRuntimeState _runtime;
+    private readonly PreviewScheduler _previewScheduler;
+    private readonly AgentLog _log;
+    private readonly bool _ownsPreviewScheduler;
     private readonly ConcurrentDictionary<string,DateTimeOffset> _replay=new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string,(long Revision,DateTimeOffset Seen)> _previewRevisions=new(StringComparer.Ordinal);
-    private readonly SemaphoreSlim _previewSlot=new(1,1);
     private LoopbackBridgeServer? _listener;
 
-    public LocalBridgeService(AgentPaths paths,PrintWakeSignal wake,BridgeRuntimeState? runtime=null)
+    public LocalBridgeService(
+        AgentPaths paths,
+        PrintWakeSignal wake,
+        BridgeRuntimeState? runtime=null,
+        PreviewScheduler? previewScheduler=null,
+        AgentLog? log=null)
     {
         _paths=paths;
         _wake=wake;
         _runtime=runtime??new BridgeRuntimeState();
+        _log=log??new AgentLog(paths.LogsPath);
+        if(previewScheduler is null)
+        {
+            _previewScheduler=new PreviewScheduler(new SystemPreviewExecutor(paths,new WorkerSupervisor(new SystemWorkerProcessFactory()),_log));
+            _ownsPreviewScheduler=true;
+        }
+        else
+        {
+            _previewScheduler=previewScheduler;
+        }
     }
 
     public static string PairingPath(AgentPaths paths)=>Path.Combine(paths.ProgramDataRoot,"bridge-pairing.id");
@@ -124,6 +136,7 @@ public sealed class LocalBridgeService : BackgroundService
 
     private async Task RunGenerationAsync(AgentOptions options,string origin,string pairing,CancellationToken ct)
     {
+        _previewScheduler.Configure(options.PreviewMaxPendingGlobal,TimeSpan.FromSeconds(options.PreviewRevisionTtlSeconds));
         var configStamp=FileStamp(_paths.ConfigPath);
         var pairingPath=PairingPath(_paths);
         var pairingStamp=FileStamp(pairingPath);
@@ -132,7 +145,7 @@ public sealed class LocalBridgeService : BackgroundService
         _listener=listener;
         listener.Start();
         _runtime.MarkListening(options.LocalBridgePort,origin,pairing);
-        var serveTask=listener.RunAsync((request,requestToken)=>HandleAsync(request,origin,pairing,requestToken),generationCancellation.Token);
+        var serveTask=listener.RunAsync((request,requestToken)=>HandleAsync(request,origin,pairing,options,requestToken),generationCancellation.Token);
 
         try
         {
@@ -168,7 +181,12 @@ public sealed class LocalBridgeService : BackgroundService
         return new UriBuilder(uri.Scheme,uri.Host,uri.IsDefaultPort?-1:uri.Port).Uri.GetLeftPart(UriPartial.Authority);
     }
 
-    private async Task<BridgeHttpResponse> HandleAsync(BridgeHttpRequest request,string allowedOrigin,string pairing,CancellationToken serviceToken)
+    private async Task<BridgeHttpResponse> HandleAsync(
+        BridgeHttpRequest request,
+        string allowedOrigin,
+        string pairing,
+        AgentOptions options,
+        CancellationToken serviceToken)
     {
         var response=new BridgeHttpResponse();
         try
@@ -230,7 +248,7 @@ public sealed class LocalBridgeService : BackgroundService
             }
             if(request.Path=="/v1/preview")
             {
-                await HandlePreviewAsync(response,root,serviceToken);
+                await HandlePreviewAsync(response,root,options,serviceToken);
                 return response;
             }
             response.StatusCode=404;
@@ -277,97 +295,91 @@ public sealed class LocalBridgeService : BackgroundService
             return;
         }
         _wake.Pulse();
+        _log.Info("wake_received",$"request={Short(requestId)}; jobs={jobs.GetArrayLength()}");
         SetJson(response,new{success=true,accepted=true,idempotent=false});
         await Task.CompletedTask;
     }
 
-    private async Task HandlePreviewAsync(BridgeHttpResponse response,JsonElement root,CancellationToken ct)
+    private async Task HandlePreviewAsync(BridgeHttpResponse response,JsonElement root,AgentOptions options,CancellationToken ct)
     {
         if(!TryString(root,"type",out var type)||type!="print.preview"||!TryInt32(root,"protocol_version",out var version)||version!=1){response.StatusCode=422;return;}
         if(!TryInt64(root,"revision",out var revision)||revision<1){response.StatusCode=422;return;}
-        var sessionId=TryString(root,"session_id",out var session)&&session.Length is >=8 and <=96?session:"legacy-session";
-        if(!TryString(root,"payload_json",out var payload)||payload.Length<2||Encoding.UTF8.GetByteCount(payload)>240000){response.StatusCode=422;return;}
-        if(!TryDouble(root,"paper_width_mm",out var paper)||paper is not (58 or 80)){response.StatusCode=422;return;}
-        if(!TryDouble(root,"printable_width_mm",out var printable)||printable<20||printable>paper){response.StatusCode=422;return;}
-        var dpi=TryInt32(root,"dpi",out var requestedDpi)?requestedDpi:203;
-        if(dpi is <100 or >600){response.StatusCode=422;return;}
+        if(!TryString(root,"session_id",out var sessionId)||sessionId.Length is <8 or >96){response.StatusCode=422;return;}
+        if(!TryString(root,"payload_json",out var payload)){response.StatusCode=422;return;}
+        if(!TryDouble(root,"paper_width_mm",out var paper)){response.StatusCode=422;return;}
+        if(!TryDouble(root,"printable_width_mm",out var printable)){response.StatusCode=422;return;}
 
-        PrunePreviewRevisions();
-        var latest=_previewRevisions.AddOrUpdate(sessionId,(revision,DateTimeOffset.UtcNow),(_,old)=>revision>old.Revision?(revision,DateTimeOffset.UtcNow):old);
-        if(latest.Revision!=revision)
-        {
-            SetJson(response,new{success=false,code="preview_superseded",revision},409);
-            return;
-        }
-        if(!_previewSlot.Wait(0))
-        {
-            SetJson(response,new{success=false,code="preview_busy",revision},429);
-            return;
-        }
-
-        var id=Guid.NewGuid().ToString("N");
-        var inputPath=Path.Combine(_paths.WorkPath,$"preview-{id}.json");
-        var outputPath=Path.Combine(_paths.WorkPath,$"preview-{id}.png");
-        var worker=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","Worker","Sokna.PrintAgent.Worker.exe"));
-        var preview=new{payload_json=payload,paper_width_mm=paper,printable_width_mm=printable,dpi_x=dpi,dpi_y=dpi,output_path=outputPath};
-        await DurableFile.WriteJsonAtomicAsync(inputPath,preview,ct);
+        var legacyDpi=TryInt32(root,"dpi",out var dpi)?dpi:203;
+        var dpiX=TryInt32(root,"dpi_x",out var requestedDpiX)?requestedDpiX:legacyDpi;
+        var dpiY=TryInt32(root,"dpi_y",out var requestedDpiY)?requestedDpiY:legacyDpi;
+        var limits=new PreviewSafetyLimits(
+            options.PreviewMaxPayloadBytes,
+            options.PreviewMaxTextCharacters,
+            options.PreviewMaxItems,
+            options.PreviewMaxHeightPixels,
+            options.PreviewMaxPixelArea,
+            options.PreviewMaxOutputBytes);
         try
         {
-            using var process=Process.Start(new ProcessStartInfo(worker,$"--preview \"{inputPath}\"")
-            {
-                UseShellExecute=false,
-                CreateNoWindow=true,
-                WorkingDirectory=Path.GetDirectoryName(worker)!,
-                RedirectStandardOutput=true,
-                RedirectStandardError=true
-            })??throw new InvalidOperationException("Preview worker اجرا نشد.");
-            using var guard=WorkerProcessGuard.Attach(process);
-            using var timeout=CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(PreviewTimeout);
-            try
-            {
-                await process.WaitForExitAsync(timeout.Token);
-            }
-            catch(OperationCanceledException)
-            {
-                await StopPreviewProcessAsync(process);
-                if(ct.IsCancellationRequested)throw;
-                SetJson(response,new{success=false,code="preview_timeout",revision},504);
-                return;
-            }
-
-            var stdout=await process.StandardOutput.ReadToEndAsync(CancellationToken.None);
-            var stderr=await process.StandardError.ReadToEndAsync(CancellationToken.None);
-            if(process.ExitCode!=0||!File.Exists(outputPath))throw new InvalidOperationException("Preview renderer failed: "+Safe(stderr));
-            if(_previewRevisions.TryGetValue(sessionId,out var current)&&current.Revision!=revision)
-            {
-                SetJson(response,new{success=false,code="preview_superseded",revision},409);
-                return;
-            }
-            var bytes=await File.ReadAllBytesAsync(outputPath,ct);
-            if(bytes.Length>2_000_000)throw new InvalidDataException("Preview image بیش از حد مجاز است.");
-            using var meta=JsonDocument.Parse(stdout);
-            var m=meta.RootElement;
-            SetJson(response,new
-            {
-                success=true,
-                revision,
-                session_id=sessionId,
-                image_base64=Convert.ToBase64String(bytes),
-                width=m.GetProperty("width").GetInt32(),
-                height=m.GetProperty("height").GetInt32(),
-                dpi=m.GetProperty("dpi_x").GetInt32(),
-                png_sha256=m.GetProperty("png_sha256").GetString(),
-                renderer_version=m.GetProperty("renderer_version").GetString(),
-                font_family=m.GetProperty("font_family").GetString(),
-                bundled_font=m.GetProperty("bundled_font").GetBoolean()
-            });
+            _=PreviewSafety.Validate(payload,paper,printable,dpiX,dpiY,limits);
         }
-        finally
+        catch(InvalidDataException)
         {
-            _previewSlot.Release();
-            TryDelete(inputPath);
-            TryDelete(outputPath);
+            SetJson(response,new{success=false,code="preview_limits_invalid",revision,session_id=sessionId},422);
+            return;
+        }
+
+        var request=new PreviewWorkRequest(
+            sessionId,
+            revision,
+            payload,
+            paper,
+            printable,
+            dpiX,
+            dpiY,
+            limits,
+            TimeSpan.FromSeconds(options.PreviewTimeoutSeconds),
+            TimeSpan.FromMilliseconds(options.PreviewExitProofTimeoutMilliseconds));
+        var result=await _previewScheduler.SubmitAsync(request,ct);
+        if(ct.IsCancellationRequested)throw new OperationCanceledException(ct);
+
+        switch(result.Status)
+        {
+            case PreviewScheduleStatus.Completed when result.Render is { } render:
+                SetJson(response,new
+                {
+                    success=true,
+                    revision,
+                    session_id=sessionId,
+                    image_base64=Convert.ToBase64String(render.ImageBytes),
+                    width=render.Width,
+                    height=render.Height,
+                    dpi=render.DpiX,
+                    dpi_x=render.DpiX,
+                    dpi_y=render.DpiY,
+                    png_sha256=render.PngSha256,
+                    renderer_version=render.RendererVersion,
+                    font_family=render.FontFamily,
+                    bundled_font=render.BundledFont
+                });
+                return;
+            case PreviewScheduleStatus.Busy:
+                response.Headers["Retry-After"]="1";
+                SetJson(response,new{success=false,code="preview_busy",revision,session_id=sessionId},429);
+                return;
+            case PreviewScheduleStatus.Superseded:
+                SetJson(response,new{success=false,code="preview_superseded",revision,session_id=sessionId},409);
+                return;
+            case PreviewScheduleStatus.Timeout:
+                SetJson(response,new{success=false,code="preview_timeout",revision,session_id=sessionId},504);
+                return;
+            case PreviewScheduleStatus.Cancelled:
+                SetJson(response,new{success=false,code="preview_cancelled",revision,session_id=sessionId},409);
+                return;
+            default:
+                var status=result.Code is "preview_raster_budget_exceeded" or "preview_output_size_exceeded" or "preview_metadata_mismatch"?422:500;
+                SetJson(response,new{success=false,code=result.Code,revision,session_id=sessionId},status);
+                return;
         }
     }
 
@@ -387,27 +399,11 @@ public sealed class LocalBridgeService : BackgroundService
         response.Body=JsonSerializer.SerializeToUtf8Bytes(value,AgentOptions.JsonOptions());
     }
 
-    private static async Task StopPreviewProcessAsync(Process process)
-    {
-        try{if(!process.HasExited)process.Kill(true);}catch{}
-        if(process.HasExited)return;
-        using var proof=new CancellationTokenSource(PreviewExitProofTimeout);
-        try{await process.WaitForExitAsync(proof.Token);}catch{}
-    }
-
     private void PruneReplay()
     {
         var now=DateTimeOffset.UtcNow;
         foreach(var row in _replay)if(row.Value<now)_replay.TryRemove(row.Key,out _);
         if(_replay.Count>2048)foreach(var key in _replay.OrderBy(k=>k.Value).Take(_replay.Count-1024).Select(k=>k.Key))_replay.TryRemove(key,out _);
-    }
-
-    private void PrunePreviewRevisions()
-    {
-        var cutoff=DateTimeOffset.UtcNow.AddMinutes(-10);
-        foreach(var row in _previewRevisions)if(row.Value.Seen<cutoff)_previewRevisions.TryRemove(row.Key,out _);
-        if(_previewRevisions.Count>2048)
-            foreach(var key in _previewRevisions.OrderBy(k=>k.Value.Seen).Take(_previewRevisions.Count-1024).Select(k=>k.Key))_previewRevisions.TryRemove(key,out _);
     }
 
     private static (DateTime LastWriteUtc,long Length,bool Exists) FileStamp(string path)
@@ -463,13 +459,15 @@ public sealed class LocalBridgeService : BackgroundService
         try{await Task.Delay(TimeSpan.FromSeconds(1),ct);}catch(OperationCanceledException) when(ct.IsCancellationRequested){}
     }
 
-    private static string Safe(string s)=>SafeLogText.Sanitize(s,300);
-    private static void TryDelete(string p){try{if(File.Exists(p))File.Delete(p);}catch{}}
+    private static string Short(string value)=>value.Length<=12?value:value[..12];
 
     public override void Dispose()
     {
         try{_listener?.Stop();}catch{}
-        _previewSlot.Dispose();
+        if(_ownsPreviewScheduler)
+        {
+            try{_previewScheduler.DisposeAsync().AsTask().GetAwaiter().GetResult();}catch{}
+        }
         base.Dispose();
     }
 }
