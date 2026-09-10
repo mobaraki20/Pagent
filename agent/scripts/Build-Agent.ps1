@@ -49,6 +49,7 @@ $bridgeRuntimeAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeRu
 $bridgeAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeAcceptance\Sokna.PrintAgent.BridgeAcceptance.csproj'
 $bridgeSecurityAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeSecurityAcceptance\Sokna.PrintAgent.BridgeSecurityAcceptance.csproj'
 $bridgeLoadAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeLoadAcceptance\Sokna.PrintAgent.BridgeLoadAcceptance.csproj'
+$previewAcceptanceProject=Join-Path $root 'tests\Sokna.PrintAgent.PreviewAcceptance\Sokna.PrintAgent.PreviewAcceptance.csproj'
 $transportAcceptanceCases=@('A04','A06','A17')
 $serviceAcceptanceCases=@('A12','A13','A14','A15','A16','A19','A20','A21','A22','A23')
 $contractAcceptanceCases=@('A18')
@@ -57,14 +58,15 @@ $cleanupAcceptanceCases=@('A29')
 $bridgeRuntimeAcceptanceCases=@('A32')
 $bridgeAcceptanceCases=@('A33')
 $bridgeSecurityAcceptanceCases=@('A34')
+$previewAcceptanceCases=@('A35','A37','A38','A47')
 $bridgeLoadAcceptanceCases=@('A36')
 $acceptanceResults=Join-Path $Output 'acceptance-smoke'
 New-Item $acceptanceResults -ItemType Directory -Force|Out-Null
-$implementedAcceptance=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A19','A20','A21','A22','A23','A24','A25','A26','A27','A28','A29','A32','A33','A34','A36','A44','A46')
+$implementedAcceptance=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A19','A20','A21','A22','A23','A24','A25','A26','A27','A28','A29','A32','A33','A34','A35','A36','A37','A38','A44','A46','A47')
 foreach($caseId in $implementedAcceptance){
   $caseDir=Join-Path $acceptanceResults $caseId
   New-Item $caseDir -ItemType Directory -Force|Out-Null
-  $caseProject=if($transportAcceptanceCases -contains $caseId){$transportAcceptanceProject}elseif($serviceAcceptanceCases -contains $caseId){$serviceAcceptanceProject}elseif($contractAcceptanceCases -contains $caseId){$contractAcceptanceProject}elseif($windowsFaultAcceptanceCases -contains $caseId){$windowsFaultAcceptanceProject}elseif($cleanupAcceptanceCases -contains $caseId){$cleanupAcceptanceProject}elseif($bridgeRuntimeAcceptanceCases -contains $caseId){$bridgeRuntimeAcceptanceProject}elseif($bridgeSecurityAcceptanceCases -contains $caseId){$bridgeSecurityAcceptanceProject}elseif($bridgeLoadAcceptanceCases -contains $caseId){$bridgeLoadAcceptanceProject}elseif($bridgeAcceptanceCases -contains $caseId){$bridgeAcceptanceProject}else{$acceptanceProject}
+  $caseProject=if($transportAcceptanceCases -contains $caseId){$transportAcceptanceProject}elseif($serviceAcceptanceCases -contains $caseId){$serviceAcceptanceProject}elseif($contractAcceptanceCases -contains $caseId){$contractAcceptanceProject}elseif($windowsFaultAcceptanceCases -contains $caseId){$windowsFaultAcceptanceProject}elseif($cleanupAcceptanceCases -contains $caseId){$cleanupAcceptanceProject}elseif($bridgeRuntimeAcceptanceCases -contains $caseId){$bridgeRuntimeAcceptanceProject}elseif($bridgeSecurityAcceptanceCases -contains $caseId){$bridgeSecurityAcceptanceProject}elseif($previewAcceptanceCases -contains $caseId){$previewAcceptanceProject}elseif($bridgeLoadAcceptanceCases -contains $caseId){$bridgeLoadAcceptanceProject}elseif($bridgeAcceptanceCases -contains $caseId){$bridgeAcceptanceProject}else{$acceptanceProject}
   Write-Host "== Acceptance $caseId ==" -ForegroundColor Cyan
   & $dotnet run --project $caseProject -c $Configuration --no-build -- --case $caseId --results $caseDir
   if($LASTEXITCODE -ne 0){throw "Acceptance case failed: $caseId"}
