@@ -1,6 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Net;
+using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -13,19 +13,20 @@ public sealed class LocalBridgeService : BackgroundService
 {
     private const int MaxConnections=24;
     private static readonly TimeSpan ReloadProbeInterval=TimeSpan.FromMilliseconds(250);
+    private static readonly TimeSpan HeaderReadTimeout=TimeSpan.FromSeconds(3);
     private static readonly TimeSpan BodyReadTimeout=TimeSpan.FromSeconds(5);
     private static readonly TimeSpan GenerationDrainTimeout=TimeSpan.FromSeconds(2);
     private static readonly TimeSpan PreviewTimeout=TimeSpan.FromSeconds(10);
     private static readonly TimeSpan PreviewExitProofTimeout=TimeSpan.FromSeconds(2);
+    private static readonly UTF8Encoding StrictUtf8=new(false,true);
 
     private readonly AgentPaths _paths;
     private readonly PrintWakeSignal _wake;
     private readonly BridgeRuntimeState _runtime;
     private readonly ConcurrentDictionary<string,DateTimeOffset> _replay=new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string,(long Revision,DateTimeOffset Seen)> _previewRevisions=new(StringComparer.Ordinal);
-    private readonly SemaphoreSlim _connections=new(MaxConnections,MaxConnections);
     private readonly SemaphoreSlim _previewSlot=new(1,1);
-    private HttpListener? _listener;
+    private LoopbackBridgeServer? _listener;
 
     public LocalBridgeService(AgentPaths paths,PrintWakeSignal wake,BridgeRuntimeState? runtime=null)
     {
@@ -107,7 +108,7 @@ public sealed class LocalBridgeService : BackgroundService
             {
                 break;
             }
-            catch(HttpListenerException)
+            catch(BridgeBindException)
             {
                 _runtime.MarkStopped(true,"bind_failed");
                 await DelayAfterFailureAsync(stoppingToken);
@@ -127,71 +128,37 @@ public sealed class LocalBridgeService : BackgroundService
         var pairingPath=PairingPath(_paths);
         var pairingStamp=FileStamp(pairingPath);
         using var generationCancellation=CancellationTokenSource.CreateLinkedTokenSource(ct);
-        var handlers=new List<Task>(MaxConnections);
-        using var listener=new HttpListener();
+        using var listener=new LoopbackBridgeServer(options.LocalBridgePort,MaxConnections,HeaderReadTimeout,BodyReadTimeout);
         _listener=listener;
-        listener.IgnoreWriteExceptions=true;
-        listener.Prefixes.Add($"http://127.0.0.1:{options.LocalBridgePort}/");
-        // HTTP.sys owns the actual socket on Windows. Do not rely only on managed StreamReader
-        // cancellation for slow/incomplete request bodies; enforce the same bound in the kernel path.
-        listener.TimeoutManager.EntityBody=BodyReadTimeout;
-        listener.TimeoutManager.DrainEntityBody=TimeSpan.FromSeconds(1);
         listener.Start();
         _runtime.MarkListening(options.LocalBridgePort,origin,pairing);
+        var serveTask=listener.RunAsync(request=>HandleAsync(request,origin,pairing,generationCancellation.Token),generationCancellation.Token);
 
-        Task<HttpListenerContext>? acceptTask=listener.GetContextAsync();
         try
         {
-            while(listener.IsListening&&!ct.IsCancellationRequested)
+            while(!ct.IsCancellationRequested)
             {
                 var tick=Task.Delay(ReloadProbeInterval,ct);
-                var completed=await Task.WhenAny(acceptTask,tick);
-                if(completed==tick)
+                var completed=await Task.WhenAny(serveTask,tick);
+                if(completed==serveTask)
                 {
-                    ct.ThrowIfCancellationRequested();
-                    if(FileStamp(_paths.ConfigPath)!=configStamp||FileStamp(pairingPath)!=pairingStamp)break;
-                    continue;
+                    await serveTask;
+                    if(!ct.IsCancellationRequested)throw new IOException("Loopback bridge listener stopped unexpectedly.");
+                    break;
                 }
 
-                HttpListenerContext context;
-                try{context=await acceptTask;}
-                catch(HttpListenerException) when(!ct.IsCancellationRequested){break;}
-                acceptTask=listener.GetContextAsync();
-
-                if(!_connections.Wait(0))
-                {
-                    Reject(context,503,"bridge_busy");
-                    continue;
-                }
-                handlers.RemoveAll(t=>t.IsCompleted);
-                handlers.Add(HandleTrackedAsync(context,origin,pairing,generationCancellation.Token));
+                ct.ThrowIfCancellationRequested();
+                if(FileStamp(_paths.ConfigPath)!=configStamp||FileStamp(pairingPath)!=pairingStamp)break;
             }
         }
         finally
         {
-            // A config/pairing rotation creates a security boundary: old in-flight handlers must not
-            // continue indefinitely with the previous credential/origin after the listener generation ends.
             generationCancellation.Cancel();
-            try{listener.Stop();}catch{}
-            try{listener.Close();}catch{}
-            if(acceptTask is not null)
-            {
-                try{await acceptTask;}catch{}
-            }
-            var pending=handlers.Where(t=>!t.IsCompleted).ToArray();
-            if(pending.Length>0)
-            {
-                try{await Task.WhenAll(pending).WaitAsync(GenerationDrainTimeout);}catch{}
-            }
+            listener.Stop();
+            try{await serveTask.WaitAsync(GenerationDrainTimeout);}catch{}
             _runtime.MarkStopped(true,null);
             if(ReferenceEquals(_listener,listener))_listener=null;
         }
-    }
-
-    private async Task HandleTrackedAsync(HttpListenerContext ctx,string allowedOrigin,string pairing,CancellationToken serviceToken)
-    {
-        try{await HandleAsync(ctx,allowedOrigin,pairing,serviceToken);}
-        finally{_connections.Release();}
     }
 
     private static string? AllowedOrigin(AgentOptions options)
@@ -201,110 +168,140 @@ public sealed class LocalBridgeService : BackgroundService
         return new UriBuilder(uri.Scheme,uri.Host,uri.IsDefaultPort?-1:uri.Port).Uri.GetLeftPart(UriPartial.Authority);
     }
 
-    private async Task HandleAsync(HttpListenerContext ctx,string allowedOrigin,string pairing,CancellationToken serviceToken)
+    private async Task<BridgeHttpResponse> HandleAsync(BridgeHttpRequest request,string allowedOrigin,string pairing,CancellationToken serviceToken)
     {
+        var response=new BridgeHttpResponse();
         try
         {
-            var origin=ctx.Request.Headers["Origin"]??"";
-            if(!string.Equals(origin,allowedOrigin,StringComparison.OrdinalIgnoreCase)){ctx.Response.StatusCode=403;return;}
-            ctx.Response.Headers["Access-Control-Allow-Origin"]=allowedOrigin;
-            ctx.Response.Headers["Vary"]="Origin";
-            ctx.Response.Headers["Access-Control-Allow-Headers"]="Content-Type, X-Sokna-Bridge-Pairing";
-            ctx.Response.Headers["Access-Control-Allow-Methods"]="POST, OPTIONS";
-            ctx.Response.Headers["Access-Control-Max-Age"]="300";
+            var origin=request.Header("Origin")??"";
+            if(!string.Equals(origin,allowedOrigin,StringComparison.OrdinalIgnoreCase))
+            {
+                response.StatusCode=403;
+                return response;
+            }
+            ApplyCors(response,allowedOrigin);
 
-            if(ctx.Request.HttpMethod=="OPTIONS"){ctx.Response.StatusCode=204;return;}
-            if(ctx.Request.HttpMethod!="POST"){ctx.Response.StatusCode=405;return;}
+            if(string.Equals(request.Method,"OPTIONS",StringComparison.OrdinalIgnoreCase))
+            {
+                response.StatusCode=204;
+                return response;
+            }
+            if(!string.Equals(request.Method,"POST",StringComparison.OrdinalIgnoreCase))
+            {
+                response.StatusCode=405;
+                return response;
+            }
 
-            var presented=ctx.Request.Headers["X-Sokna-Bridge-Pairing"]??"";
+            var presented=request.Header("X-Sokna-Bridge-Pairing")??"";
             var left=Encoding.UTF8.GetBytes(presented);
             var right=Encoding.UTF8.GetBytes(pairing);
-            if(left.Length!=right.Length||!CryptographicOperations.FixedTimeEquals(left,right)){ctx.Response.StatusCode=403;return;}
+            if(left.Length!=right.Length||!CryptographicOperations.FixedTimeEquals(left,right))
+            {
+                response.StatusCode=403;
+                return response;
+            }
 
-            var mediaType=(ctx.Request.ContentType??"").Split(';',2)[0].Trim();
-            if(!string.Equals(mediaType,"application/json",StringComparison.OrdinalIgnoreCase)){ctx.Response.StatusCode=415;return;}
-
-            var path=ctx.Request.Url?.AbsolutePath??"";
-            var max=path=="/v1/preview"?262144:8192;
-            if(ctx.Request.ContentLength64<0){ctx.Response.StatusCode=411;ctx.Response.KeepAlive=false;return;}
-            if(ctx.Request.ContentLength64>max){ctx.Response.StatusCode=413;ctx.Response.KeepAlive=false;return;}
+            var mediaType=(request.Header("Content-Type")??"").Split(';',2)[0].Trim();
+            if(!string.Equals(mediaType,"application/json",StringComparison.OrdinalIgnoreCase))
+            {
+                response.StatusCode=415;
+                return response;
+            }
 
             string raw;
-            using(var bodyTimeout=CancellationTokenSource.CreateLinkedTokenSource(serviceToken))
+            try{raw=StrictUtf8.GetString(request.Body);}
+            catch(DecoderFallbackException)
             {
-                bodyTimeout.CancelAfter(BodyReadTimeout);
-                try
-                {
-                    using var reader=new StreamReader(ctx.Request.InputStream,Encoding.UTF8,false,8192,true);
-                    raw=await reader.ReadToEndAsync(bodyTimeout.Token);
-                }
-                catch(OperationCanceledException) when(!serviceToken.IsCancellationRequested)
-                {
-                    ctx.Response.StatusCode=408;
-                    ctx.Response.KeepAlive=false;
-                    return;
-                }
-                catch(HttpListenerException) when(!serviceToken.IsCancellationRequested)
-                {
-                    // HTTP.sys EntityBody timeout may terminate the incomplete request before a 408 body can
-                    // be written. The important invariant is bounded resource ownership, not a synthetic ACK.
-                    return;
-                }
-                catch(IOException) when(!serviceToken.IsCancellationRequested)
-                {
-                    return;
-                }
+                response.StatusCode=400;
+                return response;
             }
-            if(Encoding.UTF8.GetByteCount(raw)>max){ctx.Response.StatusCode=413;ctx.Response.KeepAlive=false;return;}
 
             using var doc=JsonDocument.Parse(raw);
             var root=doc.RootElement;
-            if(root.ValueKind!=JsonValueKind.Object){ctx.Response.StatusCode=422;return;}
-            if(path=="/v1/wake"){await HandleWakeAsync(ctx,root,serviceToken);return;}
-            if(path=="/v1/preview"){await HandlePreviewAsync(ctx,root,serviceToken);return;}
-            ctx.Response.StatusCode=404;
+            if(root.ValueKind!=JsonValueKind.Object)
+            {
+                response.StatusCode=422;
+                return response;
+            }
+            if(request.Path=="/v1/wake")
+            {
+                await HandleWakeAsync(response,root,serviceToken);
+                return response;
+            }
+            if(request.Path=="/v1/preview")
+            {
+                await HandlePreviewAsync(response,root,serviceToken);
+                return response;
+            }
+            response.StatusCode=404;
+            return response;
         }
-        catch(JsonException){ctx.Response.StatusCode=400;}
-        catch(InvalidOperationException){ctx.Response.StatusCode=422;}
-        catch(OperationCanceledException) when(serviceToken.IsCancellationRequested){}
-        catch{try{ctx.Response.StatusCode=500;}catch{}}
-        finally{try{ctx.Response.Close();}catch{}}
+        catch(JsonException)
+        {
+            response.StatusCode=400;
+            response.Body=[];
+            response.ContentType=null;
+            return response;
+        }
+        catch(InvalidOperationException)
+        {
+            response.StatusCode=422;
+            response.Body=[];
+            response.ContentType=null;
+            return response;
+        }
+        catch(OperationCanceledException) when(serviceToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            response.StatusCode=500;
+            response.Body=[];
+            response.ContentType=null;
+            return response;
+        }
     }
 
-    private async Task HandleWakeAsync(HttpListenerContext ctx,JsonElement root,CancellationToken ct)
+    private async Task HandleWakeAsync(BridgeHttpResponse response,JsonElement root,CancellationToken ct)
     {
-        if(!TryString(root,"type",out var type)||type!="print.wake"||!TryInt32(root,"protocol_version",out var version)||version!=1){ctx.Response.StatusCode=422;return;}
-        if(!TryString(root,"request_id",out var requestId)||requestId.Length is <8 or >96){ctx.Response.StatusCode=422;return;}
-        if(!root.TryGetProperty("job_ids",out var jobs)||jobs.ValueKind!=JsonValueKind.Array||jobs.GetArrayLength() is <1 or >50){ctx.Response.StatusCode=422;return;}
-        foreach(var job in jobs.EnumerateArray())if(job.ValueKind!=JsonValueKind.Number||!job.TryGetInt64(out var id)||id<1){ctx.Response.StatusCode=422;return;}
-        if(!TryString(root,"expires_at",out var expires)||!HasExplicitOffset(expires)||!DateTimeOffset.TryParse(expires,out var expiry)||expiry<DateTimeOffset.UtcNow.AddSeconds(-5)||expiry>DateTimeOffset.UtcNow.AddMinutes(2)){ctx.Response.StatusCode=422;return;}
+        if(!TryString(root,"type",out var type)||type!="print.wake"||!TryInt32(root,"protocol_version",out var version)||version!=1){response.StatusCode=422;return;}
+        if(!TryString(root,"request_id",out var requestId)||requestId.Length is <8 or >96){response.StatusCode=422;return;}
+        if(!root.TryGetProperty("job_ids",out var jobs)||jobs.ValueKind!=JsonValueKind.Array||jobs.GetArrayLength() is <1 or >50){response.StatusCode=422;return;}
+        foreach(var job in jobs.EnumerateArray())if(job.ValueKind!=JsonValueKind.Number||!job.TryGetInt64(out var id)||id<1){response.StatusCode=422;return;}
+        if(!TryString(root,"expires_at",out var expires)||!HasExplicitOffset(expires)||!DateTimeOffset.TryParse(expires,out var expiry)||expiry<DateTimeOffset.UtcNow.AddSeconds(-5)||expiry>DateTimeOffset.UtcNow.AddMinutes(2)){response.StatusCode=422;return;}
         PruneReplay();
-        if(!_replay.TryAdd(requestId,expiry)){await WriteJsonAsync(ctx,new{success=true,accepted=true,idempotent=true},ct);return;}
+        if(!_replay.TryAdd(requestId,expiry))
+        {
+            SetJson(response,new{success=true,accepted=true,idempotent=true});
+            return;
+        }
         _wake.Pulse();
-        await WriteJsonAsync(ctx,new{success=true,accepted=true,idempotent=false},ct);
+        SetJson(response,new{success=true,accepted=true,idempotent=false});
+        await Task.CompletedTask;
     }
 
-    private async Task HandlePreviewAsync(HttpListenerContext ctx,JsonElement root,CancellationToken ct)
+    private async Task HandlePreviewAsync(BridgeHttpResponse response,JsonElement root,CancellationToken ct)
     {
-        if(!TryString(root,"type",out var type)||type!="print.preview"||!TryInt32(root,"protocol_version",out var version)||version!=1){ctx.Response.StatusCode=422;return;}
-        if(!TryInt64(root,"revision",out var revision)||revision<1){ctx.Response.StatusCode=422;return;}
+        if(!TryString(root,"type",out var type)||type!="print.preview"||!TryInt32(root,"protocol_version",out var version)||version!=1){response.StatusCode=422;return;}
+        if(!TryInt64(root,"revision",out var revision)||revision<1){response.StatusCode=422;return;}
         var sessionId=TryString(root,"session_id",out var session)&&session.Length is >=8 and <=96?session:"legacy-session";
-        if(!TryString(root,"payload_json",out var payload)||payload.Length<2||Encoding.UTF8.GetByteCount(payload)>240000){ctx.Response.StatusCode=422;return;}
-        if(!TryDouble(root,"paper_width_mm",out var paper)||paper is not (58 or 80)){ctx.Response.StatusCode=422;return;}
-        if(!TryDouble(root,"printable_width_mm",out var printable)||printable<20||printable>paper){ctx.Response.StatusCode=422;return;}
+        if(!TryString(root,"payload_json",out var payload)||payload.Length<2||Encoding.UTF8.GetByteCount(payload)>240000){response.StatusCode=422;return;}
+        if(!TryDouble(root,"paper_width_mm",out var paper)||paper is not (58 or 80)){response.StatusCode=422;return;}
+        if(!TryDouble(root,"printable_width_mm",out var printable)||printable<20||printable>paper){response.StatusCode=422;return;}
         var dpi=TryInt32(root,"dpi",out var requestedDpi)?requestedDpi:203;
-        if(dpi is <100 or >600){ctx.Response.StatusCode=422;return;}
+        if(dpi is <100 or >600){response.StatusCode=422;return;}
 
         PrunePreviewRevisions();
         var latest=_previewRevisions.AddOrUpdate(sessionId,(revision,DateTimeOffset.UtcNow),(_,old)=>revision>old.Revision?(revision,DateTimeOffset.UtcNow):old);
         if(latest.Revision!=revision)
         {
-            await WriteJsonAsync(ctx,new{success=false,code="preview_superseded",revision},ct,409);
+            SetJson(response,new{success=false,code="preview_superseded",revision},409);
             return;
         }
         if(!_previewSlot.Wait(0))
         {
-            await WriteJsonAsync(ctx,new{success=false,code="preview_busy",revision},ct,429);
+            SetJson(response,new{success=false,code="preview_busy",revision},429);
             return;
         }
 
@@ -335,7 +332,7 @@ public sealed class LocalBridgeService : BackgroundService
             {
                 await StopPreviewProcessAsync(process);
                 if(ct.IsCancellationRequested)throw;
-                await WriteJsonAsync(ctx,new{success=false,code="preview_timeout",revision},CancellationToken.None,504);
+                SetJson(response,new{success=false,code="preview_timeout",revision},504);
                 return;
             }
 
@@ -344,14 +341,14 @@ public sealed class LocalBridgeService : BackgroundService
             if(process.ExitCode!=0||!File.Exists(outputPath))throw new InvalidOperationException("Preview renderer failed: "+Safe(stderr));
             if(_previewRevisions.TryGetValue(sessionId,out var current)&&current.Revision!=revision)
             {
-                await WriteJsonAsync(ctx,new{success=false,code="preview_superseded",revision},ct,409);
+                SetJson(response,new{success=false,code="preview_superseded",revision},409);
                 return;
             }
             var bytes=await File.ReadAllBytesAsync(outputPath,ct);
             if(bytes.Length>2_000_000)throw new InvalidDataException("Preview image بیش از حد مجاز است.");
             using var meta=JsonDocument.Parse(stdout);
             var m=meta.RootElement;
-            await WriteJsonAsync(ctx,new
+            SetJson(response,new
             {
                 success=true,
                 revision,
@@ -364,7 +361,7 @@ public sealed class LocalBridgeService : BackgroundService
                 renderer_version=m.GetProperty("renderer_version").GetString(),
                 font_family=m.GetProperty("font_family").GetString(),
                 bundled_font=m.GetProperty("bundled_font").GetBoolean()
-            },ct);
+            });
         }
         finally
         {
@@ -372,6 +369,22 @@ public sealed class LocalBridgeService : BackgroundService
             TryDelete(inputPath);
             TryDelete(outputPath);
         }
+    }
+
+    private static void ApplyCors(BridgeHttpResponse response,string allowedOrigin)
+    {
+        response.Headers["Access-Control-Allow-Origin"]=allowedOrigin;
+        response.Headers["Vary"]="Origin";
+        response.Headers["Access-Control-Allow-Headers"]="Content-Type, X-Sokna-Bridge-Pairing";
+        response.Headers["Access-Control-Allow-Methods"]="POST, OPTIONS";
+        response.Headers["Access-Control-Max-Age"]="300";
+    }
+
+    private static void SetJson(BridgeHttpResponse response,object value,int status=200)
+    {
+        response.StatusCode=status;
+        response.ContentType="application/json; charset=utf-8";
+        response.Body=JsonSerializer.SerializeToUtf8Bytes(value,AgentOptions.JsonOptions());
     }
 
     private static async Task StopPreviewProcessAsync(Process process)
@@ -445,30 +458,6 @@ public sealed class LocalBridgeService : BackgroundService
         return (text.EndsWith('Z')||(offset>t&&offset>=0))&&DateTimeOffset.TryParse(text,System.Globalization.CultureInfo.InvariantCulture,System.Globalization.DateTimeStyles.RoundtripKind,out _);
     }
 
-    private static async Task WriteJsonAsync(HttpListenerContext ctx,object value,CancellationToken ct,int status=200)
-    {
-        var bytes=JsonSerializer.SerializeToUtf8Bytes(value,AgentOptions.JsonOptions());
-        ctx.Response.StatusCode=status;
-        ctx.Response.ContentType="application/json; charset=utf-8";
-        ctx.Response.ContentLength64=bytes.Length;
-        await ctx.Response.OutputStream.WriteAsync(bytes,ct);
-    }
-
-    private static void Reject(HttpListenerContext ctx,int status,string code)
-    {
-        try
-        {
-            var bytes=JsonSerializer.SerializeToUtf8Bytes(new{success=false,code},AgentOptions.JsonOptions());
-            ctx.Response.StatusCode=status;
-            ctx.Response.KeepAlive=false;
-            ctx.Response.ContentType="application/json; charset=utf-8";
-            ctx.Response.ContentLength64=bytes.Length;
-            ctx.Response.OutputStream.Write(bytes,0,bytes.Length);
-        }
-        catch{}
-        finally{try{ctx.Response.Close();}catch{}}
-    }
-
     private static async Task DelayAfterFailureAsync(CancellationToken ct)
     {
         try{await Task.Delay(TimeSpan.FromSeconds(1),ct);}catch(OperationCanceledException) when(ct.IsCancellationRequested){}
@@ -479,8 +468,7 @@ public sealed class LocalBridgeService : BackgroundService
 
     public override void Dispose()
     {
-        try{_listener?.Close();}catch{}
-        _connections.Dispose();
+        try{_listener?.Stop();}catch{}
         _previewSlot.Dispose();
         base.Dispose();
     }
