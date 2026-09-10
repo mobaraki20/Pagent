@@ -138,13 +138,41 @@ async Task RunA06()
 
 async Task RunA17()
 {
-    using var env=await TestEnvironment.CreateAsync("a17-http");
-    var job=await env.CreateJobAsync(2417,"server-a","receipt-a17-http");
+    await VerifyReportResponseFaultAsync(
+        "business-false",
+        24171,
+        LoopbackResponseKind.BusinessFailure,
+        "destination_forbidden",
+        "success=false in HTTP 200 is reconciliation, never success");
+    await VerifyReportResponseFaultAsync(
+        "malformed-json",
+        24172,
+        LoopbackResponseKind.MalformedJson,
+        "invalid_success_json",
+        "malformed HTTP 200 JSON is a protocol reconciliation fault");
+    await VerifyReportResponseFaultAsync(
+        "invalid-types",
+        24173,
+        LoopbackResponseKind.InvalidTypes,
+        "invalid_success_json",
+        "wrong JSON field types are protocol reconciliation faults");
+    await VerifyReportResponseFaultAsync(
+        "identity-mismatch",
+        24174,
+        LoopbackResponseKind.MismatchedReport,
+        "report_attempt_identity_mismatch",
+        "mismatched HTTP 200 identity is semantic reconciliation, not transient retry");
+}
+
+async Task VerifyReportResponseFaultAsync(string suffix,long attemptId,LoopbackResponseKind responseKind,string expectedCode,string assertionPrefix)
+{
+    using var env=await TestEnvironment.CreateAsync("a17-"+suffix);
+    var job=await env.CreateJobAsync(attemptId,"server-a","receipt-a17-"+suffix);
     var draft=new AttemptOutcomeDraft(PrintOutcomeStatus.Failed,null,false,"invalid_payload","invalid","worker:pre-fence");
-    var request=env.Report(job,"a17-http-report","failed",null,false,"invalid_payload","invalid");
+    var request=env.Report(job,"a17-"+suffix+"-report","failed",null,false,"invalid_payload","invalid");
     await env.Store.CommitOutcomeAndReportAsync(job,draft,request);
 
-    await using var server=new LoopbackPrintApiServer([LoopbackResponseKind.MismatchedReport]);
+    await using var server=new LoopbackPrintApiServer([responseKind]);
     using var http=new HttpClient();
     var transport=new HttpPrintTransport(http,server.BaseUrl,"acceptance-token",env.Protector);
     var dispatcher=new ReportDispatcher(env.Store,new ReportDeliveryPolicy(jitter:()=>0.5),env.Log);
@@ -152,13 +180,14 @@ async Task RunA17()
     var row=await env.Store.GetOutboxForAttemptAsync(job.AttemptId);
     var outcome=await env.Store.GetOutcomeAsync(job.AttemptId);
 
-    Check(summary.ReconciliationRequired==1,"mismatched 200 response is semantic reconciliation, not transient retry");
-    Check(summary.Backoff==0,"identity mismatch does not enter network backoff");
-    Check(summary.LastErrorCode=="report_attempt_identity_mismatch","semantic mismatch has stable diagnostic code");
-    Check(row?.DeliveryState==ReportDeliveryState.ReconciliationRequired,"mismatched ACK is durably quarantined");
-    Check(outcome is {Status:PrintOutcomeStatus.Failed,Retryable:false},"server mismatch never mutates authoritative print outcome");
-    Check(server.Requests.Count==1&&IsReport(server.Requests[0]),"mismatch test traverses real HttpPrintTransport report request");
-    Check(server.Requests.All(r=>!r.Target.Contains("action=start",StringComparison.OrdinalIgnoreCase)),"semantic reconciliation never reprints");
+    Check(summary.ReconciliationRequired==1,assertionPrefix);
+    Check(summary.Backoff==0,$"{suffix}: contract/semantic fault does not enter network backoff");
+    Check(summary.Delivered==0,$"{suffix}: HTTP status alone never creates delivered state");
+    Check(summary.LastErrorCode==expectedCode,$"{suffix}: stable diagnostic code is {expectedCode}");
+    Check(row?.DeliveryState==ReportDeliveryState.ReconciliationRequired,$"{suffix}: invalid ACK is durably quarantined");
+    Check(outcome is {Status:PrintOutcomeStatus.Failed,Retryable:false},$"{suffix}: invalid server response never mutates authoritative print outcome");
+    Check(server.Requests.Count==1&&IsReport(server.Requests[0]),$"{suffix}: test traverses real HttpPrintTransport request");
+    Check(server.Requests.All(r=>!r.Target.Contains("action=start",StringComparison.OrdinalIgnoreCase)),$"{suffix}: reconciliation never invokes start/print");
 }
 
 static bool IsReport(CapturedHttpRequest request)
