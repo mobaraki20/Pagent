@@ -20,7 +20,9 @@ $results=[IO.Path]::GetFullPath($ResultsDirectory)
 New-Item $results -ItemType Directory -Force | Out-Null
 $project=Join-Path $root 'tests\Sokna.PrintAgent.Acceptance\Sokna.PrintAgent.Acceptance.csproj'
 $transportProject=Join-Path $root 'tests\Sokna.PrintAgent.TransportAcceptance\Sokna.PrintAgent.TransportAcceptance.csproj'
-foreach($required in @($project,$transportProject)){
+$serviceProject=Join-Path $root 'tests\Sokna.PrintAgent.ServiceAcceptance\Sokna.PrintAgent.ServiceAcceptance.csproj'
+$contractProject=Join-Path $root 'tests\Sokna.PrintAgent.ContractAcceptance\Sokna.PrintAgent.ContractAcceptance.csproj'
+foreach($required in @($project,$transportProject,$serviceProject,$contractProject)){
   if(!(Test-Path $required -PathType Leaf)){throw "Acceptance project missing: $required"}
 }
 $sourceSha=(& git -C $root rev-parse HEAD).Trim()
@@ -28,7 +30,9 @@ if($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sourceSha)){throw 'Unab
 
 $manualUat=@('A48','A50','A51')
 $transportCases=@('A04','A06','A17')
-$implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A17','A24','A28','A44','A46')
+$serviceCases=@('A13','A14')
+$contractCases=@()
+$implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A13','A14','A17','A24','A28','A44','A46')
 $allAutomated=1..47 | ForEach-Object {'A{0:D2}' -f $_}
 $allAutomated+=@('A52')
 
@@ -52,7 +56,7 @@ function Invoke-Case([string]$id){
   if($manualUat -contains $id){return (Write-ManualUatResult $id)}
   $caseDir=Join-Path $results $id
   New-Item $caseDir -ItemType Directory -Force | Out-Null
-  $selectedProject=if($transportCases -contains $id){$transportProject}else{$project}
+  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}else{$project}
   & dotnet run --project $selectedProject -c $Configuration -- --case $id --results $caseDir
   return $LASTEXITCODE
 }
