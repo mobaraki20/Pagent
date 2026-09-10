@@ -1,5 +1,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Text;
+using Sokna.PrintAgent.Core;
 using Sokna.PrintAgent.Worker;
 
 var failures=new List<string>();
@@ -25,5 +27,53 @@ using var long80=ReceiptRenderer.Render(longNamePayload,72,80,203,203);using var
 
 var hugeItems=string.Join(',',Enumerable.Range(0,1400).Select(i=>$"{{\"name\":\"آیتم بسیار بلند شماره {i} برای آزمون سقف ایمن سند و جلوگیری از بریدگی خاموش\",\"quantity\":1,\"unit_price\":1,\"line_total\":1}}"));var hugePayload=$"{{\"schema\":\"sokna-print-document-v2\",\"document_kind\":\"customer\",\"sections\":[{{\"items\":[{hugeItems}]}}],\"template\":{{\"table_font_size\":28,\"show_prices\":true,\"design\":{{\"item_layout\":\"two-line\",\"section_order\":[\"items\"]}}}}}}";
 await ExpectThrowsAsync(()=>Task.Run(()=>{using var _=ReceiptRenderer.Render(hugePayload,50,58,203,203);}),"overlong_receipt_fails_before_silent_bitmap_clipping");
+
+var mergedQueues=VirtualPrinterQueues.Merge(new[]{
+    new PrinterQueueHealth("Physical",false,false,false,false,0,"Driver","USB001"),
+    VirtualPrinterQueues.PdfTestHealth()
+});
+Check(mergedQueues.Count(x=>VirtualPrinterQueues.IsPdfTestQueue(x.Name))==1,"virtual_pdf_queue_is_deduplicated");
+Check(mergedQueues.Any(x=>x.Name=="Physical"),"virtual_queue_merge_preserves_physical_queue");
+
+var pdfRoot=Path.Combine(Path.GetTempPath(),"sokna-pdf-test-"+Guid.NewGuid().ToString("N"));
+try
+{
+    var work=Path.Combine(pdfRoot,"work");Directory.CreateDirectory(work);
+    var resultPath=Path.Combine(work,"result-101-202.json");
+    var fencePath=Path.Combine(work,"fence-101-202.dat");
+    var input=new WorkerInput(
+        101,
+        202,
+        "receipt-test",
+        VirtualPrinterQueues.PdfTestQueueName,
+        payload,
+        CryptoUtil.Sha256Hex(payload),
+        80,
+        72,
+        2,
+        resultPath,
+        fencePath,
+        Path.Combine(work,"start-101-202.dat"));
+    var pdfResult=await new PdfTestSinkAdapter().SubmitAsync(input,CancellationToken.None);
+    var pdfName="Sokna-job-101-attempt-202.pdf";
+    var pdfPath=Path.Combine(pdfRoot,"TestPrints",pdfName);
+    Check(pdfResult.Status=="submitted","pdf_test_sink_reports_submitted");
+    Check(pdfResult.SpoolerJobId=="pdf:"+pdfName,"pdf_test_sink_reports_stable_artifact_id");
+    Check(File.Exists(fencePath),"pdf_test_sink_writes_submission_fence");
+    Check(File.Exists(pdfPath),"pdf_test_sink_writes_pdf_under_programdata_sibling");
+    if(File.Exists(pdfPath))
+    {
+        var pdfBytes=await File.ReadAllBytesAsync(pdfPath);
+        Check(pdfBytes.Length>500,"pdf_test_sink_output_is_nontrivial");
+        Check(Encoding.ASCII.GetString(pdfBytes,0,Math.Min(8,pdfBytes.Length)).StartsWith("%PDF-1.4",StringComparison.Ordinal),"pdf_test_sink_has_pdf_header");
+        var pdfText=Encoding.ASCII.GetString(pdfBytes);
+        Check(pdfText.Split("/Type /Page /Parent",StringSplitOptions.None).Length-1==2,"pdf_test_sink_copies_become_pdf_pages");
+        Check(pdfText.Contains("/MediaBox [0 0 226.772",StringComparison.Ordinal),"pdf_test_sink_uses_80mm_page_width");
+    }
+}
+finally
+{
+    try{Directory.Delete(pdfRoot,true);}catch{}
+}
 
 if(failures.Count>0){Console.Error.WriteLine("FAIL "+string.Join(",",failures));return 1;}Console.WriteLine("PASS Sokna.PrintAgent.Worker.Tests");return 0;
