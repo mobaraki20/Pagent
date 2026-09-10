@@ -57,7 +57,7 @@ catch(Exception e)
 async Task RunA12()
 {
     using var env=await ServiceTestEnvironment.CreateAsync("a12-accept-lost-response");
-    var leaseExpiry=DateTimeOffset.UtcNow.AddSeconds(2);
+    var leaseExpiry=DateTimeOffset.UtcNow.AddSeconds(5);
     var job=await env.CreateJobAsync(2612,"receipt-a12",leaseExpiry);
     await using var server=new LoopbackPrintApiServer([
         LoopbackResponseKind.DisconnectAfterCommit,
@@ -435,6 +435,6 @@ sealed class CountingNoStartFactory:IWorkerProcessFactory
 
 sealed class TestLeaseProtector:ILeaseTokenProtector
 {
-    public string Protect(string value)=>"test:"+Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value));
-    public string Unprotect(string value)=>System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value[5..]));
+    public string Protect(string value)=>SecretStore.ProtectText(value);
+    public string Unprotect(string value)=>SecretStore.UnprotectText(value);
 }
