@@ -14,26 +14,32 @@ public sealed class SystemWorkerProcessFactory : IWorkerProcessFactory
             CreateNoWindow=true,
             WorkingDirectory=spec.WorkingDirectory,
             RedirectStandardError=true,
-            RedirectStandardOutput=false
+            RedirectStandardOutput=true
         };
         var process=Process.Start(psi)??throw new InvalidOperationException("PrintWorker اجرا نشد.");
-        return new SystemWorkerProcess(process,spec.StandardErrorLimit);
+        return new SystemWorkerProcess(process,spec.StandardErrorLimit,spec.StandardOutputLimit);
     }
 
     private sealed class SystemWorkerProcess : IWorkerProcess
     {
         private readonly Process _process;
         private readonly int _stderrLimit;
+        private readonly int _stdoutLimit;
         private readonly StringBuilder _stderr=new();
+        private readonly StringBuilder _stdout=new();
         private readonly object _stderrLock=new();
+        private readonly object _stdoutLock=new();
         private WorkerProcessGuard? _guard;
 
-        public SystemWorkerProcess(Process process,int stderrLimit)
+        public SystemWorkerProcess(Process process,int stderrLimit,int stdoutLimit)
         {
             _process=process;
             _stderrLimit=Math.Max(64,stderrLimit);
+            _stdoutLimit=Math.Max(64,stdoutLimit);
             _process.ErrorDataReceived+=OnErrorData;
+            _process.OutputDataReceived+=OnOutputData;
             _process.BeginErrorReadLine();
+            _process.BeginOutputReadLine();
         }
 
         public bool HasExited
@@ -72,24 +78,33 @@ public sealed class SystemWorkerProcessFactory : IWorkerProcessFactory
             lock(_stderrLock)return _stderr.ToString();
         }
 
+        public string GetBoundedStandardOutput()
+        {
+            lock(_stdoutLock)return _stdout.ToString();
+        }
+
         public ValueTask DisposeAsync()
         {
             try{_process.CancelErrorRead();}catch{}
+            try{_process.CancelOutputRead();}catch{}
             _guard?.Dispose();
             _process.Dispose();
             return ValueTask.CompletedTask;
         }
 
-        private void OnErrorData(object sender,DataReceivedEventArgs args)
+        private void OnErrorData(object sender,DataReceivedEventArgs args)=>AppendBounded(_stderr,_stderrLock,_stderrLimit,args.Data);
+        private void OnOutputData(object sender,DataReceivedEventArgs args)=>AppendBounded(_stdout,_stdoutLock,_stdoutLimit,args.Data);
+
+        private static void AppendBounded(StringBuilder target,object gate,int limit,string? value)
         {
-            if(string.IsNullOrEmpty(args.Data))return;
-            lock(_stderrLock)
+            if(string.IsNullOrEmpty(value))return;
+            lock(gate)
             {
-                if(_stderr.Length>=_stderrLimit)return;
-                var remaining=_stderrLimit-_stderr.Length;
-                var text=args.Data.Length<=remaining?args.Data:args.Data[..remaining];
-                _stderr.Append(text);
-                if(_stderr.Length<_stderrLimit)_stderr.AppendLine();
+                if(target.Length>=limit)return;
+                var remaining=limit-target.Length;
+                var text=value.Length<=remaining?value:value[..remaining];
+                target.Append(text);
+                if(target.Length<limit)target.AppendLine();
             }
         }
     }
