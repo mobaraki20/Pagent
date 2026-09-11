@@ -82,9 +82,9 @@ public sealed class PrinterDiscoveryService : BackgroundService
     {
         try
         {
-            // The PDF test sink is Agent-owned rather than a Windows queue, but it deliberately
-            // participates in the same readiness/routing list so Web can bind a destination to it.
-            _state.MarkSuccess(VirtualPrinterQueues.Merge(task.GetAwaiter().GetResult()));
+            var discovered=task.GetAwaiter().GetResult();
+            var pdfTestEnabled=PdfTestModePolicy.IsEnabled();
+            _state.MarkSuccess(VirtualPrinterQueues.ForDiscovery(discovered,pdfTestEnabled));
         }
         catch(Exception e)
         {
