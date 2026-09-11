@@ -5,7 +5,7 @@ on:
   push:
     paths:
       - '.github/workflows/runtime-trust-probe.yml'
-      - 'agent/src/Sokna.PrintAgent.Setup/DotNetDesktopRuntimePrerequisite.cs'
+      - 'agent/src/Sokna.PrintAgent.Setup/**'
 
 permissions:
   contents: read
@@ -15,6 +15,14 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 10
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+
       - name: Probe official .NET Desktop Runtime download
         shell: pwsh
         run: |
@@ -40,8 +48,38 @@ jobs:
             if($null -eq $sig.SignerCertificate -or $sig.SignerCertificate.Subject -notmatch '(^|, )O=Microsoft Corporation(,|$)'){
               throw "Runtime signer organization mismatch: $($sig.SignerCertificate.Subject)"
             }
-            Write-Host 'RUNTIME_TRUST_PROBE=PASS'
+            Write-Host 'RUNTIME_POWERSHELL_TRUST_PROBE=PASS'
           }
           finally {
             Remove-Item $file -Force -ErrorAction SilentlyContinue
           }
+
+      - name: Build real Setup runtime verifier
+        shell: pwsh
+        working-directory: agent
+        run: |
+          $ErrorActionPreference='Stop'
+          $project='src/Sokna.PrintAgent.Setup/Sokna.PrintAgent.Setup.csproj'
+          $out=Join-Path $env:RUNNER_TEMP 'sokna-runtime-verifier-setup'
+          Remove-Item $out -Recurse -Force -ErrorAction SilentlyContinue
+          dotnet restore $project -r win-x64
+          if($LASTEXITCODE -ne 0){throw 'Setup restore failed.'}
+          dotnet publish $project -c Release -r win-x64 --self-contained true --no-restore -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o $out
+          if($LASTEXITCODE -ne 0){throw 'Setup verifier publish failed.'}
+          $exe=Get-ChildItem $out -Filter 'Sokna-Print-Agent-*-Setup.exe' | Select-Object -First 1
+          if($null -eq $exe){throw 'Setup verifier executable missing.'}
+          "RUNTIME_SETUP_EXE=$($exe.FullName)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Probe through real Setup verifier
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $stdout=Join-Path $env:RUNNER_TEMP 'runtime-setup-verify.stdout.log'
+          $stderr=Join-Path $env:RUNNER_TEMP 'runtime-setup-verify.stderr.log'
+          Remove-Item $stdout,$stderr -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $env:RUNTIME_SETUP_EXE -ArgumentList '/verify-runtime-download' -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          Write-Host "runtime_setup_verify_exit=$($p.ExitCode)"
+          if(Test-Path $stdout){Write-Host '=== runtime setup stdout ===';Get-Content $stdout -Raw}
+          if(Test-Path $stderr){Write-Host '=== runtime setup stderr ===';Get-Content $stderr -Raw}
+          if($p.ExitCode -ne 0){throw "Real Setup runtime verifier failed with exit code $($p.ExitCode)."}
+          Write-Host 'RUNTIME_SETUP_TRUST_PROBE=PASS'
