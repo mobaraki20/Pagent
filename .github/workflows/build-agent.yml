@@ -17,7 +17,7 @@ concurrency:
 jobs:
   build-windows:
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -26,7 +26,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
-          foreach($p in @('agent/global.json','agent/Directory.Build.props','agent/scripts/Build-Agent.ps1','agent/scripts/Test-Windows-Install.ps1','agent/tests/Sokna.PrintAgent.PreviewAcceptance/Sokna.PrintAgent.PreviewAcceptance.csproj')){
+          foreach($p in @('agent/global.json','agent/Directory.Build.props','agent/scripts/Build-Agent.ps1','agent/scripts/Test-Windows-Install.ps1','agent/tests/Sokna.PrintAgent.PreviewAcceptance/Sokna.PrintAgent.PreviewAcceptance.csproj','agent/tests/Sokna.PrintAgent.V620SchemaTool/Sokna.PrintAgent.V620SchemaTool.csproj')){
             if(!(Test-Path $p -PathType Leaf)){throw "Required source missing: $p"}
           }
           if(Test-Path 'agent6.zip'){throw 'Legacy agent6.zip must not be part of the active source tree.'}
@@ -72,6 +72,58 @@ jobs:
             Remove-Item $file -Force -ErrorAction SilentlyContinue
           }
 
+      - name: Upgrade gate from exact 6.2.0 queue schema
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=(Resolve-Path "agent/artifacts/Sokna-Print-Agent-$env:AGENT_VERSION-Setup.exe").Path
+          $installRoot=Join-Path $env:ProgramFiles 'Sokna\PrintAgent'
+          $dataRoot=Join-Path $env:ProgramData 'Sokna\PrintAgent'
+          $db=Join-Path $dataRoot 'queue.db'
+          $evidence='agent/artifacts/windows-smoke-evidence/V620_SCHEMA_UPGRADE_EVIDENCE.txt'
+          New-Item (Split-Path $evidence -Parent) -ItemType Directory -Force | Out-Null
+          $lines=[System.Collections.Generic.List[string]]::new()
+          $lines.Add("target_version=$env:AGENT_VERSION")
+          try {
+            $first=Start-Process -FilePath $setup -ArgumentList @('/quiet','/skip-start','/no-start-menu-shortcut','/no-desktop-shortcut') -Wait -PassThru
+            $lines.Add("stage_only_install_exit=$($first.ExitCode)")
+            if($first.ExitCode -ne 0){throw "Stage-only Setup failed: $($first.ExitCode)"}
+
+            & dotnet run --project 'agent/tests/Sokna.PrintAgent.V620SchemaTool/Sokna.PrintAgent.V620SchemaTool.csproj' -c Release -- seed $db
+            if($LASTEXITCODE -ne 0){throw 'Unable to seed exact 6.2.0 queue schema.'}
+            $lines.Add('v620_schema_seed=PASS')
+
+            $second=Start-Process -FilePath $setup -ArgumentList @('/quiet','/no-start-menu-shortcut','/no-desktop-shortcut') -Wait -PassThru
+            $lines.Add("upgrade_repair_exit=$($second.ExitCode)")
+            if($second.ExitCode -ne 0){throw "6.2.0-schema upgrade Setup failed: $($second.ExitCode)"}
+
+            $deadline=(Get-Date).AddSeconds(25)
+            do {
+              Start-Sleep -Milliseconds 500
+              $svc=Get-Service 'SoknaPrintAgent6' -ErrorAction SilentlyContinue
+            } while(($null -eq $svc -or $svc.Status -ne 'Running') -and (Get-Date) -lt $deadline)
+            if($null -eq $svc -or $svc.Status -ne 'Running'){throw 'Service did not remain Running after exact 6.2.0 schema upgrade.'}
+            $lines.Add('service_running_after_v620_schema_upgrade=PASS')
+
+            $health=Join-Path $dataRoot 'health.json'
+            $deadline=(Get-Date).AddSeconds(20)
+            while(!(Test-Path $health -PathType Leaf) -and (Get-Date) -lt $deadline){Start-Sleep -Milliseconds 500}
+            if(!(Test-Path $health -PathType Leaf)){throw 'Fresh health.json missing after exact 6.2.0 schema upgrade.'}
+            $lines.Add('health_after_v620_schema_upgrade=PASS')
+
+            & dotnet run --project 'agent/tests/Sokna.PrintAgent.V620SchemaTool/Sokna.PrintAgent.V620SchemaTool.csproj' -c Release -- verify $db
+            if($LASTEXITCODE -ne 0){throw 'Migrated 6.2.0 queue schema/data verification failed.'}
+            $lines.Add('v620_schema_and_durable_rows_after_upgrade=PASS')
+          }
+          finally {
+            $lines | Set-Content -Path $evidence -Encoding utf8
+            $uninstaller=Join-Path $installRoot 'Uninstall-SoknaPrintAgent.ps1'
+            if(Test-Path $uninstaller -PathType Leaf){
+              & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoLogo -NoProfile -ExecutionPolicy Bypass -File $uninstaller -Quiet -NoSelfElevation
+            }
+            Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Windows install gate
         shell: pwsh
         working-directory: agent
@@ -98,9 +150,14 @@ jobs:
             "agent/artifacts/SHA256SUMS-Agent-$v.txt",
             "agent/artifacts/BUILD_ARTIFACTS-Agent-$v.json",
             "agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-$v.json",
-            'agent/artifacts/windows-smoke-evidence/INSTALL_GATE_EVIDENCE.txt'
+            'agent/artifacts/windows-smoke-evidence/INSTALL_GATE_EVIDENCE.txt',
+            'agent/artifacts/windows-smoke-evidence/V620_SCHEMA_UPGRADE_EVIDENCE.txt'
           )
           foreach($p in $required){if(!(Test-Path $p -PathType Leaf)){throw "Required artifact missing: $p"}}
+          $upgradeEvidence=Get-Content 'agent/artifacts/windows-smoke-evidence/V620_SCHEMA_UPGRADE_EVIDENCE.txt' -Raw
+          foreach($marker in @('v620_schema_seed=PASS','service_running_after_v620_schema_upgrade=PASS','health_after_v620_schema_upgrade=PASS','v620_schema_and_durable_rows_after_upgrade=PASS')){
+            if(-not $upgradeEvidence.Contains($marker,[StringComparison]::Ordinal)){throw "6.2.0 schema upgrade evidence missing marker: $marker"}
+          }
           $size=Get-Content "agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-$v.json" -Raw | ConvertFrom-Json
           if([double]$size.hybrid_final.setup_reduction_percent_vs_baseline -le 0){throw 'Hybrid Setup did not reduce size versus baseline.'}
           if([double]$size.hybrid_final.zip_reduction_percent_vs_baseline -le 0){throw 'Hybrid payload ZIP did not reduce size versus baseline.'}
