@@ -191,11 +191,13 @@ public partial class MainWindow : Window
         var physicalQueues = allQueues.Where(IsPhysicalPrinter).ToArray();
         var physicalTotal = physicalQueues.Length;
         var physicalReady = physicalQueues.Count(IsReady);
+        var pdfEnabled = PdfTestModePolicy.IsEnabled(_paths.ConfigPath);
         var pdfReady = allQueues.Any(p => VirtualPrinterQueues.IsPdfTestQueue(p.Name) && IsReady(p));
+        var pdfState = !pdfEnabled ? "خاموش" : pdfReady ? "Ready" : "Unavailable";
         PrinterValue.Text = $"{physicalReady} / {physicalTotal}";
         PrinterDetail.Text = physicalTotal == 0
-            ? $"پرینتر فیزیکی دیده نمی‌شود · PDF Test: {(pdfReady ? "Ready" : "Unavailable")}" 
-            : $"Queue فیزیکی زیر LocalSystem · PDF Test: {(pdfReady ? "Ready" : "Unavailable")}";
+            ? $"پرینتر فیزیکی دیده نمی‌شود · PDF Test: {pdfState}"
+            : $"Queue فیزیکی زیر LocalSystem · PDF Test: {pdfState}";
         BacklogValue.Text = (_latestHealth?.LocalBacklogCount ?? 0).ToString();
         BacklogDetail.Text = $"مبهم: {_latestHealth?.LocalUnknownCount ?? 0}";
 
@@ -231,11 +233,13 @@ public partial class MainWindow : Window
         else if (_latestHealth.ConsecutiveApiFailures > 0)
             SetHealthState("ارتباط ناپایدار", $"{_latestHealth.ConsecutiveApiFailures} خطای API متوالی ثبت شده است. آخرین خطا: {_latestHealth.LastApiErrorCode ?? "نامشخص"}.", HealthTone.Warning, updated);
         else if (physicalTotal == 0)
-            SetHealthState("نیاز به تنظیم پرینتر فیزیکی", pdfReady
-                ? "Service سالم و PDF Test آماده است، اما هیچ Printer Queue فیزیکی زیر LocalSystem دیده نمی‌شود."
+            SetHealthState("نیاز به تنظیم پرینتر فیزیکی", pdfEnabled && pdfReady
+                ? "Service سالم و حالت تست PDF آماده است، اما هیچ Printer Queue فیزیکی زیر LocalSystem دیده نمی‌شود."
                 : "Service سالم است اما هیچ Printer Queue فیزیکی زیر LocalSystem دیده نمی‌شود.", HealthTone.Warning, updated);
         else
-            SetHealthState("آماده چاپ", $"{physicalReady} از {physicalTotal} پرینتر فیزیکی Ready است؛ PDF Test {(pdfReady ? "آماده" : "در دسترس نیست")}.", physicalReady > 0 ? HealthTone.Healthy : HealthTone.Warning, updated);
+            SetHealthState("آماده چاپ", pdfEnabled
+                ? $"{physicalReady} از {physicalTotal} پرینتر فیزیکی Ready است؛ PDF Test {(pdfReady ? "آماده" : "در دسترس نیست")}."
+                : $"{physicalReady} از {physicalTotal} پرینتر فیزیکی Ready است؛ PDF Test خاموش است.", physicalReady > 0 ? HealthTone.Healthy : HealthTone.Warning, updated);
     }
 
     private void SetHealthState(string title, string description, HealthTone tone, DateTimeOffset? updated)
@@ -272,7 +276,7 @@ public partial class MainWindow : Window
             await AddTestAsync("Physical printer visibility", () => Task.FromResult(TestPrinters()));
             await AddTestAsync("PDF Test Sink", () => Task.FromResult(TestPdfSink()));
             await AddTestAsync("Print API v4", TestApiConnectionAsync);
-            _tests.Add(new TestRow("End-to-End Test Print", "MANUAL", "از پنل چاپ Sokna اجرا شود تا مسیر Server → API → Agent → Worker → Spooler/PDF Sink واقعاً تست شود.", "—"));
+            _tests.Add(new TestRow("End-to-End Test Print", "MANUAL", "از پنل چاپ Sokna اجرا شود تا مسیر Server → API → Agent → Worker → Spooler و در حالت UAT مسیر PDF Sink واقعاً تست شود.", "—"));
         }
         finally
         {
@@ -348,10 +352,15 @@ public partial class MainWindow : Window
     {
         var health = ReadHealth();
         if (health is null) return TestResult.Fail("Health snapshot برای PDF Test Sink در دسترس نیست.");
+        var enabled = PdfTestModePolicy.IsEnabled(_paths.ConfigPath);
         var sink = health.Printers.FirstOrDefault(p => VirtualPrinterQueues.IsPdfTestQueue(p.Name));
+        if(!enabled)
+            return sink is null
+                ? TestResult.Pass("PDF Test Sink طبق حالت Production خاموش و از discovery حذف است.")
+                : TestResult.Fail("PDF Test Mode خاموش است اما Queue مجازی هنوز advertise می‌شود.");
         return sink is not null && IsReady(sink)
-            ? TestResult.Pass("Sokna PDF Test Sink به‌صورت مستقل Ready است.")
-            : TestResult.Fail("Sokna PDF Test Sink در snapshot آماده نیست.");
+            ? TestResult.Pass("حالت UAT فعال است و Sokna PDF Test Sink به‌صورت مستقل Ready است.")
+            : TestResult.Fail("حالت UAT فعال است اما Sokna PDF Test Sink در snapshot آماده نیست.");
     }
 
     private async Task<TestResult> TestApiConnectionAsync()
