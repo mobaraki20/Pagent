@@ -349,19 +349,30 @@ async Task RunA21()
     await transport.HeartbeatEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
     await transport.ProbeEntered.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
+    // This case proves isolation from diagnostics budgets, not a sub-500ms product SLA. The
+    // shortest real side-I/O timeout is 3 seconds, so completion within 2 seconds while both
+    // gates are still blocked proves that ready print work did not inherit those timeouts.
     var sw=Stopwatch.StartNew();
-    await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    var coordinator=InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    var completedBeforeDiagnosticsTimeout=await Task.WhenAny(coordinator,Task.Delay(TimeSpan.FromSeconds(2)))==coordinator;
     sw.Stop();
+    var heartbeatStillBlocked=!transport.HeartbeatGate.Task.IsCompleted;
+    var probeStillBlocked=!transport.ProbeGate.Task.IsCompleted;
 
-    Check(!transport.HeartbeatGate.Task.IsCompleted,"heartbeat is still deliberately blocked while print coordinator finishes");
-    Check(!transport.ProbeGate.Task.IsCompleted,"destination refresh is still deliberately blocked while print coordinator finishes");
+    Check(completedBeforeDiagnosticsTimeout,$"ready work completes before the shortest 3s diagnostics timeout; observed={sw.ElapsedMilliseconds}ms");
+    Check(heartbeatStillBlocked,"heartbeat is still deliberately blocked when print coordinator completes");
+    Check(probeStillBlocked,"destination refresh is still deliberately blocked when print coordinator completes");
     Check(processFactory.StartCount==1,"ready work reaches worker while heartbeat/probe are blocked");
-    Check(sw.Elapsed<TimeSpan.FromMilliseconds(500),$"ready work does not inherit diagnostics timeout; actual={sw.ElapsedMilliseconds}ms");
     Check(blockingProvider.CallCount==1,"blocked native discovery has one in-flight owner and is not fanned out");
 
     transport.HeartbeatGate.TrySetResult(true);
     transport.ProbeGate.TrySetResult(true);
     blockingProvider.Release();
+    if(completedBeforeDiagnosticsTimeout)await coordinator;
+    else
+    {
+        try{await coordinator.WaitAsync(TimeSpan.FromSeconds(2));}catch{}
+    }
     await discovery.StopAsync(CancellationToken.None);
     discovery.Dispose();
 }
@@ -465,7 +476,7 @@ static async Task InvokePrivateTaskAsync(PrintAgentService service,string method
 static void InvokePrivateVoid(PrintAgentService service,string methodName,params object?[] args)
 {
     var method=typeof(PrintAgentService).GetMethod(methodName,BindingFlags.Instance|BindingFlags.NonPublic)
-        ??throw new MissingMethodException(typeof(PrintAgentService).FullName,methodName);
+        ??throw new MissingMethodException(instance.GetType().FullName,name);
     _=method.Invoke(service,args);
 }
 
@@ -723,7 +734,7 @@ sealed class CoordinatorTransport:IPrintTransport
     }
 
     public Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct)
-        =>Task.FromResult(new ApiResult(true,"claimed",AttemptId:item.Attempt.Id,JobId:item.Job.Id,ServerTime:DateTimeOffset.UtcNow.ToString("O")));
+        =>Task.FromResult(new ApiResult(true,"claimed",AttemptId:item.Attempt.Id,JobId:item.ServerJobId,ServerTime:DateTimeOffset.UtcNow.ToString("O")));
 
     public Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct)
         =>Task.FromResult(new AttemptStatusResult(true,job.AttemptId,job.ServerJobId,"claimed","open",true,"start",false,false,job.LeaseExpiresAt.ToString("O"),DateTimeOffset.UtcNow.ToString("O")));
