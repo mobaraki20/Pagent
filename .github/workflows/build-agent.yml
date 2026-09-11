@@ -72,9 +72,14 @@ jobs:
             "agent/artifacts/Sokna-Print-Agent-$v-source.zip",
             "agent/artifacts/SHA256SUMS-Agent-$v.txt",
             "agent/artifacts/BUILD_ARTIFACTS-Agent-$v.json",
+            "agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-$v.json",
             'agent/artifacts/windows-smoke-evidence/INSTALL_GATE_EVIDENCE.txt'
           )
           foreach($p in $required){if(!(Test-Path $p -PathType Leaf)){throw "Required artifact missing: $p"}}
+          $size=Get-Content "agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-$v.json" -Raw | ConvertFrom-Json
+          if([double]$size.hybrid_final.setup_reduction_percent_vs_baseline -le 0){throw 'Hybrid Setup did not reduce size versus baseline.'}
+          if([double]$size.hybrid_final.zip_reduction_percent_vs_baseline -le 0){throw 'Hybrid payload ZIP did not reduce size versus baseline.'}
+          if([double]$size.hybrid_final.setup_compression_gain_percent_vs_hybrid_uncompressed -le 0){throw 'Single-file compression did not improve Hybrid Setup size.'}
           $acceptance=Get-ChildItem 'agent/artifacts/acceptance-smoke' -Recurse -Filter '*.result.json' -ErrorAction Stop
           if($acceptance.Count -lt 37){throw "Acceptance smoke evidence incomplete: expected at least 37 result files, found $($acceptance.Count)."}
           foreach($id in @('A35','A37','A38','A47')){
@@ -96,6 +101,7 @@ jobs:
             agent/artifacts/Sokna-Print-Agent-${{ env.AGENT_VERSION }}-source.zip
             agent/artifacts/SHA256SUMS-Agent-${{ env.AGENT_VERSION }}.txt
             agent/artifacts/BUILD_ARTIFACTS-Agent-${{ env.AGENT_VERSION }}.json
+            agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-${{ env.AGENT_VERSION }}.json
             agent/artifacts/windows-smoke-evidence/**
             agent/artifacts/acceptance-smoke/**
           if-no-files-found: error
