@@ -82,7 +82,9 @@ public sealed class PrinterDiscoveryService : BackgroundService
     {
         try
         {
-            _state.MarkSuccess(task.GetAwaiter().GetResult());
+            var discovered=task.GetAwaiter().GetResult();
+            var pdfTestEnabled=PdfTestModePolicy.IsEnabled();
+            _state.MarkSuccess(VirtualPrinterQueues.ForDiscovery(discovered,pdfTestEnabled));
         }
         catch(Exception e)
         {

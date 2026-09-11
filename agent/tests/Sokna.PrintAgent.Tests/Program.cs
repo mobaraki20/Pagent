@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Sokna.PrintAgent.Core;
 using Sokna.PrintAgent.Service;
 
@@ -19,6 +20,28 @@ Check(!string.IsNullOrWhiteSpace(AgentVersionInfo.Current),"agent_version_source
 Check(SafeLogText.Sanitize("Authorization: Bearer abc-raw-secret")=="[redacted-sensitive-text]","authorization_log_redacted");
 Check(SafeLogText.Sanitize("{\"payload_json\":\"full-order\"}")=="[redacted-sensitive-text]","payload_log_redacted");
 Check(SafeLogText.Sanitize("network timeout",7)=="network","safe_log_bounded");
+
+var legacyEmptyDir=Path.Combine(Path.GetTempPath(),"sokna-agent-legacy-empty-"+Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(legacyEmptyDir);
+var legacyEmptyPath=Path.Combine(legacyEmptyDir,"queue.db");
+await CreateLegacyQueueAsync(legacyEmptyPath,false);
+var legacyPreparation=await QueueDatabaseBootstrap.PrepareAsync(legacyEmptyPath);
+Check(legacyPreparation.ReinitializedLegacyEmptyDatabase,"legacy_empty_queue_reinitialized");
+Check(!string.IsNullOrWhiteSpace(legacyPreparation.BackupPath)&&File.Exists(legacyPreparation.BackupPath),"legacy_empty_queue_backup_preserved");
+Check(!File.Exists(legacyEmptyPath),"legacy_empty_queue_original_moved_before_recreate");
+var legacyRecreated=new LocalQueueStore(legacyEmptyPath,new TestLeaseProtector());
+await legacyRecreated.InitializeAsync();
+Check(await legacyRecreated.GetMetaAsync("schema_version")=="4","legacy_empty_queue_recreated_current_schema");
+
+var legacyBusyDir=Path.Combine(Path.GetTempPath(),"sokna-agent-legacy-busy-"+Guid.NewGuid().ToString("N"));
+Directory.CreateDirectory(legacyBusyDir);
+var legacyBusyPath=Path.Combine(legacyBusyDir,"queue.db");
+await CreateLegacyQueueAsync(legacyBusyPath,true);
+var legacyBusyBlocked=false;
+try{await QueueDatabaseBootstrap.PrepareAsync(legacyBusyPath);}catch(InvalidDataException){legacyBusyBlocked=true;}
+Check(legacyBusyBlocked,"legacy_queue_with_durable_rows_never_auto_reset");
+Check(File.Exists(legacyBusyPath),"legacy_queue_with_durable_rows_preserved");
+Check(Directory.GetFiles(legacyBusyDir,"queue.db.legacy-empty-*.bak").Length==0,"legacy_queue_with_durable_rows_no_backup_swap");
 
 var dir=Path.Combine(Path.GetTempPath(),"sokna-agent-test-"+Guid.NewGuid().ToString("N"));
 var path=Path.Combine(dir,"queue.db");
@@ -158,12 +181,34 @@ var corruptDir=Path.Combine(Path.GetTempPath(),"sokna-agent-corrupt-"+Guid.NewGu
 Directory.CreateDirectory(corruptDir);
 var corruptPath=Path.Combine(corruptDir,"queue.db");
 await File.WriteAllTextAsync(corruptPath,"not-a-sqlite-database");
+await ExpectThrowsAsync(()=>QueueDatabaseBootstrap.PrepareAsync(corruptPath),"queue_bootstrap_corruption_detected");
 await ExpectThrowsAsync(()=>new LocalQueueStore(corruptPath,protector).InitializeAsync(),"sqlite_corruption_detected");
 try{Directory.Delete(dir,true);}catch{}
 try{Directory.Delete(corruptDir,true);}catch{}
+try{Directory.Delete(legacyEmptyDir,true);}catch{}
+try{Directory.Delete(legacyBusyDir,true);}catch{}
 if(failures.Count>0){Console.Error.WriteLine("FAIL "+string.Join(",",failures));return 1;}
 Console.WriteLine("PASS Sokna.PrintAgent.Tests");
 return 0;
+
+static async Task CreateLegacyQueueAsync(string path,bool withDurableRow)
+{
+    var cs=new SqliteConnectionStringBuilder{DataSource=path,Mode=SqliteOpenMode.ReadWriteCreate,Pooling=false}.ToString();
+    await using var db=new SqliteConnection(cs);
+    await db.OpenAsync();
+    await using var command=db.CreateCommand();
+    command.CommandText="""
+    CREATE TABLE local_jobs(server_job_id INTEGER PRIMARY KEY,attempt_id INTEGER,state TEXT);
+    CREATE TABLE report_outbox(id INTEGER PRIMARY KEY AUTOINCREMENT,attempt_id INTEGER);
+    """;
+    await command.ExecuteNonQueryAsync();
+    if(withDurableRow)
+    {
+        await using var insert=db.CreateCommand();
+        insert.CommandText="INSERT INTO local_jobs(server_job_id,attempt_id,state) VALUES(1,10,'Claimed')";
+        await insert.ExecuteNonQueryAsync();
+    }
+}
 
 sealed class TestLeaseProtector:ILeaseTokenProtector
 {

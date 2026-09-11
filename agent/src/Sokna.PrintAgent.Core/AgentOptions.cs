@@ -17,6 +17,10 @@ public sealed record AgentOptions
     public int LocalBridgePort {get;init;}=17653;
     public string LocalBridgeAllowedOrigin {get;init;}="";
 
+    // End-to-end PDF routing is an explicit UAT/development capability. It is OFF by default so
+    // a production destination can never silently route to a file merely because the Agent is installed.
+    public bool PdfTestSinkEnabled {get;init;}=false;
+
     // Preview is deliberately a small, read-only side workload. These defaults implement the
     // documented R07 policy: one active renderer globally, at most one queued revision per
     // session, and a small bounded global pending set. None of these settings grant print rights.

@@ -187,10 +187,17 @@ public partial class MainWindow : Window
                 _printers.Add(new PrinterRow(printer));
         }
 
-        var total = _latestHealth?.Printers.Count ?? 0;
-        var ready = _latestHealth?.Printers.Count(IsReady) ?? 0;
-        PrinterValue.Text = $"{ready} / {total}";
-        PrinterDetail.Text = total == 0 ? "هیچ Queue برای Service دیده نمی‌شود" : "Queue قابل مشاهده زیر LocalSystem";
+        var allQueues = _latestHealth?.Printers ?? [];
+        var physicalQueues = allQueues.Where(IsPhysicalPrinter).ToArray();
+        var physicalTotal = physicalQueues.Length;
+        var physicalReady = physicalQueues.Count(IsReady);
+        var pdfEnabled = PdfTestModePolicy.IsEnabled(_paths.ConfigPath);
+        var pdfReady = allQueues.Any(p => VirtualPrinterQueues.IsPdfTestQueue(p.Name) && IsReady(p));
+        var pdfState = !pdfEnabled ? "خاموش" : pdfReady ? "Ready" : "Unavailable";
+        PrinterValue.Text = $"{physicalReady} / {physicalTotal}";
+        PrinterDetail.Text = physicalTotal == 0
+            ? $"پرینتر فیزیکی دیده نمی‌شود · PDF Test: {pdfState}"
+            : $"Queue فیزیکی زیر LocalSystem · PDF Test: {pdfState}";
         BacklogValue.Text = (_latestHealth?.LocalBacklogCount ?? 0).ToString();
         BacklogDetail.Text = $"مبهم: {_latestHealth?.LocalUnknownCount ?? 0}";
 
@@ -225,10 +232,14 @@ public partial class MainWindow : Window
             SetHealthState("نیاز به تصمیم انسانی", $"{_latestHealth.LocalUnknownCount} Attempt مبهم محلی وجود دارد. Auto-Reprint مجاز نیست.", HealthTone.Warning, updated);
         else if (_latestHealth.ConsecutiveApiFailures > 0)
             SetHealthState("ارتباط ناپایدار", $"{_latestHealth.ConsecutiveApiFailures} خطای API متوالی ثبت شده است. آخرین خطا: {_latestHealth.LastApiErrorCode ?? "نامشخص"}.", HealthTone.Warning, updated);
-        else if (total == 0)
-            SetHealthState("نیاز به تنظیم پرینتر", "Service سالم است اما هیچ Printer Queue زیر LocalSystem دیده نمی‌شود.", HealthTone.Warning, updated);
+        else if (physicalTotal == 0)
+            SetHealthState("نیاز به تنظیم پرینتر فیزیکی", pdfEnabled && pdfReady
+                ? "Service سالم و حالت تست PDF آماده است، اما هیچ Printer Queue فیزیکی زیر LocalSystem دیده نمی‌شود."
+                : "Service سالم است اما هیچ Printer Queue فیزیکی زیر LocalSystem دیده نمی‌شود.", HealthTone.Warning, updated);
         else
-            SetHealthState("آماده چاپ", "Windows Service فعال است و Snapshot جاری خطای بحرانی گزارش نمی‌کند.", HealthTone.Healthy, updated);
+            SetHealthState("آماده چاپ", pdfEnabled
+                ? $"{physicalReady} از {physicalTotal} پرینتر فیزیکی Ready است؛ PDF Test {(pdfReady ? "آماده" : "در دسترس نیست")}."
+                : $"{physicalReady} از {physicalTotal} پرینتر فیزیکی Ready است؛ PDF Test خاموش است.", physicalReady > 0 ? HealthTone.Healthy : HealthTone.Warning, updated);
     }
 
     private void SetHealthState(string title, string description, HealthTone tone, DateTimeOffset? updated)
@@ -262,9 +273,10 @@ public partial class MainWindow : Window
             await AddTestAsync("Configuration", () => Task.FromResult(TestConfiguration()));
             await AddTestAsync("Credential", () => Task.FromResult(File.Exists(_paths.SecretPath) ? TestResult.Pass("Credential امن موجود است.") : TestResult.Fail("secret.dat وجود ندارد.")));
             await AddTestAsync("Windows Spooler", () => Task.FromResult(TestNamedService("Spooler", "Windows Spooler")));
-            await AddTestAsync("Printer visibility", () => Task.FromResult(TestPrinters()));
+            await AddTestAsync("Physical printer visibility", () => Task.FromResult(TestPrinters()));
+            await AddTestAsync("PDF Test Sink", () => Task.FromResult(TestPdfSink()));
             await AddTestAsync("Print API v4", TestApiConnectionAsync);
-            _tests.Add(new TestRow("End-to-End Test Print", "MANUAL", "از پنل چاپ Sokna اجرا شود تا مسیر Server → API → Agent → Worker → Spooler واقعاً تست شود.", "—"));
+            _tests.Add(new TestRow("End-to-End Test Print", "MANUAL", "از پنل چاپ Sokna اجرا شود تا مسیر Server → API → Agent → Worker → Spooler و در حالت UAT مسیر PDF Sink واقعاً تست شود.", "—"));
         }
         finally
         {
@@ -328,11 +340,27 @@ public partial class MainWindow : Window
     {
         var health = ReadHealth();
         if (health is null) return TestResult.Fail("Health snapshot برای Printer discovery در دسترس نیست.");
-        if (health.Printers.Count == 0) return TestResult.Fail("هیچ Queue برای LocalSystem دیده نمی‌شود.");
-        var ready = health.Printers.Count(IsReady);
+        var physical = health.Printers.Where(IsPhysicalPrinter).ToArray();
+        if (physical.Length == 0) return TestResult.Fail("هیچ Queue فیزیکی برای LocalSystem دیده نمی‌شود؛ PDF Test به‌عنوان پرینتر فیزیکی شمرده نمی‌شود.");
+        var ready = physical.Count(IsReady);
         return ready > 0
-            ? TestResult.Pass($"{ready} از {health.Printers.Count} Queue آماده‌اند.")
-            : TestResult.Fail($"{health.Printers.Count} Queue دیده می‌شود ولی هیچ‌کدام Ready نیستند.");
+            ? TestResult.Pass($"{ready} از {physical.Length} Queue فیزیکی آماده‌اند.")
+            : TestResult.Fail($"{physical.Length} Queue فیزیکی دیده می‌شود ولی هیچ‌کدام Ready نیستند.");
+    }
+
+    private TestResult TestPdfSink()
+    {
+        var health = ReadHealth();
+        if (health is null) return TestResult.Fail("Health snapshot برای PDF Test Sink در دسترس نیست.");
+        var enabled = PdfTestModePolicy.IsEnabled(_paths.ConfigPath);
+        var sink = health.Printers.FirstOrDefault(p => VirtualPrinterQueues.IsPdfTestQueue(p.Name));
+        if(!enabled)
+            return sink is null
+                ? TestResult.Pass("PDF Test Sink طبق حالت Production خاموش و از discovery حذف است.")
+                : TestResult.Fail("PDF Test Mode خاموش است اما Queue مجازی هنوز advertise می‌شود.");
+        return sink is not null && IsReady(sink)
+            ? TestResult.Pass("حالت UAT فعال است و Sokna PDF Test Sink به‌صورت مستقل Ready است.")
+            : TestResult.Fail("حالت UAT فعال است اما Sokna PDF Test Sink در snapshot آماده نیست.");
     }
 
     private async Task<TestResult> TestApiConnectionAsync()
@@ -556,6 +584,7 @@ public partial class MainWindow : Window
         catch { return null; }
     }
 
+    private static bool IsPhysicalPrinter(PrinterQueueHealth p) => !VirtualPrinterQueues.IsPdfTestQueue(p.Name);
     private static bool IsReady(PrinterQueueHealth p) => !p.Offline && !p.Paused && !p.PaperOut && !p.Error;
 
     private static string? GetServiceStatus(string serviceName)
@@ -642,7 +671,12 @@ public partial class MainWindow : Window
     }
     public sealed record PrinterRow(string Name, string Status, int Jobs, string Driver, string Port)
     {
-        public PrinterRow(PrinterQueueHealth p) : this(p.Name, p.Offline ? "Offline" : p.PaperOut ? "Paper Out" : p.Paused ? "Paused" : p.Error ? "Error" : "Ready", p.Jobs, p.Driver, p.Port) { }
+        public PrinterRow(PrinterQueueHealth p) : this(
+            p.Name,
+            VirtualPrinterQueues.IsPdfTestQueue(p.Name) ? (IsReady(p) ? "Test Ready" : "Test Error") : p.Offline ? "Offline" : p.PaperOut ? "Paper Out" : p.Paused ? "Paused" : p.Error ? "Error" : "Ready",
+            p.Jobs,
+            p.Driver,
+            p.Port) { }
     }
     public sealed record TestRow(string Name, string Status, string Detail, string Duration);
     public sealed record LogRow(string Time, string Level, string Area, string Message);

@@ -1,0 +1,11 @@
+<Project>
+  <!--
+    Sokna Print Agent 6.x is an x64-only Windows product. Keeping this as a build guard prevents
+    an accidental win-x86/ARM package from being produced without its own architecture review,
+    installer/runtime bootstrap validation, driver tests and release gate.
+  -->
+  <Target Name="EnforceSoknaAgentX64Only" BeforeTargets="PrepareForBuild"
+          Condition="'$(RuntimeIdentifier)' != '' and '$(RuntimeIdentifier)' != 'win-x64'">
+    <Error Text="Sokna Print Agent 6.x supports only RuntimeIdentifier=win-x64. Requested: $(RuntimeIdentifier)" />
+  </Target>
+</Project>
