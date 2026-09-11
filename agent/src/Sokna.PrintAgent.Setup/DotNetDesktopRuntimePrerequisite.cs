@@ -41,10 +41,12 @@ internal static class DotNetDesktopRuntimePrerequisite
         var installer = Path.Combine(tempRoot, "windowsdesktop-runtime-win-x64.exe");
         try
         {
-            report?.Invoke("dotnet_runtime_download", "در حال دریافت .NET 10 Desktop Runtime x64 از Microsoft…");
-            await DownloadInstallerAsync(installer, ct);
+            report?.Invoke("dotnet_runtime_download", "در حال اتصال امن به Microsoft برای دریافت .NET 10 Desktop Runtime x64…");
+            await DownloadInstallerAsync(installer,
+                snapshot => report?.Invoke("dotnet_runtime_download", FormatDownloadProgress(snapshot)),ct);
+            report?.Invoke("dotnet_runtime_download", "دانلود .NET با موفقیت کامل شد؛ در حال بررسی امضای دیجیتال Microsoft…");
             VerifyMicrosoftAuthenticodeSignature(installer);
-            report?.Invoke("dotnet_runtime_install", "امضای Microsoft معتبر است؛ Runtime به‌صورت silent نصب می‌شود.");
+            report?.Invoke("dotnet_runtime_install", "امضای Microsoft معتبر است؛ Runtime به‌صورت silent نصب می‌شود. این مرحله ممکن است چند دقیقه طول بکشد.");
 
             var psi = new ProcessStartInfo
             {
@@ -97,7 +99,7 @@ internal static class DotNetDesktopRuntimePrerequisite
         var installer = Path.Combine(tempRoot, "windowsdesktop-runtime-signature-check.exe");
         try
         {
-            await DownloadInstallerAsync(installer, ct);
+            await DownloadInstallerAsync(installer,null,ct);
             VerifyMicrosoftAuthenticodeSignature(installer);
             Console.Error.WriteLine("SOKNA_RUNTIME_VERIFY=success source=microsoft_https authenticode=valid");
         }
@@ -112,7 +114,7 @@ internal static class DotNetDesktopRuntimePrerequisite
         }
     }
 
-    private static async Task DownloadInstallerAsync(string destination, CancellationToken ct)
+    private static async Task DownloadInstallerAsync(string destination,Action<DotNetDownloadProgress>? progress,CancellationToken ct)
     {
         using var handler = new HttpClientHandler { AllowAutoRedirect = true };
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromMinutes(3) };
@@ -122,7 +124,8 @@ internal static class DotNetDesktopRuntimePrerequisite
         var finalUri = response.RequestMessage?.RequestUri;
         if (finalUri is null || !string.Equals(finalUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException(".NET Runtime download did not resolve to HTTPS.");
-        if (response.Content.Headers.ContentLength is long declared && (declared <= 0 || declared > MaxInstallerBytes))
+        var expected=response.Content.Headers.ContentLength;
+        if (expected is long declared && (declared <= 0 || declared > MaxInstallerBytes))
             throw new InvalidDataException(".NET Runtime download size خارج از محدوده امن است.");
 
         await using var source = await response.Content.ReadAsStreamAsync(ct);
@@ -135,6 +138,10 @@ internal static class DotNetDesktopRuntimePrerequisite
             FileOptions.Asynchronous | FileOptions.WriteThrough);
         var buffer = new byte[128 * 1024];
         long total = 0;
+        var stopwatch=Stopwatch.StartNew();
+        var lastReportAt=TimeSpan.Zero;
+        var lastReportedPercent=-5;
+        progress?.Invoke(new DotNetDownloadProgress(0,expected,TimeSpan.Zero));
         while (true)
         {
             var read = await source.ReadAsync(buffer, ct);
@@ -142,12 +149,58 @@ internal static class DotNetDesktopRuntimePrerequisite
             total = checked(total + read);
             if (total > MaxInstallerBytes) throw new InvalidDataException(".NET Runtime download از سقف اندازه امن عبور کرد.");
             await target.WriteAsync(buffer.AsMemory(0, read), ct);
+
+            var elapsed=stopwatch.Elapsed;
+            var percent=expected is >0?(int)Math.Clamp(total*100L/expected.Value,0,100):-1;
+            var percentMoved=percent>=0&&percent>=lastReportedPercent+5;
+            var timeMoved=elapsed-lastReportAt>=TimeSpan.FromSeconds(2);
+            if(percentMoved||timeMoved)
+            {
+                progress?.Invoke(new DotNetDownloadProgress(total,expected,elapsed));
+                lastReportAt=elapsed;
+                if(percent>=0)lastReportedPercent=percent;
+            }
         }
         await target.FlushAsync(ct);
         target.Flush(true);
+        stopwatch.Stop();
+        progress?.Invoke(new DotNetDownloadProgress(total,expected,stopwatch.Elapsed));
         if (total < 1024 * 1024) throw new InvalidDataException(".NET Runtime download unexpectedly small است.");
-        if (response.Content.Headers.ContentLength is long expected && total != expected)
-            throw new EndOfStreamException($".NET Runtime download ناقص است: expected={expected} actual={total}.");
+        if (expected is long expectedBytes && total != expectedBytes)
+            throw new EndOfStreamException($".NET Runtime download ناقص است: expected={expectedBytes} actual={total}.");
+    }
+
+    private static string FormatDownloadProgress(DotNetDownloadProgress snapshot)
+    {
+        var downloadedMb=snapshot.DownloadedBytes/(1024d*1024d);
+        var elapsed=FormatDuration(snapshot.Elapsed);
+        var seconds=Math.Max(snapshot.Elapsed.TotalSeconds,0.001);
+        var bytesPerSecond=snapshot.DownloadedBytes/seconds;
+        var speed=bytesPerSecond>=1024
+            ? $"{bytesPerSecond/(1024d*1024d):0.0} MB/s"
+            : "در حال اندازه‌گیری";
+
+        if(snapshot.TotalBytes is >0)
+        {
+            var totalMb=snapshot.TotalBytes.Value/(1024d*1024d);
+            var percent=(int)Math.Clamp(snapshot.DownloadedBytes*100L/snapshot.TotalBytes.Value,0,100);
+            var eta=bytesPerSecond>1024&&snapshot.DownloadedBytes<snapshot.TotalBytes.Value
+                ? FormatDuration(TimeSpan.FromSeconds((snapshot.TotalBytes.Value-snapshot.DownloadedBytes)/bytesPerSecond))
+                : percent>=100?"تمام شد":"در حال محاسبه";
+            return $"پیشرفت دانلود .NET: {percent}% — {downloadedMb:0.0} از {totalMb:0.0} MB — سرعت {speed} — زمان سپری‌شده {elapsed} — زمان تقریبی باقی‌مانده {eta}";
+        }
+
+        return $"دانلود .NET: {downloadedMb:0.0} MB دریافت شده — سرعت {speed} — زمان سپری‌شده {elapsed} — اندازه کل توسط سرور اعلام نشده است.";
+    }
+
+    private static string FormatDuration(TimeSpan value)
+    {
+        if(value<TimeSpan.Zero)value=TimeSpan.Zero;
+        if(value.TotalSeconds<1)return "کمتر از 1 ثانیه";
+        if(value.TotalMinutes<1)return $"{Math.Ceiling(value.TotalSeconds):0} ثانیه";
+        var minutes=(int)value.TotalMinutes;
+        var seconds=value.Seconds;
+        return seconds==0?$"{minutes} دقیقه":$"{minutes} دقیقه و {seconds} ثانیه";
     }
 
     private static void VerifyMicrosoftAuthenticodeSignature(string installerPath)
@@ -293,6 +346,8 @@ internal static class DotNetDesktopRuntimePrerequisite
         public uint ProviderFlags;
         public uint UiContext;
     }
+
+    private readonly record struct DotNetDownloadProgress(long DownloadedBytes,long? TotalBytes,TimeSpan Elapsed);
 }
 
 internal sealed record DotNetRuntimeStatus(bool Available, string? Root, string? DesktopVersion, string? CoreVersion);
