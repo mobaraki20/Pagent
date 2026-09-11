@@ -12,6 +12,9 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Any(a => string.Equals(a, "/verify-runtime-download", StringComparison.OrdinalIgnoreCase)))
+            return VerifyRuntimeDownloadOnly();
+
         var quiet = args.Any(a => string.Equals(a, "/quiet", StringComparison.OrdinalIgnoreCase));
         var skipStart = args.Any(a => string.Equals(a, "/skip-start", StringComparison.OrdinalIgnoreCase));
 
@@ -37,6 +40,24 @@ internal static class Program
         using var form = new SetupForm(skipStart, shortcuts);
         Application.Run(form);
         return form.ExitCode;
+    }
+
+    private static int VerifyRuntimeDownloadOnly()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "SoknaPrintAgentRuntimeVerify", Guid.NewGuid().ToString("N"));
+        try
+        {
+            DotNetDesktopRuntimePrerequisite.VerifyDownloadOnlyAsync(root).GetAwaiter().GetResult();
+            return 0;
+        }
+        catch
+        {
+            return 73;
+        }
+        finally
+        {
+            try { if (Directory.Exists(root)) Directory.Delete(root, true); } catch { }
+        }
     }
 }
 
@@ -231,15 +252,15 @@ internal sealed class SetupForm : Form
         _title.Text = upgrade ? "به‌روزرسانی Sokna Print Agent" : "نصب Sokna Print Agent";
         _subtitle.Text = upgrade
             ? $"نسخه فعلی {_installedVersion} به نسخه {target} به‌روزرسانی می‌شود. تنظیمات، Credential، SQLite، لاگ‌ها و وضعیت کاری ProgramData حفظ می‌شوند."
-            : $"نسخه {target} نصب می‌شود. Windows Service به‌صورت Automatic Delayed Start تنظیم و پس از نصب سلامت آن بررسی می‌شود.";
+            : $"نسخه {target} نصب می‌شود. در صورت نبود .NET 10 Desktop Runtime، Setup آن را از Microsoft دریافت و نصب می‌کند.";
         _stage.Text = "آماده شروع";
         _detail.Text = "میانبرهای موردنیاز را انتخاب کنید. برنامه پس از نصب در Windows Installed Apps نیز ثبت می‌شود.";
         _progress.Value = 0;
         _steps.Items.Clear();
+        _steps.Items.Add("• بررسی .NET 10 Desktop Runtime و نصب خودکار در صورت نیاز");
         _steps.Items.Add("• اعتبارسنجی بسته با SHA-256");
         _steps.Items.Add("• نصب/به‌روزرسانی Service, Worker و Control Console");
         _steps.Items.Add("• حفظ ProgramData و Durable Queue");
-        _steps.Items.Add("• بررسی Auto-start، Recovery و health.json");
         _steps.Items.Add("• ثبت استاندارد در Windows Installed Apps و اعمال میانبرهای انتخابی");
         _primary.Text = upgrade ? "به‌روزرسانی" : "نصب";
         _secondary.Text = "انصراف";
@@ -260,7 +281,7 @@ internal sealed class SetupForm : Form
         _steps.Items.Clear();
         _showDetails.Visible = true;
         _stage.Text = "در حال آماده‌سازی…";
-        _detail.Text = "هیچ پنجره دیگری لازم نیست. مراحل واقعی نصب در همین صفحه نمایش داده می‌شوند.";
+        _detail.Text = "Setup پیش‌نیاز Runtime را قبل از تغییر Program Files بررسی می‌کند.";
 
         var shortcuts = new ShortcutPreferences(_startMenuShortcut.Checked, _desktopShortcut.Checked);
         var result = await InstallerEngine.RunAsync(_skipStart, shortcuts, update =>
@@ -299,7 +320,7 @@ internal sealed class SetupForm : Form
     {
         ExitCode = 0;
         _title.Text = string.IsNullOrWhiteSpace(_installedVersion) ? "Sokna Print Agent نصب شد" : "به‌روزرسانی با موفقیت انجام شد";
-        _subtitle.Text = $"نسخه {InstallerEngine.TargetVersion} آماده است. Service و health validation با موفقیت عبور کردند و برنامه در Windows Installed Apps ثبت شده است.";
+        _subtitle.Text = $"نسخه {InstallerEngine.TargetVersion} آماده است. Runtime، Service، health validation و Windows Installed Apps registration با موفقیت Verify شدند.";
         _stage.Text = "آماده استفاده";
         _detail.Text = "برای تنظیم اتصال، تست API و مشاهده Diagnostics، Operations Console را باز کنید.";
         _progress.Value = 100;
@@ -319,7 +340,7 @@ internal sealed class SetupForm : Form
         _title.Text = "نصب/به‌روزرسانی کامل نشد";
         _subtitle.Text = result.RollbackVerified
             ? "Setup خطا را ثبت کرد و بازگشت به وضعیت قبلی با موفقیت Verify شد. قبل از تلاش مجدد گزارش مرحله شکست را بررسی کنید."
-            : "Setup در یکی از مراحل متوقف شد و بازگشت به وضعیت قبلی Verify نشده است. وضعیت Service و گزارش تشخیصی باید بررسی شود.";
+            : "Setup متوقف شد. اگر failure قبل از شروع موتور نصب رخ داده باشد، Program Files و Service قبلی دست‌نخورده‌اند.";
         _stage.Text = "نیاز به بررسی";
         _detail.Text = $"مرحله: {result.FailedStage} · Reference: {result.ReferenceId}";
         _shortcutOptions.Visible = false;
@@ -483,6 +504,16 @@ internal static class InstallerEngine
             if (!File.Exists(manifest) || !File.Exists(installer))
                 throw new InvalidDataException("Installer package is incomplete.");
 
+            stage = "dotnet_runtime_check";
+            progress(MapStage(stage));
+            var runtimeResult = await DotNetDesktopRuntimePrerequisite.EnsureAsync(tempRoot, (runtimeStage, detail) =>
+            {
+                stage = runtimeStage;
+                var mapped = MapStage(runtimeStage);
+                progress(mapped with { Detail = detail, TechnicalLine = $"SOKNA_DOTNET_RUNTIME_STAGE={runtimeStage}" });
+            });
+            stdout.AppendLine($"SOKNA_DOTNET_RUNTIME desktop={runtimeResult.Status.DesktopVersion ?? "missing"} core={runtimeResult.Status.CoreVersion ?? "missing"} installed_by_setup={runtimeResult.InstalledBySetup} restart_required={runtimeResult.RestartRequired}");
+
             stage = "powershell_installer_start";
             progress(MapStage(stage));
             var psArgs = new StringBuilder();
@@ -564,13 +595,16 @@ internal static class InstallerEngine
     private static InstallUpdate MapStage(string stage) => stage switch
     {
         "setup_bootstrap_start" => new(stage, "شروع Setup", "آماده‌سازی محیط نصب.", 2, "شروع نصب", null),
-        "embedded_payload_extraction" => new(stage, "آماده‌سازی بسته", "استخراج امن payload موقت.", 6, "استخراج بسته", null),
-        "payload_manifest_presence" => new(stage, "بررسی ساختار بسته", "Manifest و Installer داخلی بررسی می‌شوند.", 10, "بررسی Manifest", null),
-        "powershell_installer_start" => new(stage, "شروع موتور نصب", "موتور واحد Fresh Install / Upgrade اجرا شد.", 13, "شروع موتور نصب", null),
-        "elevation_admin_check" => new(stage, "بررسی دسترسی", "Administrator access بررسی می‌شود.", 16, "بررسی دسترسی Administrator", null),
-        "existing_install_lookup" => new(stage, "تشخیص نصب قبلی", "نسخه، مسیر و تنظیمات میانبر فعلی بررسی می‌شوند.", 19, "تشخیص Fresh/Upgrade", null),
-        "install_paths_resolution" => new(stage, "بررسی مسیرها", "Program Files و ProgramData تعیین می‌شوند.", 22, "بررسی مسیرهای نصب", null),
-        "embedded_payload_presence" => new(stage, "بررسی مؤلفه‌ها", "وجود Service، Worker و Control بررسی می‌شود.", 26, "بررسی مؤلفه‌ها", null),
+        "embedded_payload_extraction" => new(stage, "آماده‌سازی بسته", "استخراج امن payload موقت.", 5, "استخراج بسته", null),
+        "payload_manifest_presence" => new(stage, "بررسی ساختار بسته", "Manifest و Installer داخلی بررسی می‌شوند.", 8, "بررسی Manifest", null),
+        "dotnet_runtime_check" => new(stage, "بررسی پیش‌نیاز .NET", ".NET 10 Desktop Runtime x64 بررسی می‌شود.", 10, "بررسی .NET Runtime", null),
+        "dotnet_runtime_download" => new(stage, "دریافت پیش‌نیاز .NET", "Runtime فقط از Microsoft و از طریق HTTPS دریافت می‌شود.", 12, "دانلود .NET Runtime", null),
+        "dotnet_runtime_install" => new(stage, "نصب پیش‌نیاز .NET", "امضای Microsoft Verify شده و Runtime به‌صورت silent نصب می‌شود.", 15, "نصب .NET Runtime", null),
+        "powershell_installer_start" => new(stage, "شروع موتور نصب", "موتور واحد Fresh Install / Upgrade اجرا شد.", 18, "شروع موتور نصب", null),
+        "elevation_admin_check" => new(stage, "بررسی دسترسی", "Administrator access بررسی می‌شود.", 20, "بررسی دسترسی Administrator", null),
+        "existing_install_lookup" => new(stage, "تشخیص نصب قبلی", "نسخه، مسیر و تنظیمات میانبر فعلی بررسی می‌شوند.", 22, "تشخیص Fresh/Upgrade", null),
+        "install_paths_resolution" => new(stage, "بررسی مسیرها", "Program Files و ProgramData تعیین می‌شوند.", 24, "بررسی مسیرهای نصب", null),
+        "embedded_payload_presence" => new(stage, "بررسی مؤلفه‌ها", "وجود Service، Worker و Control بررسی می‌شود.", 27, "بررسی مؤلفه‌ها", null),
         "payload_manifest_hash_validation" => new(stage, "اعتبارسنجی بسته", "SHA-256 تمام فایل‌های نصب قبل از تغییر سیستم بررسی می‌شود.", 34, "اعتبارسنجی SHA-256", null),
         "programdata_setup" => new(stage, "آماده‌سازی داده پایدار", "ProgramData و مسیرهای durable حفظ/آماده می‌شوند.", 39, "آماده‌سازی ProgramData", null),
         "programdata_acl" => new(stage, "اعمال امنیت داده", "ACL مسیر mutable بررسی و اعمال می‌شود.", 43, "اعمال ACL ProgramData", null),
@@ -593,7 +627,7 @@ internal static class InstallerEngine
         "installed_apps_registration" => new(stage, "ثبت در Windows", "اطلاعات Uninstall و نسخه در Windows Installed Apps ثبت می‌شوند.", 98, "ثبت Installed Apps", null),
         "finalize" => new(stage, "تکمیل نصب", "نسخه پشتیبان موقت پس از Health موفق جمع‌آوری می‌شود.", 99, "تکمیل نصب", null),
         "powershell_installer_exit" => new(stage, "بررسی نتیجه", "نتیجه موتور نصب دریافت شد.", 99, null, null),
-        "completed" => new(stage, "نصب کامل شد", "Service، Health و Windows registration عبور کردند.", 100, "پایان موفق", null),
+        "completed" => new(stage, "نصب کامل شد", "Runtime، Service، Health و Windows registration عبور کردند.", 100, "پایان موفق", null),
         _ => new(stage, "در حال نصب…", stage, 50, stage, null)
     };
 
