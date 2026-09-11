@@ -135,6 +135,12 @@ Remove-Item $setupLogRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $startShortcut,$desktopShortcut -Force -ErrorAction SilentlyContinue
 Remove-Item $regPath,$uninstallRegPath -Recurse -Force -ErrorAction SilentlyContinue
 
+Write-Host '== Verify official .NET Runtime download and Microsoft signature =='
+$runtimeVerify=Start-Process -FilePath $setup -ArgumentList @('/verify-runtime-download') -Wait -PassThru
+"runtime_download_signature_check_exit=$($runtimeVerify.ExitCode)" | Out-File $gateEvidence -Append
+if($runtimeVerify.ExitCode -ne 0){throw "Setup failed Microsoft .NET Runtime download/signature verification: $($runtimeVerify.ExitCode)"}
+"runtime_download_signature_verified=True" | Out-File $gateEvidence -Append
+
 Write-Host '== Fresh install through real embedded Setup.exe =='
 $installStarted=Get-Date
 $stdout=Join-Path $env:RUNNER_TEMP 'sokna-setup-smoke.stdout.log'
@@ -174,6 +180,17 @@ foreach($required in @(
   if(-not (Test-Path (Join-Path $installRoot $required) -PathType Leaf)){throw "Installed component missing: $required"}
   "installed_component=$required" | Out-File $gateEvidence -Append
 }
+foreach($component in @('Service','Worker','Control')){
+  $dir=Join-Path $installRoot $component
+  $runtimeConfig=Get-ChildItem $dir -Filter '*.runtimeconfig.json' -File | Select-Object -First 1
+  if($null -eq $runtimeConfig){throw "Framework-dependent runtimeconfig missing after install: $component"}
+  $runtimeText=Get-Content $runtimeConfig.FullName -Raw
+  if($runtimeText -notmatch 'net10\.0' -or $runtimeText -notmatch '10\.0\.0'){throw "Runtimeconfig does not require .NET 10 as expected: $component"}
+  if(Test-Path (Join-Path $dir 'coreclr.dll') -PathType Leaf){throw "Component unexpectedly ships private coreclr.dll: $component"}
+  "framework_dependent_component=$component" | Out-File $gateEvidence -Append
+}
+"framework_dependent_payload_verified=True" | Out-File $gateEvidence -Append
+
 if(-not (Test-UsersReadExecuteAcl $installRoot)){throw 'Built-in Users does not have ReadAndExecute on Program Files installation.'}
 "program_files_users_read_execute=True" | Out-File $gateEvidence -Append
 $controlExe=Join-Path $installRoot 'Control\Sokna.PrintAgent.Control.exe'
@@ -366,4 +383,4 @@ if(Test-Path $uninstallRegPath){throw 'Installed Apps entry still exists after f
 Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $setupLogRoot -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item $regPath,$uninstallRegPath -Recurse -Force -ErrorAction SilentlyContinue
-Write-Host 'PASS Windows Setup/Service/InstalledApps/Shortcut/Uninstall/Rollback/Repair smoke test' -ForegroundColor Green
+Write-Host 'PASS Windows Setup/Service/RuntimePrerequisite/InstalledApps/Shortcut/Uninstall/Rollback/Repair smoke test' -ForegroundColor Green
