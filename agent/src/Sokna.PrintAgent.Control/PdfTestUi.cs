@@ -4,6 +4,9 @@ using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
 using Sokna.PrintAgent.Core;
+using Button = System.Windows.Controls.Button;
+using CheckBox = System.Windows.Controls.CheckBox;
+using MessageBox = System.Windows.MessageBox;
 
 namespace Sokna.PrintAgent.Control;
 
