@@ -1,5 +1,4 @@
 using System.IO;
-using System.ServiceProcess;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
@@ -62,13 +61,12 @@ public partial class MainWindow
             var existing=AgentOptions.Load(_paths.ConfigPath);
             if(existing.PdfTestSinkEnabled==requested)return;
             (existing with{PdfTestSinkEnabled=requested}).Save(_paths.ConfigPath);
-            RestartServiceIfRunning();
             RefreshEverything();
 
             MessageBox.Show(
                 requested
-                    ? "حالت تست PDF فعال شد. Queue آزمایشی فقط برای UAT/QA در دسترس است. بعد از تست آن را خاموش کنید."
-                    : "حالت تست PDF خاموش شد. Queue مجازی دیگر advertise نمی‌شود و Worker نیز مقصد PDF قدیمی را رد می‌کند.",
+                    ? "حالت تست PDF فعال شد. بدون Restart سرویس، در چرخه بعدی discovery (معمولاً چند ثانیه) Queue آزمایشی برای UAT/QA ظاهر می‌شود. بعد از تست آن را خاموش کنید."
+                    : "حالت تست PDF خاموش شد. بدون Restart سرویس، Queue مجازی در چرخه بعدی discovery حذف می‌شود؛ Worker از همین لحظه مقصد PDF قدیمی را رد می‌کند.",
                 "Sokna Print Agent",
                 MessageBoxButton.OK,
                 requested?MessageBoxImage.Warning:MessageBoxImage.Information);
@@ -78,24 +76,6 @@ public partial class MainWindow
             _pdfModeUpdating=true;
             try{_pdfModeToggle.IsChecked=PdfTestModePolicy.IsEnabled(_paths.ConfigPath);}finally{_pdfModeUpdating=false;}
             MessageBox.Show(ex.Message,"Sokna Print Agent",MessageBoxButton.OK,MessageBoxImage.Error);
-        }
-    }
-
-    private static void RestartServiceIfRunning()
-    {
-        using var service=new ServiceController("SoknaPrintAgent6");
-        try
-        {
-            service.Refresh();
-            if(service.Status==ServiceControllerStatus.Stopped)return;
-            if(service.Status!=ServiceControllerStatus.StopPending)service.Stop();
-            service.WaitForStatus(ServiceControllerStatus.Stopped,TimeSpan.FromSeconds(15));
-            service.Start();
-            service.WaitForStatus(ServiceControllerStatus.Running,TimeSpan.FromSeconds(20));
-        }
-        catch(InvalidOperationException)
-        {
-            // Service is not installed yet; config change remains durable for the next start.
         }
     }
 
