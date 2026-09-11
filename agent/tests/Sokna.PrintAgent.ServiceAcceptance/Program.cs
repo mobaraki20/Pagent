@@ -476,7 +476,7 @@ static async Task InvokePrivateTaskAsync(PrintAgentService service,string method
 static void InvokePrivateVoid(PrintAgentService service,string methodName,params object?[] args)
 {
     var method=typeof(PrintAgentService).GetMethod(methodName,BindingFlags.Instance|BindingFlags.NonPublic)
-        ??throw new MissingMethodException(instance.GetType().FullName,name);
+        ??throw new MissingMethodException(typeof(PrintAgentService).FullName,methodName);
     _=method.Invoke(service,args);
 }
 
@@ -734,7 +734,7 @@ sealed class CoordinatorTransport:IPrintTransport
     }
 
     public Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct)
-        =>Task.FromResult(new ApiResult(true,"claimed",AttemptId:item.Attempt.Id,JobId:item.ServerJobId,ServerTime:DateTimeOffset.UtcNow.ToString("O")));
+        =>Task.FromResult(new ApiResult(true,"claimed",AttemptId:item.Attempt.Id,JobId:item.Job.Id,ServerTime:DateTimeOffset.UtcNow.ToString("O")));
 
     public Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct)
         =>Task.FromResult(new AttemptStatusResult(true,job.AttemptId,job.ServerJobId,"claimed","open",true,"start",false,false,job.LeaseExpiresAt.ToString("O"),DateTimeOffset.UtcNow.ToString("O")));
