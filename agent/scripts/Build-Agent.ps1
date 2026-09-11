@@ -72,13 +72,18 @@ foreach($caseId in $implementedAcceptance){
   if($LASTEXITCODE -ne 0){throw "Acceptance case failed: $caseId"}
 }
 
+# Service/Worker/Control are intentionally framework-dependent. One machine-wide .NET 10
+# Desktop Runtime x64 services all three components and avoids embedding duplicate runtime copies.
 foreach($project in @('Sokna.PrintAgent.Service','Sokna.PrintAgent.Worker','Sokna.PrintAgent.Control')){
   $proj=Join-Path $root "src\$project\$project.csproj"
   $dest=Join-Path $Output $project
   & $dotnet restore $proj -r $Runtime
   if($LASTEXITCODE -ne 0){throw "dotnet runtime restore failed: $project"}
-  & $dotnet publish $proj -c $Configuration -r $Runtime --self-contained true --no-restore -o $dest
+  & $dotnet publish $proj -c $Configuration -r $Runtime --self-contained false --no-restore -o $dest
   if($LASTEXITCODE -ne 0){throw "dotnet publish failed: $project"}
+  $runtimeConfig=Join-Path $dest "$project.runtimeconfig.json"
+  if(-not (Test-Path $runtimeConfig -PathType Leaf)){throw "Framework-dependent runtimeconfig missing: $project"}
+  if(Test-Path (Join-Path $dest 'coreclr.dll') -PathType Leaf){throw "Framework-dependent publish unexpectedly contains coreclr.dll: $project"}
 }
 
 $package=Join-Path $Output 'package'
@@ -130,28 +135,89 @@ Get-ChildItem $payload -File -Recurse | Sort-Object FullName | ForEach-Object {
 $manifest | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $package 'PAYLOAD_MANIFEST.json') -Encoding utf8NoBOM
 
 $buildInfo=[ordered]@{
-  agent_version=$version;protocol_version=4;runtime=$Runtime;configuration=$Configuration
-  dotnet_sdk=$sdk;built_at_utc=(Get-Date).ToUniversalTime().ToString('o')
-  target_framework='net10.0-windows10.0.19041.0';self_contained=$true
-  source_commit=$sourceCommit;source_tree='agent/'
+  agent_version=$version
+  protocol_version=4
+  runtime=$Runtime
+  configuration=$Configuration
+  dotnet_sdk=$sdk
+  built_at_utc=(Get-Date).ToUniversalTime().ToString('o')
+  target_framework='net10.0-windows10.0.19041.0'
+  component_deployment='framework-dependent'
+  required_runtime='Microsoft.WindowsDesktop.App 10.x x64 (includes Microsoft.NETCore.App)'
+  runtime_bootstrap_url='https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe'
+  setup_self_contained=$true
+  setup_single_file_compression=$true
+  source_commit=$sourceCommit
+  source_tree='agent/'
 }
 $buildInfo | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $package 'BUILD_INFO.json') -Encoding utf8NoBOM
 
 $zip=Join-Path $Output "Sokna-Print-Agent-$version-$Runtime.zip"
 Compress-Archive -Path (Join-Path $package '*') -DestinationPath $zip -CompressionLevel Optimal
 
-$setupOut=Join-Path $Output 'Setup'
-New-Item $setupOut -ItemType Directory -Force|Out-Null
 $setupProject=Join-Path $root 'src\Sokna.PrintAgent.Setup\Sokna.PrintAgent.Setup.csproj'
 & $dotnet restore $setupProject -r $Runtime
 if($LASTEXITCODE -ne 0){throw 'dotnet runtime restore failed: Sokna.PrintAgent.Setup'}
+
+# Benchmark the Hybrid payload with an uncompressed self-contained Setup host first.
+$setupBenchmarkOut=Join-Path $Output 'SetupBenchmarkUncompressed'
+New-Item $setupBenchmarkOut -ItemType Directory -Force|Out-Null
 & $dotnet publish $setupProject -c $Configuration -r $Runtime --self-contained true --no-restore `
-  "-p:PayloadZip=$zip" -p:PublishSingleFile=true -o $setupOut
+  "-p:PayloadZip=$zip" -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=false -o $setupBenchmarkOut
+if($LASTEXITCODE -ne 0){throw 'dotnet publish failed: Sokna.PrintAgent.Setup uncompressed benchmark'}
+$setupBenchmarkExe=Join-Path $setupBenchmarkOut "Sokna-Print-Agent-$version-Setup.exe"
+if(-not (Test-Path $setupBenchmarkExe -PathType Leaf)){throw 'Uncompressed Setup benchmark executable was not produced.'}
+$setupBenchmarkBytes=(Get-Item $setupBenchmarkExe).Length
+
+# Final Setup remains self-contained so it can bootstrap .NET on a machine that has no runtime.
+$setupOut=Join-Path $Output 'Setup'
+New-Item $setupOut -ItemType Directory -Force|Out-Null
+& $dotnet publish $setupProject -c $Configuration -r $Runtime --self-contained true --no-restore `
+  "-p:PayloadZip=$zip" -p:PublishSingleFile=true -p:EnableCompressionInSingleFile=true -o $setupOut
 if($LASTEXITCODE -ne 0){throw 'dotnet publish failed: Sokna.PrintAgent.Setup'}
 $setupExe=Join-Path $setupOut "Sokna-Print-Agent-$version-Setup.exe"
 if(-not (Test-Path $setupExe -PathType Leaf)){throw "Setup executable was not produced: $setupExe"}
 $setupFinal=Join-Path $Output ([IO.Path]::GetFileName($setupExe))
 Copy-Item $setupExe $setupFinal -Force
+
+$zipBytes=(Get-Item $zip).Length
+$setupBytes=(Get-Item $setupFinal).Length
+$baselineSetupBytes=331159774L
+$baselineZipBytes=189423098L
+$reductionSetup=[Math]::Round((1-($setupBytes/[double]$baselineSetupBytes))*100,2)
+$reductionZip=[Math]::Round((1-($zipBytes/[double]$baselineZipBytes))*100,2)
+$compressionGain=[Math]::Round((1-($setupBytes/[double]$setupBenchmarkBytes))*100,2)
+$sizeEvidence=[ordered]@{
+  baseline=[ordered]@{
+    description='Fully self-contained Service + Worker + Control + self-contained Setup'
+    source_commit='e71a03c8629f00dcb55657539d93cfabdfffce48'
+    workflow_run=34544366455
+    setup_bytes=$baselineSetupBytes
+    zip_bytes=$baselineZipBytes
+  }
+  hybrid_uncompressed_setup=[ordered]@{
+    setup_bytes=$setupBenchmarkBytes
+    component_deployment='framework-dependent'
+    setup_self_contained=$true
+    setup_single_file_compression=$false
+  }
+  hybrid_final=[ordered]@{
+    setup_bytes=$setupBytes
+    zip_bytes=$zipBytes
+    component_deployment='framework-dependent'
+    setup_self_contained=$true
+    setup_single_file_compression=$true
+    setup_reduction_percent_vs_baseline=$reductionSetup
+    zip_reduction_percent_vs_baseline=$reductionZip
+    setup_compression_gain_percent_vs_hybrid_uncompressed=$compressionGain
+  }
+}
+$sizeEvidence | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $Output "PACKAGE_SIZE_EVIDENCE-Agent-$version.json") -Encoding utf8NoBOM
+Write-Host "Size benchmark: baseline_setup=$baselineSetupBytes hybrid_uncompressed_setup=$setupBenchmarkBytes final_setup=$setupBytes reduction=$reductionSetup%" -ForegroundColor Cyan
+Write-Host "Size benchmark: baseline_zip=$baselineZipBytes final_zip=$zipBytes reduction=$reductionZip%" -ForegroundColor Cyan
+
+# Benchmark-only executable is evidence-by-number; do not inflate the distributable CI artifact with it.
+Remove-Item $setupBenchmarkOut -Recurse -Force -ErrorAction SilentlyContinue
 
 $artifactRows=@()
 foreach($artifact in @($zip,$setupFinal)){
