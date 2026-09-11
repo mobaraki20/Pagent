@@ -42,7 +42,17 @@ public static class QueueDatabaseBootstrap
                 await using var reader=await schema.ExecuteReaderAsync(ct);
                 var keys=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
                 while(await reader.ReadAsync(ct))keys[reader.GetString(0)]=reader.GetInt64(1);
-                if(keys.TryGetValue("attempt_id",out var attemptPk)&&attemptPk==1)return new(false,null);
+                if(keys.TryGetValue("attempt_id",out var attemptPk)&&attemptPk==1)
+                {
+                    // 6.2.0 already uses attempt_id as the durable primary key, so this is a compatible
+                    // v3 database and must be upgraded in-place. 6.2.1 accidentally tried to create
+                    // indexes on delivery_state/server_scope before those columns were added, which made
+                    // real 6.2.0 -> 6.2.1 upgrades stop the Windows Service. Pre-add every v4 column here
+                    // inside one SQLite transaction; LocalQueueStore can then create dependent tables/
+                    // indexes and perform semantic legacy-outcome migration without ever deleting rows.
+                    await PrepareCompatibleV3ColumnsAsync(db,ct);
+                    return new(false,null);
+                }
             }
 
             var localRows=await CountRowsAsync(db,"local_jobs",ct);
@@ -65,6 +75,58 @@ public static class QueueDatabaseBootstrap
         MoveIfExists(full+"-wal",backup+"-wal");
         MoveIfExists(full+"-shm",backup+"-shm");
         return new(true,backup);
+    }
+
+    private static async Task PrepareCompatibleV3ColumnsAsync(SqliteConnection db,CancellationToken ct)
+    {
+        await using var tx=(SqliteTransaction)await db.BeginTransactionAsync(ct);
+        try
+        {
+            await EnsureColumnAsync(db,tx,"local_jobs","server_scope","TEXT NOT NULL DEFAULT 'legacy-unbound'",ct);
+
+            if(await TableExistsAsync(db,tx,"report_outbox",ct))
+            {
+                await EnsureColumnAsync(db,tx,"report_outbox","error_count","INTEGER NOT NULL DEFAULT 0",ct);
+                await EnsureColumnAsync(db,tx,"report_outbox","next_attempt_at","TEXT NULL",ct);
+                await EnsureColumnAsync(db,tx,"report_outbox","permanent_error","INTEGER NOT NULL DEFAULT 0",ct);
+                await EnsureColumnAsync(db,tx,"report_outbox","delivery_state","TEXT NOT NULL DEFAULT 'Pending'",ct);
+                await EnsureColumnAsync(db,tx,"report_outbox","last_http_status","INTEGER NULL",ct);
+                await EnsureColumnAsync(db,tx,"report_outbox","last_error_code","TEXT NULL",ct);
+                await EnsureColumnAsync(db,tx,"report_outbox","updated_at","TEXT NULL",ct);
+                await EnsureColumnAsync(db,tx,"report_outbox","agent_version","TEXT NOT NULL DEFAULT '6.2.0'",ct);
+                await EnsureColumnAsync(db,tx,"report_outbox","server_scope","TEXT NOT NULL DEFAULT 'legacy-unbound'",ct);
+            }
+
+            await tx.CommitAsync(ct);
+        }
+        catch
+        {
+            try{await tx.RollbackAsync(CancellationToken.None);}catch{}
+            throw;
+        }
+    }
+
+    private static async Task EnsureColumnAsync(SqliteConnection db,SqliteTransaction tx,string table,string column,string definition,CancellationToken ct)
+    {
+        await using var check=db.CreateCommand();
+        check.Transaction=tx;
+        check.CommandText=$"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name=$name";
+        check.Parameters.AddWithValue("$name",column);
+        if(Convert.ToInt32(await check.ExecuteScalarAsync(ct))!=0)return;
+
+        await using var alter=db.CreateCommand();
+        alter.Transaction=tx;
+        alter.CommandText=$"ALTER TABLE {table} ADD COLUMN {column} {definition}";
+        await alter.ExecuteNonQueryAsync(ct);
+    }
+
+    private static async Task<bool> TableExistsAsync(SqliteConnection db,SqliteTransaction tx,string table,CancellationToken ct)
+    {
+        await using var command=db.CreateCommand();
+        command.Transaction=tx;
+        command.CommandText="SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=$name)";
+        command.Parameters.AddWithValue("$name",table);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(ct))==1;
     }
 
     private static async Task<bool> TableExistsAsync(SqliteConnection db,string table,CancellationToken ct)
