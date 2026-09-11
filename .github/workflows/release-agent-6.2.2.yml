@@ -1,0 +1,206 @@
+name: Release Sokna Print Agent 6.2.2
+
+on:
+  push:
+    branches:
+      - 'release/v6.2.2-final'
+    paths:
+      - '.github/workflows/release-agent-6.2.2.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sokna-agent-release-v6.2.2
+  cancel-in-progress: false
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    env:
+      TARGET_SHA: 5a58a10f6326698f80c3408a7a69229754e5c9d4
+      RELEASE_TAG: v6.2.2
+      EXPECTED_VERSION: 6.2.2
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout audited release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+
+      - name: Verify audited source and version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual -ne $env:TARGET_SHA){throw "Unexpected source commit: $actual"}
+          [xml]$props=Get-Content 'agent/Directory.Build.props' -Raw
+          $version=[string]$props.Project.PropertyGroup.SoknaAgentVersion
+          if($version -ne $env:EXPECTED_VERSION){throw "Expected version $env:EXPECTED_VERSION, got $version"}
+          foreach($p in @('agent/global.json','agent/scripts/Build-Agent.ps1','agent/scripts/Test-Windows-Install.ps1','agent/tests/Sokna.PrintAgent.V620SchemaTool/Sokna.PrintAgent.V620SchemaTool.csproj')){
+            if(!(Test-Path $p -PathType Leaf)){throw "Required source missing: $p"}
+          }
+          if(Test-Path 'agent6.zip'){throw 'Legacy agent6.zip must not be part of the active source tree.'}
+          if(Test-Path 'ci/patch_agent_source.py'){throw 'Build-time source patching is forbidden.'}
+          "AGENT_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+
+      - name: Build, test and package
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Build-Agent.ps1
+
+      - name: Verify official .NET Desktop Runtime download through real Setup verifier
+        shell: pwsh
+        working-directory: agent
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=(Resolve-Path "artifacts/Sokna-Print-Agent-$env:AGENT_VERSION-Setup.exe").Path
+          $stdout=Join-Path $env:RUNNER_TEMP 'release-runtime-verify.stdout.log'
+          $stderr=Join-Path $env:RUNNER_TEMP 'release-runtime-verify.stderr.log'
+          Remove-Item $stdout,$stderr -Force -ErrorAction SilentlyContinue
+          $p=Start-Process -FilePath $setup -ArgumentList '/verify-runtime-download' -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if(Test-Path $stdout){Get-Content $stdout -Raw | Write-Host}
+          if(Test-Path $stderr){Get-Content $stderr -Raw | Write-Host}
+          if($p.ExitCode -ne 0){throw "Real Setup runtime verifier failed with exit code $($p.ExitCode)."}
+          $combined=((Get-Content $stdout -Raw -ErrorAction SilentlyContinue)+(Get-Content $stderr -Raw -ErrorAction SilentlyContinue))
+          if($combined -notmatch 'SOKNA_RUNTIME_VERIFY=success'){throw 'Runtime trust verification marker missing.'}
+          if($combined -notmatch 'progress_samples=([1-9][0-9]*)'){throw 'Runtime download progress telemetry was not exercised.'}
+
+      - name: Upgrade gate from exact 6.2.0 queue schema
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $setup=(Resolve-Path "agent/artifacts/Sokna-Print-Agent-$env:AGENT_VERSION-Setup.exe").Path
+          $installRoot=Join-Path $env:ProgramFiles 'Sokna\PrintAgent'
+          $dataRoot=Join-Path $env:ProgramData 'Sokna\PrintAgent'
+          $db=Join-Path $dataRoot 'queue.db'
+          $evidence='agent/artifacts/windows-smoke-evidence/V620_SCHEMA_UPGRADE_EVIDENCE.txt'
+          New-Item (Split-Path $evidence -Parent) -ItemType Directory -Force | Out-Null
+          $lines=[System.Collections.Generic.List[string]]::new()
+          $lines.Add("target_version=$env:AGENT_VERSION")
+          try {
+            $first=Start-Process -FilePath $setup -ArgumentList @('/quiet','/skip-start','/no-start-menu-shortcut','/no-desktop-shortcut') -Wait -PassThru
+            $lines.Add("stage_only_install_exit=$($first.ExitCode)")
+            if($first.ExitCode -ne 0){throw "Stage-only Setup failed: $($first.ExitCode)"}
+
+            & dotnet run --project 'agent/tests/Sokna.PrintAgent.V620SchemaTool/Sokna.PrintAgent.V620SchemaTool.csproj' -c Release -- seed $db
+            if($LASTEXITCODE -ne 0){throw 'Unable to seed exact 6.2.0 queue schema.'}
+            $lines.Add('v620_schema_seed=PASS')
+
+            $second=Start-Process -FilePath $setup -ArgumentList @('/quiet','/no-start-menu-shortcut','/no-desktop-shortcut') -Wait -PassThru
+            $lines.Add("upgrade_repair_exit=$($second.ExitCode)")
+            if($second.ExitCode -ne 0){throw "6.2.0-schema upgrade Setup failed: $($second.ExitCode)"}
+
+            $deadline=(Get-Date).AddSeconds(25)
+            do {
+              Start-Sleep -Milliseconds 500
+              $svc=Get-Service 'SoknaPrintAgent6' -ErrorAction SilentlyContinue
+            } while(($null -eq $svc -or $svc.Status -ne 'Running') -and (Get-Date) -lt $deadline)
+            if($null -eq $svc -or $svc.Status -ne 'Running'){throw 'Service did not remain Running after exact 6.2.0 schema upgrade.'}
+            $lines.Add('service_running_after_v620_schema_upgrade=PASS')
+
+            $health=Join-Path $dataRoot 'health.json'
+            $deadline=(Get-Date).AddSeconds(20)
+            while(!(Test-Path $health -PathType Leaf) -and (Get-Date) -lt $deadline){Start-Sleep -Milliseconds 500}
+            if(!(Test-Path $health -PathType Leaf)){throw 'Fresh health.json missing after exact 6.2.0 schema upgrade.'}
+            $lines.Add('health_after_v620_schema_upgrade=PASS')
+
+            & dotnet run --project 'agent/tests/Sokna.PrintAgent.V620SchemaTool/Sokna.PrintAgent.V620SchemaTool.csproj' -c Release -- verify $db
+            if($LASTEXITCODE -ne 0){throw 'Migrated 6.2.0 queue schema/data verification failed.'}
+            $lines.Add('v620_schema_and_durable_rows_after_upgrade=PASS')
+          }
+          finally {
+            $lines | Set-Content -Path $evidence -Encoding utf8
+            $uninstaller=Join-Path $installRoot 'Uninstall-SoknaPrintAgent.ps1'
+            if(Test-Path $uninstaller -PathType Leaf){
+              & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') -NoLogo -NoProfile -ExecutionPolicy Bypass -File $uninstaller -Quiet -NoSelfElevation
+            }
+            Remove-Item $dataRoot -Recurse -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Windows install gate
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Test-Windows-Install.ps1 -Artifacts "$PWD/artifacts" -Version "$env:AGENT_VERSION"
+
+      - name: Package tracked source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $zip="agent/artifacts/Sokna-Print-Agent-$env:AGENT_VERSION-source.zip"
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          & git archive --format=zip --output=$zip $env:TARGET_SHA`:agent
+          if($LASTEXITCODE -ne 0 -or !(Test-Path $zip -PathType Leaf)){throw 'Tracked source archive failed.'}
+
+      - name: Verify release artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $v=$env:AGENT_VERSION
+          $required=@(
+            "agent/artifacts/Sokna-Print-Agent-$v-Setup.exe",
+            "agent/artifacts/Sokna-Print-Agent-$v-win-x64.zip",
+            "agent/artifacts/Sokna-Print-Agent-$v-source.zip",
+            "agent/artifacts/SHA256SUMS-Agent-$v.txt",
+            "agent/artifacts/BUILD_ARTIFACTS-Agent-$v.json",
+            "agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-$v.json",
+            'agent/artifacts/windows-smoke-evidence/INSTALL_GATE_EVIDENCE.txt',
+            'agent/artifacts/windows-smoke-evidence/V620_SCHEMA_UPGRADE_EVIDENCE.txt'
+          )
+          foreach($p in $required){if(!(Test-Path $p -PathType Leaf)){throw "Required artifact missing: $p"}}
+          $upgradeEvidence=Get-Content 'agent/artifacts/windows-smoke-evidence/V620_SCHEMA_UPGRADE_EVIDENCE.txt' -Raw
+          foreach($marker in @('v620_schema_seed=PASS','service_running_after_v620_schema_upgrade=PASS','health_after_v620_schema_upgrade=PASS','v620_schema_and_durable_rows_after_upgrade=PASS')){
+            if(-not $upgradeEvidence.Contains($marker,[StringComparison]::Ordinal)){throw "6.2.0 schema upgrade evidence missing marker: $marker"}
+          }
+
+      - name: Write release notes
+        shell: pwsh
+        run: |
+          @'
+          # Sokna Print Agent 6.2.2
+
+          Hotfix release for the Sokna Windows Print Agent.
+
+          Highlights:
+          - fixes the real 6.2.0 -> 6.2.1 SQLite upgrade failure (`no such column: delivery_state`)
+          - migrates compatible 6.2.0 durable queue databases in place without deleting queued/reconciliation evidence
+          - preserves fail-loud behavior for corrupt or genuinely incompatible queue databases
+          - validates the exact 6.2.0 schema at installer/service level before release
+          - adds real .NET Desktop Runtime download progress: percent, transferred size, speed, elapsed time, and ETA when total size is known
+          - retains HTTPS, Microsoft Authenticode validation, download-size limits, and runtime install timeout
+          - full Windows install/repair/uninstall/rollback gate passed before publication
+
+          Audited release source commit:
+          `5a58a10f6326698f80c3408a7a69229754e5c9d4`
+
+          Important: `submitted` means accepted by the Windows spooler; it is not proof that paper physically exited the printer. Real-printer UAT remains the final hardware validation step.
+          '@ | Set-Content -Path 'agent/artifacts/RELEASE_NOTES-Agent-6.2.2.md' -Encoding UTF8
+
+      - name: Publish final GitHub Release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if(gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null){throw "Release $env:RELEASE_TAG already exists."}
+          $v=$env:AGENT_VERSION
+          gh release create $env:RELEASE_TAG `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:TARGET_SHA `
+            --title "Sokna Print Agent $v" `
+            --notes-file "agent/artifacts/RELEASE_NOTES-Agent-$v.md" `
+            --latest `
+            "agent/artifacts/Sokna-Print-Agent-$v-Setup.exe" `
+            "agent/artifacts/Sokna-Print-Agent-$v-win-x64.zip" `
+            "agent/artifacts/Sokna-Print-Agent-$v-source.zip" `
+            "agent/artifacts/SHA256SUMS-Agent-$v.txt" `
+            "agent/artifacts/BUILD_ARTIFACTS-Agent-$v.json" `
+            "agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-$v.json" `
+            "agent/artifacts/windows-smoke-evidence/INSTALL_GATE_EVIDENCE.txt" `
+            "agent/artifacts/windows-smoke-evidence/V620_SCHEMA_UPGRADE_EVIDENCE.txt"
+          if($LASTEXITCODE -ne 0){throw 'GitHub Release publication failed.'}
