@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Win32;
 
 namespace Sokna.PrintAgent.Setup;
@@ -9,6 +11,7 @@ internal static class DotNetDesktopRuntimePrerequisite
     internal const string StableDownloadUrl = "https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe";
     private const long MaxInstallerBytes = 200L * 1024 * 1024;
     private static readonly TimeSpan RuntimeInstallTimeout = TimeSpan.FromMinutes(10);
+    private static readonly Guid WinTrustActionGenericVerifyV2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
 
     internal static DotNetRuntimeStatus Inspect()
     {
@@ -149,36 +152,52 @@ internal static class DotNetDesktopRuntimePrerequisite
 
     private static void VerifyMicrosoftAuthenticodeSignature(string installerPath)
     {
-        var powershell = Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
-        if (!File.Exists(powershell)) throw new FileNotFoundException("Windows PowerShell برای Authenticode verification پیدا نشد.", powershell);
-        var command = "$s=Get-AuthenticodeSignature -LiteralPath $env:SOKNA_RUNTIME_SIGNATURE_FILE; " +
-                      "if($s.Status -ne 'Valid' -or $null -eq $s.SignerCertificate -or $s.SignerCertificate.Subject -notmatch '(^|, )O=Microsoft Corporation(,|$)'){" +
-                      "Write-Error ('Untrusted runtime signature. Status='+$s.Status+' Subject='+$s.SignerCertificate.Subject); exit 41}; exit 0";
-        var psi = new ProcessStartInfo
+        var fileInfo = new WinTrustFileInfo
         {
-            FileName = powershell,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true
+            StructSize = (uint)Marshal.SizeOf<WinTrustFileInfo>(),
+            FilePath = installerPath,
+            FileHandle = IntPtr.Zero,
+            KnownSubject = IntPtr.Zero
         };
-        psi.Environment["SOKNA_RUNTIME_SIGNATURE_FILE"] = installerPath;
-        psi.ArgumentList.Add("-NoLogo");
-        psi.ArgumentList.Add("-NoProfile");
-        psi.ArgumentList.Add("-NonInteractive");
-        psi.ArgumentList.Add("-ExecutionPolicy");
-        psi.ArgumentList.Add("Bypass");
-        psi.ArgumentList.Add("-Command");
-        psi.ArgumentList.Add(command);
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Authenticode verification process شروع نشد.");
-        if (!process.WaitForExit(30000))
+        var fileInfoPointer = Marshal.AllocHGlobal(Marshal.SizeOf<WinTrustFileInfo>());
+        try
         {
-            try { process.Kill(true); } catch { }
-            throw new TimeoutException("Authenticode verification timeout.");
+            Marshal.StructureToPtr(fileInfo, fileInfoPointer, false);
+            var trustData = new WinTrustData
+            {
+                StructSize = (uint)Marshal.SizeOf<WinTrustData>(),
+                PolicyCallbackData = IntPtr.Zero,
+                SipClientData = IntPtr.Zero,
+                UiChoice = 2, // WTD_UI_NONE
+                RevocationChecks = 0, // WTD_REVOKE_NONE; HTTPS + signer pinning remain independently enforced.
+                UnionChoice = 1, // WTD_CHOICE_FILE
+                FileInfo = fileInfoPointer,
+                StateAction = 0, // WTD_STATEACTION_IGNORE
+                StateData = IntPtr.Zero,
+                UrlReference = IntPtr.Zero,
+                ProviderFlags = 0,
+                UiContext = 0
+            };
+
+            var trustStatus = WinVerifyTrust(new IntPtr(-1), WinTrustActionGenericVerifyV2, ref trustData);
+            if (trustStatus != 0)
+                throw new InvalidDataException($"Downloaded .NET Runtime Authenticode trust validation failed: 0x{trustStatus:X8}.");
         }
-        var error = process.StandardError.ReadToEnd();
-        if (process.ExitCode != 0)
-            throw new InvalidDataException("Downloaded .NET Runtime امضای معتبر Microsoft ندارد. " + Safe(error));
+        finally
+        {
+            Marshal.DestroyStructure<WinTrustFileInfo>(fileInfoPointer);
+            Marshal.FreeHGlobal(fileInfoPointer);
+        }
+
+#pragma warning disable SYSLIB0057 // Authenticode signer extraction has no modern managed replacement; trust itself is validated by WinVerifyTrust above.
+        using var signer = X509Certificate.CreateFromSignedFile(installerPath);
+#pragma warning restore SYSLIB0057
+        var subject = signer.Subject ?? string.Empty;
+        var microsoftOrganization = subject
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(part => string.Equals(part, "O=Microsoft Corporation", StringComparison.OrdinalIgnoreCase));
+        if (!microsoftOrganization)
+            throw new InvalidDataException("Downloaded .NET Runtime signer is not Microsoft Corporation.");
     }
 
     private static IEnumerable<string> CandidateRoots()
@@ -241,6 +260,38 @@ internal static class DotNetDesktopRuntimePrerequisite
         if (string.IsNullOrWhiteSpace(value)) return "";
         var oneLine = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
         return oneLine.Length <= 500 ? oneLine : oneLine[..500];
+    }
+
+    [DllImport("wintrust.dll", ExactSpelling = true, CharSet = CharSet.Unicode)]
+    private static extern int WinVerifyTrust(
+        IntPtr windowHandle,
+        [MarshalAs(UnmanagedType.LPStruct)] Guid actionId,
+        ref WinTrustData trustData);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WinTrustFileInfo
+    {
+        public uint StructSize;
+        [MarshalAs(UnmanagedType.LPWStr)] public string FilePath;
+        public IntPtr FileHandle;
+        public IntPtr KnownSubject;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct WinTrustData
+    {
+        public uint StructSize;
+        public IntPtr PolicyCallbackData;
+        public IntPtr SipClientData;
+        public uint UiChoice;
+        public uint RevocationChecks;
+        public uint UnionChoice;
+        public IntPtr FileInfo;
+        public uint StateAction;
+        public IntPtr StateData;
+        public IntPtr UrlReference;
+        public uint ProviderFlags;
+        public uint UiContext;
     }
 }
 
