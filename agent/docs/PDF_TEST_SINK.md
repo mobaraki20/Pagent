@@ -4,15 +4,25 @@
 
 `Sokna PDF Test (TEST ONLY, 203 DPI)` یک مقصد مجازی داخلی Agent برای تست مسیر واقعی چاپ بدون مصرف کاغذ است. این قابلیت **Microsoft Print to PDF** را automate نمی‌کند و به Save As dialog یا session کاربر وابسته نیست.
 
-## مسیر واقعی Job
+## حالت پیش‌فرض Production
 
-Job دقیقاً همان چرخه production را طی می‌کند:
+PDF Test Sink به‌صورت پیش‌فرض **خاموش** است (`pdf_test_sink_enabled=false`). در این حالت:
+
+- Queue مجازی در discovery/heartbeat advertise نمی‌شود.
+- Web نباید آن را به‌عنوان مقصد قابل انتخاب جدید ببیند.
+- اگر یک destination قدیمی هنوز نام Queue PDF را نگه داشته باشد، Worker قبل از Submission Fence آن Job را با `pdf_test_mode_disabled` رد می‌کند؛ بنابراین سفارش بی‌صدا به فایل تبدیل نمی‌شود.
+
+فعال‌سازی فقط برای QA/UAT از Control Console و گزینه «حالت تست PDF E2E» انجام می‌شود. پس از پایان تست باید دوباره خاموش شود.
+
+## مسیر واقعی Job در حالت UAT
+
+وقتی حالت تست PDF عمداً فعال است، Job دقیقاً همان چرخه production را طی می‌کند:
 
 `Web destination -> Claim -> Accept -> Start -> Agent Service -> Worker -> durable submission fence -> PDF artifact -> durable WorkerResult -> Report`
 
 تنها تفاوت مرحله نهایی است: به‌جای ارسال raster به Windows Spooler، همان thermal raster در یک PDF ذخیره می‌شود.
 
-## Queue قابل انتخاب
+## Queue قابل انتخاب در حالت UAT
 
 نام Queue:
 
@@ -26,9 +36,9 @@ Port گزارش‌شده:
 
 `SOKNA-PDF`
 
-این Queue توسط خود Agent advertise می‌شود و Windows printer واقعی نیست.
+این Queue توسط خود Agent ساخته می‌شود و Windows printer واقعی نیست؛ فقط وقتی Test/UAT Mode روشن باشد advertise می‌شود.
 
-## محل فایل‌ها
+## محل فایل‌ها و Save As دستی
 
 PDFها در مسیر زیر ذخیره می‌شوند:
 
@@ -38,7 +48,12 @@ PDFها در مسیر زیر ذخیره می‌شوند:
 
 `Sokna-job-{server_job_id}-attempt-{attempt_id}.pdf`
 
-Control Console در صفحه «مرکز تست» دکمه «پوشه PDFهای آزمایشی» دارد.
+Control Console در صفحه «مرکز تست» دو ابزار دارد:
+
+- «پوشه PDFهای آزمایشی» برای باز کردن محل فایل‌ها.
+- «ذخیره آخرین PDF تست…» برای کپی‌کردن آخرین PDF واقعی با Save As به مسیر دلخواه کاربر.
+
+Save As یک PDF‌ساز دوم نیست؛ فقط همان artifact واقعی تولیدشده توسط مسیر E2E را کپی می‌کند تا یک renderer و یک منبع حقیقت باقی بماند.
 
 ## هندسه و Fidelity
 
@@ -54,9 +69,15 @@ Control Console در صفحه «مرکز تست» دکمه «پوشه PDFهای 
 
 PDF نهایی با temporary file و atomic move نوشته می‌شود. فایل موجود برای همان Attempt overwrite نمی‌شود.
 
+خاموش‌کردن Test Mode fail-closed است: حتی اگر Web هنوز مقصد قدیمی PDF داشته باشد، Worker قبل از fence آن را رد می‌کند و چیزی در `TestPrints` ایجاد نمی‌شود.
+
 ## امنیت
 
 PDFها زیر ProgramData محافظت‌شده Agent باقی می‌مانند و ACL آن برای standard users باز نمی‌شود. Support Bundle نیز PDFهای رسید را به‌صورت خودکار ضمیمه نمی‌کند تا داده عملیاتی مشتری ناخواسته export نشود.
+
+## چرا از Microsoft Print to PDF داخل Service استفاده نمی‌کنیم؟
+
+Agent Service باید unattended باشد. بازشدن Save As dialog از مسیر Service قابل اتکا نیست و می‌تواند Job را منتظر UI نگه دارد. به همین دلیل تولید PDF در Worker بدون Dialog انجام می‌شود و Save As فقط در Control Console کاربر برای export فایل آماده استفاده می‌شود.
 
 ## محدودیت
 
@@ -72,9 +93,12 @@ PDFها زیر ProgramData محافظت‌شده Agent باقی می‌مانن�
 
 ## UAT پیشنهادی
 
-1. یک destination آزمایشی در Web بسازید و Queue آن را روی `Sokna PDF Test (TEST ONLY, 203 DPI)` قرار دهید.
-2. Customer receipt و Preparation receipt را جداگانه route کنید.
-3. از Web یک Test Print واقعی ایجاد کنید.
-4. PDF ایجادشده را از Control Console باز کنید.
-5. Job/Attempt/Report را در Web و Agent diagnostics بررسی کنید.
-6. پس از تأیید محتوا و routing، همان template را روی USB و LAN printer فیزیکی تست کنید.
+1. در Control Console «حالت تست PDF E2E» را روشن کنید.
+2. پس از refresh، یک destination آزمایشی در Web بسازید و Queue آن را روی `Sokna PDF Test (TEST ONLY, 203 DPI)` قرار دهید.
+3. Customer receipt و Preparation receipt را جداگانه route کنید.
+4. از Web یک Test Print واقعی ایجاد کنید.
+5. PDF ایجادشده را از Control Console باز یا با «ذخیره آخرین PDF تست…» export کنید.
+6. Job/Attempt/Report را در Web و Agent diagnostics بررسی کنید.
+7. destinationهای واقعی را دوباره به USB/LAN printer برگردانید و Test Mode PDF را خاموش کنید.
+8. تأیید کنید Queue مجازی دیگر advertise نمی‌شود.
+9. در پایان، همان template را روی USB و LAN printer فیزیکی تست کنید.
