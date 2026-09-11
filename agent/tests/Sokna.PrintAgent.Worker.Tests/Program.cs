@@ -28,12 +28,33 @@ using var long80=ReceiptRenderer.Render(longNamePayload,72,80,203,203);using var
 var hugeItems=string.Join(',',Enumerable.Range(0,1400).Select(i=>$"{{\"name\":\"آیتم بسیار بلند شماره {i} برای آزمون سقف ایمن سند و جلوگیری از بریدگی خاموش\",\"quantity\":1,\"unit_price\":1,\"line_total\":1}}"));var hugePayload=$"{{\"schema\":\"sokna-print-document-v2\",\"document_kind\":\"customer\",\"sections\":[{{\"items\":[{hugeItems}]}}],\"template\":{{\"table_font_size\":28,\"show_prices\":true,\"design\":{{\"item_layout\":\"two-line\",\"section_order\":[\"items\"]}}}}}}";
 await ExpectThrowsAsync(()=>Task.Run(()=>{using var _=ReceiptRenderer.Render(hugePayload,50,58,203,203);}),"overlong_receipt_fails_before_silent_bitmap_clipping");
 
-var mergedQueues=VirtualPrinterQueues.Merge(new[]{
-    new PrinterQueueHealth("Physical",false,false,false,false,0,"Driver","USB001"),
-    VirtualPrinterQueues.PdfTestHealth()
-});
+var physicalQueue=new PrinterQueueHealth("Physical",false,false,false,false,0,"Driver","USB001");
+var mergedQueues=VirtualPrinterQueues.Merge(new[]{physicalQueue,VirtualPrinterQueues.PdfTestHealth()});
 Check(mergedQueues.Count(x=>VirtualPrinterQueues.IsPdfTestQueue(x.Name))==1,"virtual_pdf_queue_is_deduplicated");
 Check(mergedQueues.Any(x=>x.Name=="Physical"),"virtual_queue_merge_preserves_physical_queue");
+var productionQueues=VirtualPrinterQueues.ForDiscovery(new[]{physicalQueue,VirtualPrinterQueues.PdfTestHealth()},false);
+Check(productionQueues.Count==1&&productionQueues[0].Name=="Physical","pdf_test_queue_is_hidden_when_mode_disabled");
+var uatQueues=VirtualPrinterQueues.ForDiscovery(new[]{physicalQueue},true);
+Check(uatQueues.Count(x=>VirtualPrinterQueues.IsPdfTestQueue(x.Name))==1,"pdf_test_queue_is_advertised_only_when_mode_enabled");
+Check(new AgentOptions().PdfTestSinkEnabled==false,"pdf_test_mode_defaults_off");
+
+var policyRoot=Path.Combine(Path.GetTempPath(),"sokna-pdf-policy-"+Guid.NewGuid().ToString("N"));
+try
+{
+    Directory.CreateDirectory(policyRoot);
+    var policyConfig=Path.Combine(policyRoot,"config.json");
+    Check(!PdfTestModePolicy.IsEnabled(policyConfig),"missing_pdf_test_config_fails_closed");
+    new AgentOptions{ServerBaseUrl="http://127.0.0.1",PdfTestSinkEnabled=false}.Save(policyConfig);
+    Check(!PdfTestModePolicy.IsEnabled(policyConfig),"pdf_test_policy_reads_explicit_disabled");
+    new AgentOptions{ServerBaseUrl="http://127.0.0.1",PdfTestSinkEnabled=true}.Save(policyConfig);
+    Check(PdfTestModePolicy.IsEnabled(policyConfig),"pdf_test_policy_reads_explicit_enabled");
+    await File.WriteAllTextAsync(policyConfig,"not-json");
+    Check(!PdfTestModePolicy.IsEnabled(policyConfig),"invalid_pdf_test_config_fails_closed");
+}
+finally
+{
+    try{Directory.Delete(policyRoot,true);}catch{}
+}
 
 var pdfRoot=Path.Combine(Path.GetTempPath(),"sokna-pdf-test-"+Guid.NewGuid().ToString("N"));
 try
