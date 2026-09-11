@@ -1,0 +1,147 @@
+name: Release Sokna Print Agent 6.2.1
+
+on:
+  push:
+    branches:
+      - 'release/v6.2.1-final'
+    paths:
+      - '.github/workflows/release-agent-6.2.1.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sokna-agent-release-v6.2.1
+  cancel-in-progress: false
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      TARGET_SHA: ea2b4bf7e5266cab5c820c50f283194ae3270ce6
+      RELEASE_TAG: v6.2.1
+      EXPECTED_VERSION: 6.2.1
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout audited release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_SHA }}
+          fetch-depth: 0
+
+      - name: Verify audited source and version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $actual=(git rev-parse HEAD).Trim()
+          if($actual -ne $env:TARGET_SHA){throw "Unexpected source commit: $actual"}
+          [xml]$props=Get-Content 'agent/Directory.Build.props' -Raw
+          $version=[string]$props.Project.PropertyGroup.SoknaAgentVersion
+          if($version -ne $env:EXPECTED_VERSION){throw "Expected version $env:EXPECTED_VERSION, got $version"}
+          if(Test-Path 'agent6.zip'){throw 'Legacy agent6.zip must not be part of the active source tree.'}
+          if(Test-Path 'ci/patch_agent_source.py'){throw 'Build-time source patching is forbidden.'}
+          "AGENT_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+
+      - name: Build, test and package
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Build-Agent.ps1
+
+      - name: Windows install gate
+        shell: pwsh
+        working-directory: agent
+        run: ./scripts/Test-Windows-Install.ps1 -Artifacts "$PWD/artifacts" -Version "$env:AGENT_VERSION"
+
+      - name: Package tracked source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $zip="agent/artifacts/Sokna-Print-Agent-$env:AGENT_VERSION-source.zip"
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          & git archive --format=zip --output=$zip $env:TARGET_SHA`:agent
+          if($LASTEXITCODE -ne 0 -or !(Test-Path $zip -PathType Leaf)){throw 'Tracked source archive failed.'}
+
+      - name: Verify release artifacts
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $v=$env:AGENT_VERSION
+          $required=@(
+            "agent/artifacts/Sokna-Print-Agent-$v-Setup.exe",
+            "agent/artifacts/Sokna-Print-Agent-$v-win-x64.zip",
+            "agent/artifacts/Sokna-Print-Agent-$v-source.zip",
+            "agent/artifacts/SHA256SUMS-Agent-$v.txt",
+            "agent/artifacts/BUILD_ARTIFACTS-Agent-$v.json",
+            "agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-$v.json",
+            'agent/artifacts/windows-smoke-evidence/INSTALL_GATE_EVIDENCE.txt'
+          )
+          foreach($p in $required){if(!(Test-Path $p -PathType Leaf)){throw "Required artifact missing: $p"}}
+          $size=Get-Content "agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-$v.json" -Raw | ConvertFrom-Json
+          if([double]$size.hybrid_final.setup_reduction_percent_vs_baseline -le 0){throw 'Hybrid Setup did not reduce size versus baseline.'}
+          if([double]$size.hybrid_final.zip_reduction_percent_vs_baseline -le 0){throw 'Hybrid payload ZIP did not reduce size versus baseline.'}
+          $acceptance=Get-ChildItem 'agent/artifacts/acceptance-smoke' -Recurse -Filter '*.result.json' -ErrorAction Stop
+          if($acceptance.Count -lt 37){throw "Acceptance smoke evidence incomplete: expected at least 37 result files, found $($acceptance.Count)."}
+          foreach($id in @('A21','A35','A37','A38','A47')){
+            $result=Get-ChildItem "agent/artifacts/acceptance-smoke/$id" -Filter "$id.result.json" -ErrorAction Stop | Select-Object -First 1
+            if($null -eq $result){throw "Required acceptance evidence missing: $id"}
+            $json=Get-Content $result.FullName -Raw | ConvertFrom-Json
+            if($json.status -ne 'PASS'){throw "Acceptance case did not PASS: $id => $($json.status)"}
+          }
+
+      - name: Write release notes
+        shell: pwsh
+        run: |
+          @'
+          # Sokna Print Agent 6.2.1
+
+          Final GitHub release for Sokna Print Agent 6.2.1 (Windows x64).
+
+          Highlights:
+          - fixes the Windows Program Files ACL / shortcut access regression seen in 6.2.0
+          - hardens same-version repair, process/service stop, directory swap retry and rollback
+          - adds actionable startup-fatal diagnostics and safe queue.db bootstrap behavior
+          - registers Sokna Print Agent in Windows Installed Apps with a standard uninstall path
+          - makes Start Menu and Desktop shortcut creation configurable and repair-safe
+          - adds opt-in PDF E2E Test Mode; it is OFF by default in production and fail-closed when disabled
+          - formalizes Windows x64-only packaging
+          - changes Service/Worker/Control to a hybrid framework-dependent payload while Setup remains self-contained
+          - securely downloads/verifies the official Microsoft .NET Desktop Runtime when required
+          - reduces Setup size by about 74.75% and win-x64 ZIP size by about 86.61% versus the previous fully self-contained baseline
+          - full build, unit, acceptance and Windows install/repair/uninstall/rollback gates passed before publication
+
+          Release source commit:
+          `ea2b4bf7e5266cab5c820c50f283194ae3270ce6`
+
+          Tested artifact hashes from the final validation run:
+          - Setup: `ca209ce1562a439ea26d3e5af02dd66aa53f0f03099899cd6bad92790c7dea63`
+          - win-x64 ZIP: `12b7c6f42ce9357cb9a5695b3e7c2dd2ec32681b2c870a06930b4f88918103b0`
+
+          Note: `submitted` means the Windows spooler accepted the job; it is not proof that paper physically exited a printer. Printer-specific driver geometry, cutter, paper and LAN/USB hardware behavior remain environment-specific.
+          '@ | Set-Content -Path 'agent/artifacts/RELEASE_NOTES-Agent-6.2.1.md' -Encoding UTF8
+
+      - name: Publish final GitHub Release
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          if(gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null){throw "Release $env:RELEASE_TAG already exists."}
+          $v=$env:AGENT_VERSION
+          gh release create $env:RELEASE_TAG `
+            --repo $env:GITHUB_REPOSITORY `
+            --target $env:TARGET_SHA `
+            --title "Sokna Print Agent $v" `
+            --notes-file "agent/artifacts/RELEASE_NOTES-Agent-$v.md" `
+            --latest `
+            "agent/artifacts/Sokna-Print-Agent-$v-Setup.exe" `
+            "agent/artifacts/Sokna-Print-Agent-$v-win-x64.zip" `
+            "agent/artifacts/Sokna-Print-Agent-$v-source.zip" `
+            "agent/artifacts/SHA256SUMS-Agent-$v.txt" `
+            "agent/artifacts/BUILD_ARTIFACTS-Agent-$v.json" `
+            "agent/artifacts/PACKAGE_SIZE_EVIDENCE-Agent-$v.json" `
+            "agent/artifacts/windows-smoke-evidence/INSTALL_GATE_EVIDENCE.txt"
+          if($LASTEXITCODE -ne 0){throw 'GitHub Release publication failed.'}
