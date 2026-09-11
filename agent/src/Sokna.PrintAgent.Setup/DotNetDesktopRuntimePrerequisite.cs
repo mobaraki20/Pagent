@@ -99,9 +99,22 @@ internal static class DotNetDesktopRuntimePrerequisite
         var installer = Path.Combine(tempRoot, "windowsdesktop-runtime-signature-check.exe");
         try
         {
-            await DownloadInstallerAsync(installer,null,ct);
+            var progressSamples=0;
+            DotNetDownloadProgress lastProgress=default;
+            await DownloadInstallerAsync(installer,snapshot =>
+            {
+                progressSamples++;
+                lastProgress=snapshot;
+                Console.Error.WriteLine($"SOKNA_RUNTIME_PROGRESS {Safe(FormatDownloadProgress(snapshot))}");
+            },ct);
+            if(progressSamples<2)
+                throw new InvalidDataException(".NET Runtime download progress callback did not produce enough samples.");
+            if(lastProgress.DownloadedBytes<=0)
+                throw new InvalidDataException(".NET Runtime download progress did not report received bytes.");
+            if(lastProgress.TotalBytes is >0 && lastProgress.DownloadedBytes!=lastProgress.TotalBytes.Value)
+                throw new InvalidDataException(".NET Runtime final progress does not match the declared total size.");
             VerifyMicrosoftAuthenticodeSignature(installer);
-            Console.Error.WriteLine("SOKNA_RUNTIME_VERIFY=success source=microsoft_https authenticode=valid");
+            Console.Error.WriteLine($"SOKNA_RUNTIME_VERIFY=success source=microsoft_https authenticode=valid progress_samples={progressSamples}");
         }
         catch (Exception ex)
         {
@@ -176,9 +189,11 @@ internal static class DotNetDesktopRuntimePrerequisite
         var elapsed=FormatDuration(snapshot.Elapsed);
         var seconds=Math.Max(snapshot.Elapsed.TotalSeconds,0.001);
         var bytesPerSecond=snapshot.DownloadedBytes/seconds;
-        var speed=bytesPerSecond>=1024
+        var speed=bytesPerSecond>=1024d*1024d
             ? $"{bytesPerSecond/(1024d*1024d):0.0} MB/s"
-            : "در حال اندازه‌گیری";
+            : bytesPerSecond>=1024d
+                ? $"{bytesPerSecond/1024d:0} KB/s"
+                : "در حال اندازه‌گیری";
 
         if(snapshot.TotalBytes is >0)
         {
@@ -221,11 +236,11 @@ internal static class DotNetDesktopRuntimePrerequisite
                 StructSize = (uint)Marshal.SizeOf<WinTrustData>(),
                 PolicyCallbackData = IntPtr.Zero,
                 SipClientData = IntPtr.Zero,
-                UiChoice = 2, // WTD_UI_NONE
-                RevocationChecks = 0, // WTD_REVOKE_NONE; HTTPS + signer pinning remain independently enforced.
-                UnionChoice = 1, // WTD_CHOICE_FILE
+                UiChoice = 2,
+                RevocationChecks = 0,
+                UnionChoice = 1,
                 FileInfo = fileInfoPointer,
-                StateAction = 0, // WTD_STATEACTION_IGNORE
+                StateAction = 0,
                 StateData = IntPtr.Zero,
                 UrlReference = IntPtr.Zero,
                 ProviderFlags = 0,
@@ -242,7 +257,7 @@ internal static class DotNetDesktopRuntimePrerequisite
             Marshal.FreeHGlobal(fileInfoPointer);
         }
 
-#pragma warning disable SYSLIB0057 // Authenticode signer extraction has no modern managed replacement; trust itself is validated by WinVerifyTrust above.
+#pragma warning disable SYSLIB0057
         using var signer = X509Certificate.CreateFromSignedFile(installerPath);
 #pragma warning restore SYSLIB0057
         var subject = signer.Subject ?? string.Empty;
