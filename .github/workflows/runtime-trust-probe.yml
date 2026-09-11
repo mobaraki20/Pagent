@@ -1,0 +1,47 @@
+name: Probe .NET Runtime Trust
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/runtime-trust-probe.yml'
+      - 'agent/src/Sokna.PrintAgent.Setup/DotNetDesktopRuntimePrerequisite.cs'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-trust:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - name: Probe official .NET Desktop Runtime download
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $uri='https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe'
+          $file=Join-Path $env:RUNNER_TEMP 'sokna-runtime-trust-probe.exe'
+          Remove-Item $file -Force -ErrorAction SilentlyContinue
+          try {
+            $response=Invoke-WebRequest -Uri $uri -OutFile $file -PassThru -MaximumRedirection 10
+            $finalUri=$response.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
+            $size=(Get-Item $file).Length
+            $sha=(Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            $sig=Get-AuthenticodeSignature -LiteralPath $file
+            Write-Host "runtime_probe_source=$uri"
+            Write-Host "runtime_probe_final_uri=$finalUri"
+            Write-Host "runtime_probe_size=$size"
+            Write-Host "runtime_probe_sha256=$sha"
+            Write-Host "runtime_probe_signature_status=$($sig.Status)"
+            Write-Host "runtime_probe_signer_subject=$($sig.SignerCertificate.Subject)"
+            if($finalUri -notmatch '^https://'){throw 'Runtime redirect did not end on HTTPS.'}
+            if($size -lt 1MB -or $size -gt 200MB){throw "Runtime size outside safe bounds: $size"}
+            if($sig.Status -ne 'Valid'){throw "Runtime Authenticode status is $($sig.Status)."}
+            if($null -eq $sig.SignerCertificate -or $sig.SignerCertificate.Subject -notmatch '(^|, )O=Microsoft Corporation(,|$)'){
+              throw "Runtime signer organization mismatch: $($sig.SignerCertificate.Subject)"
+            }
+            Write-Host 'RUNTIME_TRUST_PROBE=PASS'
+          }
+          finally {
+            Remove-Item $file -Force -ErrorAction SilentlyContinue
+          }
