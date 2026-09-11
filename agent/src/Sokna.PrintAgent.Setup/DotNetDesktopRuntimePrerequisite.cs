@@ -96,6 +96,12 @@ internal static class DotNetDesktopRuntimePrerequisite
         {
             await DownloadInstallerAsync(installer, ct);
             VerifyMicrosoftAuthenticodeSignature(installer);
+            Console.Error.WriteLine("SOKNA_RUNTIME_VERIFY=success source=microsoft_https authenticode=valid");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"SOKNA_RUNTIME_VERIFY=failure type={ex.GetType().Name} message={Safe(ex.Message)}");
+            throw;
         }
         finally
         {
