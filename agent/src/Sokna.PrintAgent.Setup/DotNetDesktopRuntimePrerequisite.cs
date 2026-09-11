@@ -8,6 +8,7 @@ internal static class DotNetDesktopRuntimePrerequisite
     internal const int RequiredMajor = 10;
     internal const string StableDownloadUrl = "https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe";
     private const long MaxInstallerBytes = 200L * 1024 * 1024;
+    private static readonly TimeSpan RuntimeInstallTimeout = TimeSpan.FromMinutes(10);
 
     internal static DotNetRuntimeStatus Inspect()
     {
@@ -52,7 +53,23 @@ internal static class DotNetDesktopRuntimePrerequisite
             psi.ArgumentList.Add("/quiet");
             psi.ArgumentList.Add("/norestart");
             using var process = Process.Start(psi) ?? throw new InvalidOperationException(".NET Runtime installer process شروع نشد.");
-            await process.WaitForExitAsync(ct);
+            using var installCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            installCts.CancelAfter(RuntimeInstallTimeout);
+            try
+            {
+                await process.WaitForExitAsync(installCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                try { process.Kill(true); } catch { }
+                throw new TimeoutException($".NET Desktop Runtime installer پس از {RuntimeInstallTimeout.TotalMinutes:0} دقیقه پایان نیافت و متوقف شد.");
+            }
+            catch (OperationCanceledException)
+            {
+                try { process.Kill(true); } catch { }
+                throw;
+            }
+
             var restartRequired = process.ExitCode == 3010;
             if (process.ExitCode is not (0 or 3010))
                 throw new InvalidOperationException($".NET Desktop Runtime installer exit code={process.ExitCode}.");
