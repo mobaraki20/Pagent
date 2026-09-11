@@ -36,23 +36,27 @@ public static class QueueDatabaseBootstrap
 
             if(!await TableExistsAsync(db,"local_jobs",ct))return new(false,null);
 
+            var compatibleAttemptSchema=false;
             await using(var schema=db.CreateCommand())
             {
                 schema.CommandText="SELECT name,pk FROM pragma_table_info('local_jobs') WHERE name IN ('attempt_id','server_job_id') ORDER BY name";
                 await using var reader=await schema.ExecuteReaderAsync(ct);
                 var keys=new Dictionary<string,long>(StringComparer.OrdinalIgnoreCase);
                 while(await reader.ReadAsync(ct))keys[reader.GetString(0)]=reader.GetInt64(1);
-                if(keys.TryGetValue("attempt_id",out var attemptPk)&&attemptPk==1)
-                {
-                    // 6.2.0 already uses attempt_id as the durable primary key, so this is a compatible
-                    // v3 database and must be upgraded in-place. 6.2.1 accidentally tried to create
-                    // indexes on delivery_state/server_scope before those columns were added, which made
-                    // real 6.2.0 -> 6.2.1 upgrades stop the Windows Service. Pre-add every v4 column here
-                    // inside one SQLite transaction; LocalQueueStore can then create dependent tables/
-                    // indexes and perform semantic legacy-outcome migration without ever deleting rows.
-                    await PrepareCompatibleV3ColumnsAsync(db,ct);
-                    return new(false,null);
-                }
+                compatibleAttemptSchema=keys.TryGetValue("attempt_id",out var attemptPk)&&attemptPk==1;
+            }
+
+            if(compatibleAttemptSchema)
+            {
+                // 6.2.0 already uses attempt_id as the durable primary key, so this is a compatible
+                // v3 database and must be upgraded in-place. 6.2.1 accidentally tried to create
+                // indexes on delivery_state/server_scope before those columns were added, which made
+                // real 6.2.0 -> 6.2.1 upgrades stop the Windows Service. Pre-add every v4 column here
+                // inside one SQLite transaction; LocalQueueStore can then create dependent tables/
+                // indexes and perform semantic legacy-outcome migration without ever deleting rows.
+                // The schema reader above is deliberately disposed before DDL starts.
+                await PrepareCompatibleV3ColumnsAsync(db,ct);
+                return new(false,null);
             }
 
             var localRows=await CountRowsAsync(db,"local_jobs",ct);
