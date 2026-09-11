@@ -1,0 +1,62 @@
+name: Fix Sokna Print Agent 6.2.1 Release Notes
+
+on:
+  push:
+    branches:
+      - 'release/v6.2.1-final'
+    paths:
+      - '.github/workflows/fix-release-notes-6.2.1.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update-release-notes:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Write corrected release notes
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          # Sokna Print Agent 6.2.1
+
+          Final GitHub release for Sokna Print Agent 6.2.1 (Windows x64).
+
+          Highlights:
+          - fixes the Windows Program Files ACL / shortcut access regression seen in 6.2.0
+          - hardens same-version repair, service/process stop, directory swap retry and rollback
+          - adds actionable startup-fatal diagnostics and conservative queue.db bootstrap behavior
+          - registers Sokna Print Agent in Windows Installed Apps with a standard uninstall path
+          - makes Start Menu and Desktop shortcut creation configurable and repair-safe
+          - adds opt-in PDF E2E Test Mode; it is OFF by default in production and fail-closed when disabled
+          - formalizes Windows x64-only packaging
+          - keeps Setup self-contained while Service/Worker/Control use the smaller hybrid runtime strategy
+          - securely downloads and verifies the official Microsoft .NET Desktop Runtime when required
+          - reduces Setup size by about 74.75% and win-x64 ZIP size by about 86.61% versus the previous fully self-contained baseline
+          - full build, unit, acceptance and Windows install/repair/uninstall/rollback gates passed again in the final release workflow before publication
+
+          Release source commit:
+          `ea2b4bf7e5266cab5c820c50f283194ae3270ce6`
+
+          Official release asset hashes:
+          - `Sokna-Print-Agent-6.2.1-Setup.exe`
+            - SHA256 `b876f67e8061d1444c5e9bd5106b0c2e1ed33045377c12048f51656328af105a`
+          - `Sokna-Print-Agent-6.2.1-win-x64.zip`
+            - SHA256 `63a3034642210892d4f601b5aa725e5643e26f5fcff788c636bbd04470c6d613`
+
+          The attached `SHA256SUMS-Agent-6.2.1.txt` is the canonical checksum file for the release build.
+
+          Note: `submitted` means the Windows spooler accepted the job; it is not proof that paper physically exited a printer. Printer-specific driver geometry, cutter, paper and LAN/USB hardware behavior remain environment-specific.
+          EOF
+
+      - name: Update published GitHub Release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit v6.2.1 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Sokna Print Agent 6.2.1" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --latest
