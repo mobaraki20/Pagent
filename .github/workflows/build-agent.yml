@@ -47,6 +47,31 @@ jobs:
         working-directory: agent
         run: ./scripts/Build-Agent.ps1
 
+      - name: Diagnose .NET Desktop Runtime download trust
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          $uri='https://aka.ms/dotnet/10.0/windowsdesktop-runtime-win-x64.exe'
+          $file=Join-Path $env:RUNNER_TEMP 'sokna-runtime-trust-probe.exe'
+          Remove-Item $file -Force -ErrorAction SilentlyContinue
+          try {
+            $response=Invoke-WebRequest -Uri $uri -OutFile $file -PassThru -MaximumRedirection 10
+            $finalUri=$response.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
+            $size=(Get-Item $file).Length
+            $sig=Get-AuthenticodeSignature -LiteralPath $file
+            Write-Host "runtime_probe_final_uri=$finalUri"
+            Write-Host "runtime_probe_size=$size"
+            Write-Host "runtime_probe_signature_status=$($sig.Status)"
+            Write-Host "runtime_probe_signer_subject=$($sig.SignerCertificate.Subject)"
+          }
+          catch {
+            Write-Host "runtime_probe_failure_type=$($_.Exception.GetType().FullName)"
+            Write-Host "runtime_probe_failure_message=$($_.Exception.Message -replace '[\r\n]+',' ')"
+          }
+          finally {
+            Remove-Item $file -Force -ErrorAction SilentlyContinue
+          }
+
       - name: Windows install gate
         shell: pwsh
         working-directory: agent
