@@ -85,6 +85,19 @@ try
         if(DateTimeOffset.UtcNow>=deadline)throw new TimeoutException("Start signal از Service دریافت نشد؛ هیچ تماس Spooler انجام نشد.");
         await Task.Delay(50);
     }
+
+    // A stale server destination may still reference the virtual queue after UAT mode was turned off.
+    // Fail before the submission fence so production can never silently become a file-only print path.
+    if(VirtualPrinterQueues.IsPdfTestQueue(input.QueueName)&&!PdfTestModePolicy.IsEnabled())
+    {
+        var disabled=new WorkerResult(
+            input.ServerJobId,input.AttemptId,input.LocalReceiptId,input.ContentSha256,
+            "failed",null,true,"pdf_test_mode_disabled",
+            "PDF Test Sink خاموش است؛ مقصد را به پرینتر فیزیکی برگردانید یا Test/UAT Mode را صریحاً فعال کنید.");
+        await DurableFile.WriteJsonAtomicAsync(input.ResultPath,disabled);
+        return 10;
+    }
+
     IPrinterAdapter adapter=VirtualPrinterQueues.IsPdfTestQueue(input.QueueName)
         ?new PdfTestSinkAdapter()
         :new WinspoolAdapter();
