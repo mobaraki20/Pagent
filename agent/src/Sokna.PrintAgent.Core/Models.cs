@@ -43,6 +43,27 @@ public enum LocalJobState
     Resolved
 }
 
+
+public enum ClaimPersistenceDisposition
+{
+    Created,
+    ExactReplay,
+    ReconciliationRequired
+}
+
+public sealed record ClaimPersistenceResult(
+    ClaimPersistenceDisposition Disposition,
+    LocalJob ExistingOrCreated,
+    IReadOnlyList<string> MismatchedFields);
+
+public sealed class ClaimReconciliationRequiredException : InvalidDataException
+{
+    public IReadOnlyList<string> MismatchedFields { get; }
+    public ClaimReconciliationRequiredException(IReadOnlyList<string> mismatchedFields)
+        : base("Claim تکراری نیازمند reconciliation است؛ identity/payload/destination/server برای همان attempt_id یکسان نیست.")
+        => MismatchedFields=mismatchedFields;
+}
+
 public enum PrintOutcomeStatus
 {
     Submitted,
@@ -164,4 +185,14 @@ public sealed record LocalHealthSnapshot(
     string? PrinterDiscoveryError=null,
     long? PrinterDiscoveryAgeMilliseconds=null,
     bool PrinterDiscoveryFresh=false,
-    long PrinterDiscoveryGeneration=0);
+    long PrinterDiscoveryGeneration=0,
+    string TransportState="unknown",
+    string? LastTransportSuccessAt=null,
+    string? LastTransportErrorCode=null,
+    int ConsecutiveTransportFailures=0,
+    string CoordinatorState="unknown",
+    string? LastCoordinatorSuccessAt=null,
+    string? LastCoordinatorErrorCode=null,
+    bool ClaimReconciliationRequired=false,
+    int ClaimConflictCount=0,
+    long? OldestClaimConflictAgeSeconds=null);

@@ -90,8 +90,8 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                             <Border Grid.Column="0" Style="{StaticResource Card}"><StackPanel><TextBlock Text="Windows Service" Style="{StaticResource Muted}"/><TextBlock x:Name="ServiceValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/></StackPanel></Border>
                             <Border Grid.Column="2" Style="{StaticResource Card}"><StackPanel><TextBlock Text="ارتباط API" Style="{StaticResource Muted}"/><TextBlock x:Name="ApiValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="ApiDetail" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/></StackPanel></Border>
-                            <Border Grid.Column="4" Style="{StaticResource Card}"><StackPanel><TextBlock Text="صف محلی" Style="{StaticResource Muted}"/><TextBlock x:Name="BacklogValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="BacklogDetail" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/></StackPanel></Border>
-                            <Border Grid.Column="6" Style="{StaticResource Card}"><StackPanel><TextBlock Text="پرینتر فیزیکی Ready" Style="{StaticResource Muted}"/><TextBlock x:Name="PrinterValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="PrinterDetail" FontSize="11" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/></StackPanel></Border>
+                            <Border Grid.Column="4" Style="{StaticResource Card}"><StackPanel><TextBlock Text="Coordinator" Style="{StaticResource Muted}"/><TextBlock x:Name="CoordinatorValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="CoordinatorDetail" FontSize="11" Foreground="#64748B" Margin="0,3,0,0"/></StackPanel></Border>
+                            <Border Grid.Column="6" Style="{StaticResource Card}"><StackPanel><TextBlock Text="صف چاپ Windows Ready" Style="{StaticResource Muted}"/><TextBlock x:Name="PrinterValue" Text="—" FontSize="18" FontWeight="SemiBold" Margin="0,8,0,0"/><TextBlock x:Name="PrinterDetail" FontSize="11" Foreground="#64748B" Margin="0,3,0,0" TextWrapping="Wrap"/></StackPanel></Border>
                         </Grid>
                         <Border Style="{StaticResource Card}">
                             <StackPanel>
@@ -107,7 +107,7 @@
 
                 <Grid x:Name="PrintersPage" Visibility="Collapsed">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
-                    <TextBlock Text="پرینترها و صف‌ها" Style="{StaticResource PageTitle}"/><TextBlock Grid.Row="1" Text="Queueهای Windows که Service می‌بیند، به‌همراه مقصد مجازی PDF Test؛ Driver و Port برای تشخیص حفظ شده‌اند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
+                    <TextBlock Text="پرینترها و صف‌ها" Style="{StaticResource PageTitle}"/><TextBlock Grid.Row="1" Text="صف‌های چاپ Windows که Service می‌بیند، به‌همراه مقصد مجازی PDF Test؛ Driver و Port برای تشخیص حفظ شده‌اند." Style="{StaticResource Muted}" Margin="0,6,0,18"/>
                     <DataGrid Grid.Row="2" x:Name="PrintersGrid"><DataGrid.Columns><DataGridTextColumn Header="نام Queue" Binding="{Binding Name}" Width="2*"/><DataGridTextColumn Header="وضعیت" Binding="{Binding Status}" Width="120"/><DataGridTextColumn Header="Job" Binding="{Binding Jobs}" Width="70"/><DataGridTextColumn Header="Driver" Binding="{Binding Driver}" Width="2*"/><DataGridTextColumn Header="Port" Binding="{Binding Port}" Width="*"/></DataGrid.Columns></DataGrid>
                 </Grid>
 

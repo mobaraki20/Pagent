@@ -188,18 +188,18 @@ public partial class MainWindow : Window
         }
 
         var allQueues = _latestHealth?.Printers ?? [];
-        var physicalQueues = allQueues.Where(IsPhysicalPrinter).ToArray();
-        var physicalTotal = physicalQueues.Length;
-        var physicalReady = physicalQueues.Count(IsReady);
+        var windowsQueues = allQueues.Where(IsPhysicalPrinter).ToArray();
+        var windowsQueueTotal = windowsQueues.Length;
+        var windowsQueueReady = windowsQueues.Count(IsReady);
         var pdfEnabled = PdfTestModePolicy.IsEnabled(_paths.ConfigPath);
         var pdfReady = allQueues.Any(p => VirtualPrinterQueues.IsPdfTestQueue(p.Name) && IsReady(p));
         var pdfState = !pdfEnabled ? "خاموش" : pdfReady ? "Ready" : "Unavailable";
-        PrinterValue.Text = $"{physicalReady} / {physicalTotal}";
-        PrinterDetail.Text = physicalTotal == 0
-            ? $"پرینتر فیزیکی دیده نمی‌شود · PDF Test: {pdfState}"
-            : $"Queue فیزیکی زیر LocalSystem · PDF Test: {pdfState}";
-        BacklogValue.Text = (_latestHealth?.LocalBacklogCount ?? 0).ToString();
-        BacklogDetail.Text = $"مبهم: {_latestHealth?.LocalUnknownCount ?? 0}";
+        PrinterValue.Text = $"{windowsQueueReady} / {windowsQueueTotal}";
+        PrinterDetail.Text = windowsQueueTotal == 0
+            ? $"صف چاپ Windows دیده نمی‌شود · PDF Test: {pdfState}"
+            : $"صف چاپ Windows زیر LocalSystem · PDF Test: {pdfState}";
+        CoordinatorValue.Text = _latestHealth?.CoordinatorState ?? "نامشخص";
+        CoordinatorDetail.Text = $"backlog: {_latestHealth?.LocalBacklogCount ?? 0} · مبهم: {_latestHealth?.LocalUnknownCount ?? 0} · conflict: {_latestHealth?.ClaimConflictCount ?? 0}";
 
         if (_latestHealth is null)
         {
@@ -213,7 +213,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        ApiValue.Text = _latestHealth.ConsecutiveApiFailures > 0 ? "اختلال" : _latestHealth.LastApiSuccessAt is null ? "نامشخص" : "متصل";
+        ApiValue.Text = _latestHealth.TransportState switch { "healthy" => "متصل", "degraded" => "اختلال", _ => "نامشخص" };
         ApiDetail.Text = _latestHealth.LastApiLatencyMs is long ms ? $"آخرین latency: {ms} ms" : "latency ثبت نشده";
         DiagLastSuccess.Text = _latestHealth.LastApiSuccessAt ?? "—";
         DiagLastError.Text = _latestHealth.LastApiErrorCode ?? "—";
@@ -228,18 +228,24 @@ public partial class MainWindow : Window
             SetHealthState("چاپ در دسترس نیست", "Windows Service فعال نیست. تا رفع این وضعیت Agent نمی‌تواند کار چاپ جدید انجام دهد.", HealthTone.Error, updated);
         else if (age > TimeSpan.FromSeconds(45))
             SetHealthState("نیاز به بررسی", "health.json تازه نیست؛ Service ممکن است Hang شده باشد یا امکان به‌روزرسانی Snapshot را نداشته باشد.", HealthTone.Warning, updated);
+        else if (_latestHealth.ClaimReconciliationRequired)
+            SetHealthState("Claim نیازمند تعیین تکلیف است", $"Coordinator در quarantine است؛ {_latestHealth.ClaimConflictCount} conflict ثبت شده و Claim جدید متوقف است. Heartbeat/Report ادامه دارد و Auto-Reprint مجاز نیست.", HealthTone.Warning, updated);
         else if (_latestHealth.LocalUnknownCount > 0)
             SetHealthState("نیاز به تصمیم انسانی", $"{_latestHealth.LocalUnknownCount} Attempt مبهم محلی وجود دارد. Auto-Reprint مجاز نیست.", HealthTone.Warning, updated);
-        else if (_latestHealth.ConsecutiveApiFailures > 0)
-            SetHealthState("ارتباط ناپایدار", $"{_latestHealth.ConsecutiveApiFailures} خطای API متوالی ثبت شده است. آخرین خطا: {_latestHealth.LastApiErrorCode ?? "نامشخص"}.", HealthTone.Warning, updated);
-        else if (physicalTotal == 0)
-            SetHealthState("نیاز به تنظیم پرینتر فیزیکی", pdfEnabled && pdfReady
-                ? "Service سالم و حالت تست PDF آماده است، اما هیچ Printer Queue فیزیکی زیر LocalSystem دیده نمی‌شود."
-                : "Service سالم است اما هیچ Printer Queue فیزیکی زیر LocalSystem دیده نمی‌شود.", HealthTone.Warning, updated);
+        else if (string.Equals(_latestHealth.CoordinatorState,"degraded",StringComparison.OrdinalIgnoreCase))
+            SetHealthState("Coordinator نیازمند بررسی است", $"آخرین خطای Coordinator: {_latestHealth.LastCoordinatorErrorCode ?? "نامشخص"}.", HealthTone.Warning, updated);
+        else if (string.Equals(_latestHealth.TransportState,"degraded",StringComparison.OrdinalIgnoreCase))
+            SetHealthState("ارتباط API ناپایدار", $"{_latestHealth.ConsecutiveTransportFailures} خطای Transport متوالی ثبت شده است. آخرین خطا: {_latestHealth.LastTransportErrorCode ?? "نامشخص"}.", HealthTone.Warning, updated);
+        else if (!_latestHealth.PrinterDiscoveryFresh)
+            SetHealthState("فهرست صف‌های چاپ تازه نیست", "Transport می‌تواند سالم باشد، اما Printer Discovery تازه نیست؛ routing باید fail-closed بماند.", HealthTone.Warning, updated);
+        else if (windowsQueueTotal == 0)
+            SetHealthState("نیاز به تنظیم صف چاپ Windows", pdfEnabled && pdfReady
+                ? "Service سالم و حالت تست PDF آماده است، اما هیچ صف چاپ Windows زیر LocalSystem دیده نمی‌شود."
+                : "Service سالم است اما هیچ صف چاپ Windows زیر LocalSystem دیده نمی‌شود.", HealthTone.Warning, updated);
         else
             SetHealthState("آماده چاپ", pdfEnabled
-                ? $"{physicalReady} از {physicalTotal} پرینتر فیزیکی Ready است؛ PDF Test {(pdfReady ? "آماده" : "در دسترس نیست")}."
-                : $"{physicalReady} از {physicalTotal} پرینتر فیزیکی Ready است؛ PDF Test خاموش است.", physicalReady > 0 ? HealthTone.Healthy : HealthTone.Warning, updated);
+                ? $"{windowsQueueReady} از {windowsQueueTotal} صف چاپ Windows Ready است؛ PDF Test {(pdfReady ? "آماده" : "در دسترس نیست")}."
+                : $"{windowsQueueReady} از {windowsQueueTotal} صف چاپ Windows Ready است؛ PDF Test خاموش است.", windowsQueueReady > 0 ? HealthTone.Healthy : HealthTone.Warning, updated);
     }
 
     private void SetHealthState(string title, string description, HealthTone tone, DateTimeOffset? updated)
@@ -518,12 +524,15 @@ public partial class MainWindow : Window
                 var summary = new
                 {
                     generated_at = DateTimeOffset.Now.ToString("O"),
+                    agent_version = AgentVersionInfo.Current,
+                    source_identity = $"Sokna.PrintAgent/{AgentVersionInfo.Current}",
                     machine = Environment.MachineName,
                     os = Environment.OSVersion.VersionString,
                     service_status = GetServiceStatus(ServiceName),
                     data_root = _paths.ProgramDataRoot,
                     install_root = ResolveInstallRoot(),
                     health,
+                    claim_reconciliation = health is null ? null : new { required = health.ClaimReconciliationRequired, conflict_count = health.ClaimConflictCount, oldest_age_seconds = health.OldestClaimConflictAgeSeconds, coordinator_state = health.CoordinatorState, last_error_code = health.LastCoordinatorErrorCode },
                     database = File.Exists(_paths.DatabasePath) ? new FileInfo(_paths.DatabasePath) is var db ? new { exists = true, size = db.Length, modified_utc = db.LastWriteTimeUtc.ToString("O") } : null : null,
                     secret = new { configured = File.Exists(_paths.SecretPath) }
                 };
@@ -540,13 +549,13 @@ public partial class MainWindow : Window
                 Directory.CreateDirectory(agentLogTarget);
                 if (Directory.Exists(_paths.LogsPath))
                     foreach (var file in Directory.GetFiles(_paths.LogsPath, "agent-*.log").OrderByDescending(File.GetLastWriteTimeUtc).Take(7))
-                        File.Copy(file, Path.Combine(agentLogTarget, Path.GetFileName(file)), true);
+                        CopySanitizedTextIfExists(file, Path.Combine(agentLogTarget, Path.GetFileName(file)));
 
                 var setupTarget = Path.Combine(temp, "setup-logs");
                 Directory.CreateDirectory(setupTarget);
                 if (Directory.Exists(SetupLogsPath()))
                     foreach (var file in Directory.GetFiles(SetupLogsPath(), "setup-*.json").OrderByDescending(File.GetLastWriteTimeUtc).Take(10))
-                        File.Copy(file, Path.Combine(setupTarget, Path.GetFileName(file)), true);
+                        CopySanitizedTextIfExists(file, Path.Combine(setupTarget, Path.GetFileName(file)));
 
                 var diagnostics = new StringBuilder();
                 diagnostics.AppendLine("=== sc query ===");
@@ -657,11 +666,18 @@ public partial class MainWindow : Window
         if (File.Exists(source)) File.Copy(source, target, true);
     }
 
+    private static void CopySanitizedTextIfExists(string source, string target)
+    {
+        if (!File.Exists(source)) return;
+        var safeLines = File.ReadLines(source).Select(line => SafeLogText.Sanitize(line, 2000));
+        File.WriteAllLines(target, safeLines, Encoding.UTF8);
+    }
+
     private static string? GetJsonString(JsonElement root, string property) =>
         root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
 
     private static Brush Brush(string hex) => new SolidColorBrush((Color)ColorConverter.ConvertFromString(hex));
-    private static string Safe(string value, int max = 400) => value.Length > max ? value[..max] : value;
+    private static string Safe(string value, int max = 400) => SafeLogText.Sanitize(value, max);
 
     private enum HealthTone { Healthy, Warning, Error }
     private sealed record TestResult(bool Success, string Detail)
