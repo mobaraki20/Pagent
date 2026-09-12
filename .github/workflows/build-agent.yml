@@ -2,6 +2,10 @@ name: Build Sokna Print Agent
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'agent/**'
+      - '.github/workflows/build-agent.yml'
   push:
     paths:
       - 'agent/**'
