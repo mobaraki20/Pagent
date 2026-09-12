@@ -12,9 +12,10 @@ internal sealed record PendingClaimState(
     string[]? ConflictFields=null,
     int ConflictCount=0,
     string? LastConflictAt=null,
-    string? ServerScopeLabel=null)
+    string? ServerScopeLabel=null,
+    string? ResolutionRequestId=null)
 {
-    public const int CurrentVersion=2;
+    public const int CurrentVersion=3;
     public bool IsQuarantined=>string.Equals(State,"quarantined",StringComparison.OrdinalIgnoreCase);
     public static PendingClaimState Active(ClaimRequestEnvelope request)=>new(CurrentVersion,"active",request);
 }

@@ -11,7 +11,7 @@ var parsed=ParseArgs(args);
 if(!parsed.TryGetValue("case",out var caseId)||string.IsNullOrWhiteSpace(caseId) ||
    !parsed.TryGetValue("results",out var resultsDirectory)||string.IsNullOrWhiteSpace(resultsDirectory))
 {
-    Console.Error.WriteLine("Usage: --case A12|A13|A14|A15|A16|A19|A20|A21|A22|A23 --results <directory>");
+    Console.Error.WriteLine("Usage: --case A12|A13|A14|A15|A16|A19|A20|A21|A22|A23|A30 --results <directory>");
     return 64;
 }
 
@@ -38,6 +38,7 @@ try
         case "A21": await RunA21(); break;
         case "A22": await RunA22(); break;
         case "A23": await RunA23(); break;
+        case "A30": await RunA30(); break;
         default:
             await WriteResult("NOT_RUN",3,$"Service acceptance case {caseId} is not implemented.");
             return 3;
@@ -453,6 +454,38 @@ async Task RunA23()
     Check(processFactory.StartCount==1,"restored readiness reaches exactly one worker launch attempt");
 }
 
+async Task RunA30()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a30-claim-conflict-rekey");
+    var old=env.CreateClaimItem(3030);
+    await env.Store.PersistReservedAsync(old,"receipt-a30-old","server-a");
+    await env.Store.SetStateAsync(old.Attempt.Id,LocalJobState.Resolved);
+    var changedPayload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"Replacement\"}";
+    var conflict=old with
+    {
+        Job=old.Job with{Id=9900,PayloadJson=changedPayload,ContentSha256=CryptoUtil.Sha256Hex(changedPayload)},
+        Attempt=old.Attempt with{AttemptNo=2,LeaseToken="lease-conflict",LeaseExpiresAt=DateTimeOffset.UtcNow.AddMinutes(5).ToString("O")}
+    };
+    var replacement=conflict with{Attempt=conflict.Attempt with{Id=4030,AttemptNo=3,LeaseToken="lease-replacement"}};
+    var transport=new ClaimReconciliationTransport(conflict,replacement);
+    var processFactory=new CountingNoStartFactory();
+    var service=env.CreateService(transport,true,processFactory,claimConflictRekeySupported:true);
+
+    await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    var quarantineRaw=await env.Store.GetMetaAsync("pending_claim_state_v2");
+    Check(quarantineRaw?.Contains("quarantined",StringComparison.OrdinalIgnoreCase)==true,"identity conflict is durably quarantined before any repair request");
+    Check(processFactory.StartCount==0,"conflicting numeric attempt never reaches worker");
+
+    await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
+    Check(transport.ReconciliationCount==1,"same durable conflict invokes one proof-bounded reconciliation mutation");
+    var sentResolution=transport.LastResolution;
+    Check(sentResolution is not null&&sentResolution.AttemptId==3030&&sentResolution.LocalMaxAttemptId>=3030,"reconciliation carries old identity ceiling without payload or lease");
+    Check(await env.Store.GetMetaAsync("pending_claim_state_v2") is null,"replacement replay completes and clears pending claim metadata");
+    Check((await env.Store.GetByAttemptAsync(3030))?.State==LocalJobState.Resolved,"old durable attempt remains unchanged");
+    Check((await env.Store.GetByAttemptAsync(4030)) is not null,"replacement attempt receives a distinct durable local row");
+    Check(processFactory.StartCount==1,"only the distinct replacement attempt may reach the worker path");
+}
+
 static bool IsAccept(CapturedHttpRequest request)
     =>request.Method=="POST"&&request.Target.Contains("action=accept",StringComparison.OrdinalIgnoreCase);
 static bool IsAttemptStatus(CapturedHttpRequest request)
@@ -617,7 +650,8 @@ sealed class ServiceTestEnvironment:IDisposable
         LocalQueueStore? store=null,
         IPrinterHealthReader? health=null,
         IReadOnlyList<DestinationConfig>? destinations=null,
-        PrintWakeSignal? wake=null)
+        PrintWakeSignal? wake=null,
+        bool claimConflictRekeySupported=false)
     {
         store??=Store;
         health??=new MutablePrinterHealthReader(PrinterHealthSnapshots.Fresh(ReadyQueue));
@@ -636,6 +670,7 @@ sealed class ServiceTestEnvironment:IDisposable
             new WorkerSupervisor(processFactory));
         SetPrivateField(service,"_api",transport);
         SetPrivateField(service,"_attemptStatusSupported",attemptStatusSupported);
+        SetPrivateField(service,"_claimConflictRekeySupported",claimConflictRekeySupported);
         SetPrivateField(service,"_serverScope","server-a");
         SetPrivateField(service,"_boundServerScope","server-a");
         SetPrivateField(service,"_destinations",destinations??new[]{TestDestination});
@@ -783,6 +818,38 @@ sealed class CoordinatorTransport:IPrintTransport
         if(ProbeGate is not null)await ProbeGate.Task.WaitAsync(ct);
         return new ProbeResponse(true,4,"6.0.0","6.2.0",[ServiceTestEnvironment.TestDestination],["attempt_status"],"acceptance-side-server",DateTimeOffset.UtcNow.ToString("O"));
     }
+}
+
+sealed class ClaimReconciliationTransport:IPrintTransport
+{
+    private readonly ClaimItem _conflict;
+    private readonly ClaimItem _replacement;
+    private int _claims;
+    public int ReconciliationCount{get;private set;}
+    public ClaimConflictResolutionRequest? LastResolution{get;private set;}
+
+    public ClaimReconciliationTransport(ClaimItem conflict,ClaimItem replacement){_conflict=conflict;_replacement=replacement;}
+
+    public Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct)
+    {
+        var item=Interlocked.Increment(ref _claims)==1?_conflict:_replacement;
+        return Task.FromResult(new ClaimResponse(true,request.RequestId,[item],DateTimeOffset.UtcNow.ToString("O"),_claims>1));
+    }
+
+    public Task<ClaimConflictResolutionResult> ResolveClaimConflictAsync(ClaimConflictResolutionRequest request,CancellationToken ct)
+    {
+        ReconciliationCount++;LastResolution=request;
+        return Task.FromResult(new ClaimConflictResolutionResult(true,"replacement_reserved",request.ClaimRequestId,request.AttemptId,_replacement.Attempt.Id,false,DateTimeOffset.UtcNow.ToString("O")));
+    }
+
+    public Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct)
+        =>Task.FromResult(new ApiResult(true,"claimed",AttemptId:item.Attempt.Id,JobId:item.Job.Id,LocalReceiptId:localReceiptId));
+    public Task<ApiResult> RenewAsync(ClaimItem item,string requestId,CancellationToken ct)=>Task.FromResult(new ApiResult(true,"reserved"));
+    public Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct)=>throw new NotSupportedException();
+    public Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct)=>Task.FromResult(new ApiResult(true,"started",AttemptId:job.AttemptId,JobId:job.ServerJobId));
+    public Task<ApiResult> ReportAsync(LocalJob job,ReportRequestEnvelope request,CancellationToken ct)=>Task.FromResult(new ApiResult(true,request.Status));
+    public Task<ApiResult> HeartbeatAsync(HeartbeatPayload payload,CancellationToken ct)=>Task.FromResult(new ApiResult(true,"ok"));
+    public Task<ProbeResponse> ProbeAsync(CancellationToken ct)=>Task.FromResult(new ProbeResponse(true,4,"6.0.0",AgentVersionInfo.Current,[ServiceTestEnvironment.TestDestination],["attempt_status","claim_conflict_rekey_v1"],"acceptance-side-server",DateTimeOffset.UtcNow.ToString("O")));
 }
 
 sealed class TestLeaseProtector:ILeaseTokenProtector

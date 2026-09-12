@@ -155,6 +155,9 @@ public sealed class HttpPrintTransport : IPrintTransport
 
     public Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct)=>PostAsync<ClaimResponse>("claim",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,limit=request.Limit,ready_destination_keys=request.ReadyDestinationKeys},ct);
 
+    public Task<ClaimConflictResolutionResult> ResolveClaimConflictAsync(ClaimConflictResolutionRequest request,CancellationToken ct)
+        =>PostAsync<ClaimConflictResolutionResult>("claim_reconcile",new{request_id=request.RequestId,agent_version=AgentVersionInfo.Current,protocol_version=4,claim_request_id=request.ClaimRequestId,attempt_id=request.AttemptId,local_server_job_id=request.LocalServerJobId,local_content_sha256=request.LocalContentSha256,local_destination_key=request.LocalDestinationKey,local_max_attempt_id=request.LocalMaxAttemptId,mismatch_fields=request.MismatchFields},ct);
+
     // Compatibility wrappers preserve the pre-remediation interface for existing harnesses/adapters.
     // Production service code persists and calls the envelope overloads below.
     public Task<ApiResult> AcceptAsync(ClaimItem item,string localReceiptId,string requestId,CancellationToken ct)

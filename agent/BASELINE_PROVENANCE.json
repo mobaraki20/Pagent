@@ -1,11 +1,11 @@
 {
   "baseline_version": "6.2.2",
-  "target_version": "6.2.3",
+  "target_version": "6.2.4",
   "provided_source_zip": "Pagent-6.2.2.zip",
   "provided_source_zip_sha256": "9b8921552bdcec263b7e91e31db99a976d4567f24120cac0305c8052c0ec4491",
   "required_upstream_commit": "5a58a10f6326698f80c3408a7a69229754e5c9d4",
   "checkout_start_commit": "5a58a10f6326698f80c3408a7a69229754e5c9d4",
   "upstream_commit_verified_from_checkout": true,
   "upstream_commit_verified_from_zip": false,
-  "verification_note": "The remediation branch was created directly from the official GitHub commit above. The supplied ZIP has no .git metadata and therefore remains supplementary evidence only."
+  "verification_note": "6.2.4 is an additive incident remediation on top of the audited 6.2.3 commit 60abb8edfaa16d3c8d410912f92cd118e54f8d71. The original branch lineage still begins at the official 6.2.2 commit above; supplied ZIP evidence has no .git metadata."
 }

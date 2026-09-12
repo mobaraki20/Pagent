@@ -3,6 +3,8 @@ namespace Sokna.PrintAgent.Core;
 public interface IPrintTransport
 {
     Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct);
+    Task<ClaimConflictResolutionResult> ResolveClaimConflictAsync(ClaimConflictResolutionRequest request,CancellationToken ct)
+        =>Task.FromException<ClaimConflictResolutionResult>(new NotSupportedException("Server/transport فاقد claim_conflict_rekey_v1 است."));
 
     // Transitional source-compatibility overload for existing test/adaptor implementations.
     // Production coordinator code must use the durable request-envelope overload below.

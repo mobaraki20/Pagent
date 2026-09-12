@@ -11,7 +11,7 @@
     <ContinuousIntegrationBuild Condition="'$(CI)'=='true'">true</ContinuousIntegrationBuild>
 
     <!-- Single source of truth for every Agent binary and package. -->
-    <SoknaAgentVersion>6.2.3</SoknaAgentVersion>
+    <SoknaAgentVersion>6.2.4</SoknaAgentVersion>
     <Version>$(SoknaAgentVersion)</Version>
     <AssemblyVersion>$(SoknaAgentVersion).0</AssemblyVersion>
     <FileVersion>$(SoknaAgentVersion).0</FileVersion>

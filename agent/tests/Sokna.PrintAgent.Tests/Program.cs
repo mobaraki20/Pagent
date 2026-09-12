@@ -41,6 +41,19 @@ using(var heartbeatHttp=new HttpClient(heartbeatHandler))
     Check(heartbeatRoot.GetProperty("pending_report_count").GetInt32()==2&&heartbeatRoot.GetProperty("auth_blocked_report_count").GetInt32()==1&&heartbeatRoot.GetProperty("reconciliation_report_count").GetInt32()==3,"heartbeat_report_counters_serialized");
 }
 
+var reconciliationHandler=new CaptureHttpHandler(HttpStatusCode.OK,"{\"success\":true,\"status\":\"replacement_reserved\",\"claim_request_id\":\"claim-original-0001\",\"old_attempt_id\":42,\"replacement_attempt_id\":1042,\"idempotent\":false,\"server_time\":\"2026-09-12T10:00:00Z\"}");
+using(var reconciliationHttp=new HttpClient(reconciliationHandler))
+{
+    var reconciliationTransport=new HttpPrintTransport(reconciliationHttp,"https://example.test","test-token",new TestLeaseProtector());
+    var result=await reconciliationTransport.ResolveClaimConflictAsync(new ClaimConflictResolutionRequest(
+        "reconcile-request-0001","claim-original-0001",42,77,new string('a',64),"prep_shared",1000,["payload_json","content_sha256"]),CancellationToken.None);
+    using var wire=JsonDocument.Parse(reconciliationHandler.LastBody??"{}");
+    var body=wire.RootElement;
+    Check(result.Success&&result.ReplacementAttemptId==1042,"claim_reconciliation_response_parsed");
+    Check(body.GetProperty("claim_request_id").GetString()=="claim-original-0001"&&body.GetProperty("local_max_attempt_id").GetInt64()==1000,"claim_reconciliation_identity_serialized");
+    Check(body.GetProperty("mismatch_fields").GetArrayLength()==2&&!body.TryGetProperty("payload_json",out _)&&!body.TryGetProperty("lease_token",out _),"claim_reconciliation_wire_is_evidence_only");
+}
+
 var errorHandler=new CaptureHttpHandler(HttpStatusCode.UnprocessableEntity,"{\"code\":\"invalid_field_type\",\"field\":\"bridge_origin\",\"message\":\"invalid field type\"}");
 using(var errorHttp=new HttpClient(errorHandler))
 {
@@ -137,6 +150,7 @@ await store.SetStateAsync(1001,LocalJobState.Resolved);
 var second=MakeClaim(1002,2,"lease-b");
 var l2=await store.PersistReservedAsync(second,"receipt-0002","server-a");
 Check(l2.AttemptId==1002&&l2.ServerJobId==77,"same_job_new_attempt_persist");
+Check(await store.GetMaxAttemptIdAsync()==1002,"local_attempt_ceiling_is_durable");
 Check((await store.GetByAttemptAsync(1001)) is not null&&(await store.GetByAttemptAsync(1002)) is not null,"attempt_history_preserved");
 Check(await store.CountOpenAsync()==1,"only_new_attempt_open");
 

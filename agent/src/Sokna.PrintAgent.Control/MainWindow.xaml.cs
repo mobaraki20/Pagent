@@ -532,7 +532,7 @@ public partial class MainWindow : Window
                     data_root = _paths.ProgramDataRoot,
                     install_root = ResolveInstallRoot(),
                     health,
-                    claim_reconciliation = health is null ? null : new { required = health.ClaimReconciliationRequired, conflict_count = health.ClaimConflictCount, oldest_age_seconds = health.OldestClaimConflictAgeSeconds, coordinator_state = health.CoordinatorState, last_error_code = health.LastCoordinatorErrorCode },
+                    claim_reconciliation = health is null ? null : new { required = health.ClaimReconciliationRequired, conflict_count = health.ClaimConflictCount, oldest_age_seconds = health.OldestClaimConflictAgeSeconds, coordinator_state = health.CoordinatorState, last_error_code = health.LastCoordinatorErrorCode, attempt_id = health.ClaimConflictAttemptId, server_job_id = health.ClaimConflictServerJobId, mismatch_fields = health.ClaimConflictFields, server_scope = health.ClaimConflictServerScope },
                     database = File.Exists(_paths.DatabasePath) ? new FileInfo(_paths.DatabasePath) is var db ? new { exists = true, size = db.Length, modified_utc = db.LastWriteTimeUtc.ToString("O") } : null : null,
                     secret = new { configured = File.Exists(_paths.SecretPath) }
                 };

@@ -296,6 +296,14 @@ public sealed class LocalQueueStore
         return await reader.ReadAsync(ct)?ReadJob(reader):null;
     }
 
+    public async Task<long> GetMaxAttemptIdAsync(CancellationToken ct=default)
+    {
+        await using var db=await OpenAsync(ct);
+        await using var command=db.CreateCommand();
+        command.CommandText="SELECT COALESCE(MAX(attempt_id),0) FROM local_jobs";
+        return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
+    }
+
     public async Task<List<LocalJob>> GetRecoverableAsync(CancellationToken ct=default)
     {
         await using var db=await OpenAsync(ct);

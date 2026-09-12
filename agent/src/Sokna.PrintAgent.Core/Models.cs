@@ -16,6 +16,25 @@ public sealed record ClaimAttempt(long Id,int AttemptNo,string LeaseToken,string
 public sealed record ClaimItem(ClaimedJob Job,ClaimAttempt Attempt,DestinationConfig Destination);
 public sealed record ClaimResponse(bool Success,string RequestId,List<ClaimItem> Jobs,string ServerTime,bool Idempotent);
 
+public sealed record ClaimConflictResolutionRequest(
+    string RequestId,
+    string ClaimRequestId,
+    long AttemptId,
+    long LocalServerJobId,
+    string LocalContentSha256,
+    string LocalDestinationKey,
+    long LocalMaxAttemptId,
+    string[] MismatchFields);
+
+public sealed record ClaimConflictResolutionResult(
+    bool Success,
+    string? Status=null,
+    string? ClaimRequestId=null,
+    long? OldAttemptId=null,
+    long? ReplacementAttemptId=null,
+    bool Idempotent=false,
+    string? ServerTime=null);
+
 public sealed record ApiResult(
     bool Success,
     string? Status=null,
@@ -195,4 +214,8 @@ public sealed record LocalHealthSnapshot(
     string? LastCoordinatorErrorCode=null,
     bool ClaimReconciliationRequired=false,
     int ClaimConflictCount=0,
-    long? OldestClaimConflictAgeSeconds=null);
+    long? OldestClaimConflictAgeSeconds=null,
+    long? ClaimConflictAttemptId=null,
+    long? ClaimConflictServerJobId=null,
+    string[]? ClaimConflictFields=null,
+    string? ClaimConflictServerScope=null);
