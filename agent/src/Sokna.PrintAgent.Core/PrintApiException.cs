@@ -11,6 +11,7 @@ public sealed class PrintApiException : HttpRequestException
     public bool RequiresHumanResolution { get; }
     public HttpStatusCode HttpStatus { get; }
     public TimeSpan? RetryAfter { get; }
+    public string? Field { get; }
 
     public PrintApiException(
         HttpStatusCode httpStatus,
@@ -20,7 +21,8 @@ public sealed class PrintApiException : HttpRequestException
         bool terminal=false,
         bool requiresHumanResolution=false,
         string? nextAction=null,
-        TimeSpan? retryAfter=null)
+        TimeSpan? retryAfter=null,
+        string? field=null)
         : base(message,null,httpStatus)
     {
         HttpStatus=httpStatus;
@@ -30,5 +32,6 @@ public sealed class PrintApiException : HttpRequestException
         RequiresHumanResolution=requiresHumanResolution;
         NextAction=nextAction;
         RetryAfter=retryAfter;
+        Field=field;
     }
 }

@@ -7,8 +7,11 @@ public static class SafeLogText
         "authorization",
         "bearer",
         "lease_token",
+        "lease",
         "token",
         "secret",
+        "credential",
+        "pairing_secret",
         "hmac",
         "payload_json",
         "sokna-print-document"

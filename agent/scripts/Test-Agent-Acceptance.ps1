@@ -1,7 +1,7 @@
 [CmdletBinding(DefaultParameterSetName='Case')]
 param(
   [Parameter(Mandatory=$true,ParameterSetName='Case')]
-  [ValidatePattern('^A(0[1-9]|[1-4][0-9]|5[0-2])$')]
+  [ValidatePattern('^A(0[1-9]|[1-4][0-9]|5[0-3])$')]
   [string]$CaseId,
 
   [Parameter(Mandatory=$true,ParameterSetName='Suite')]
@@ -30,7 +30,8 @@ $bridgeSecurityProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeSecurityAcc
 $bridgeLoadProject=Join-Path $root 'tests\Sokna.PrintAgent.BridgeLoadAcceptance\Sokna.PrintAgent.BridgeLoadAcceptance.csproj'
 $previewProject=Join-Path $root 'tests\Sokna.PrintAgent.PreviewAcceptance\Sokna.PrintAgent.PreviewAcceptance.csproj'
 $realApiProject=Join-Path $root 'tests\Sokna.PrintAgent.RealApiIntegration\Sokna.PrintAgent.RealApiIntegration.csproj'
-foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject,$bridgeRuntimeProject,$bridgeProject,$bridgeSecurityProject,$bridgeLoadProject,$previewProject,$realApiProject)){
+$heartbeatRealApiProject=Join-Path $root 'tests\Sokna.PrintAgent.HeartbeatRealApiIntegration\Sokna.PrintAgent.HeartbeatRealApiIntegration.csproj'
+foreach($required in @($project,$transportProject,$serviceProject,$contractProject,$windowsFaultProject,$cleanupProject,$bridgeRuntimeProject,$bridgeProject,$bridgeSecurityProject,$bridgeLoadProject,$previewProject,$realApiProject,$heartbeatRealApiProject)){
   if(!(Test-Path $required -PathType Leaf)){throw "Acceptance project missing: $required"}
 }
 $sourceSha=(& git -C $root rev-parse HEAD).Trim()
@@ -47,7 +48,8 @@ $bridgeCases=@('A33')
 $bridgeSecurityCases=@('A34')
 $previewCases=@('A35','A37','A38','A47')
 $bridgeLoadCases=@('A36')
-$integrationCases=@('A49')
+$integrationCases=@('A49','A53')
+$heartbeatIntegrationCases=@('A53')
 $implementedAutomated=@('A01','A02','A04','A05','A06','A07','A08','A09','A10','A12','A13','A14','A15','A16','A17','A18','A24','A25','A26','A27','A28','A29','A32','A33','A34','A35','A36','A37','A38','A44','A46','A47')
 $allAutomated=1..47 | ForEach-Object {'A{0:D2}' -f $_}
 $allAutomated+=@('A52')
@@ -72,7 +74,7 @@ function Invoke-Case([string]$id){
   if($manualUat -contains $id){return (Write-ManualUatResult $id)}
   $caseDir=Join-Path $results $id
   New-Item $caseDir -ItemType Directory -Force | Out-Null
-  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}elseif($bridgeRuntimeCases -contains $id){$bridgeRuntimeProject}elseif($bridgeSecurityCases -contains $id){$bridgeSecurityProject}elseif($previewCases -contains $id){$previewProject}elseif($bridgeLoadCases -contains $id){$bridgeLoadProject}elseif($bridgeCases -contains $id){$bridgeProject}elseif($integrationCases -contains $id){$realApiProject}else{$project}
+  $selectedProject=if($transportCases -contains $id){$transportProject}elseif($serviceCases -contains $id){$serviceProject}elseif($contractCases -contains $id){$contractProject}elseif($windowsFaultCases -contains $id){$windowsFaultProject}elseif($cleanupCases -contains $id){$cleanupProject}elseif($bridgeRuntimeCases -contains $id){$bridgeRuntimeProject}elseif($bridgeSecurityCases -contains $id){$bridgeSecurityProject}elseif($previewCases -contains $id){$previewProject}elseif($bridgeLoadCases -contains $id){$bridgeLoadProject}elseif($bridgeCases -contains $id){$bridgeProject}elseif($heartbeatIntegrationCases -contains $id){$heartbeatRealApiProject}elseif($integrationCases -contains $id){$realApiProject}else{$project}
   & dotnet run --project $selectedProject -c $Configuration -- --case $id --results $caseDir
   return $LASTEXITCODE
 }
@@ -83,24 +85,8 @@ if($PSCmdlet.ParameterSetName -eq 'Case'){
   exit 0
 }
 
-$caseIds=if($Suite -eq 'Automated'){$allAutomated}else{@('A49')}
-if($Suite -eq 'Integration'){
-  $missing=@()
-  if([string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_SERVER_URL)){$missing+='SOKNA_ACCEPTANCE_SERVER_URL'}
-  if([string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_FAULT_PROXY_URL)){$missing+='SOKNA_ACCEPTANCE_FAULT_PROXY_URL'}
-  if([string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_TOKEN_FILE)){$missing+='SOKNA_ACCEPTANCE_TOKEN_FILE'}
-  if([string]::IsNullOrWhiteSpace($env:SOKNA_ACCEPTANCE_DESTINATION_KEY)){$missing+='SOKNA_ACCEPTANCE_DESTINATION_KEY'}
-  if($env:SOKNA_ACCEPTANCE_ALLOW_MUTATION -ne 'I_UNDERSTAND_THIS_MUTATES_ACCEPTANCE_API'){$missing+='SOKNA_ACCEPTANCE_ALLOW_MUTATION'}
-  if($missing.Count -gt 0){
-    $path=Join-Path $results 'A49.result.json'
-    $blocker='A49 real integration is guarded and remains NOT_RUN. Missing/invalid: '+($missing -join ', ')+'. The fault proxy must forward the request, wait for upstream commit/response, then drop the client response when X-Sokna-Acceptance-Drop-Response=after-commit is present.'
-    [ordered]@{
-      case_id='A49';status='NOT_RUN';source_sha=$sourceSha;run_started_at=(Get-Date).ToUniversalTime().ToString('o');run_finished_at=(Get-Date).ToUniversalTime().ToString('o');exit_code=3;evidence=@();blocker=$blocker
-    } | ConvertTo-Json -Depth 5 | Set-Content $path -Encoding utf8NoBOM
-    Write-Error $blocker
-    exit 3
-  }
-}
+$caseIds=if($Suite -eq 'Automated'){$allAutomated}else{@('A49','A53')}
+# Each guarded real-integration case writes its own NOT_RUN evidence when prerequisites are missing.
 
 $failed=@()
 foreach($id in $caseIds){
