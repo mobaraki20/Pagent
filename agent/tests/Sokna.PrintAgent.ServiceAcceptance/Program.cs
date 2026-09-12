@@ -267,6 +267,17 @@ async Task RunA16()
 
 async Task RunA19()
 {
+    // Warm the coordinator/JIT path before measuring. GitHub-hosted runners can spend
+    // more than the product budget compiling this path on its first invocation; that
+    // startup noise is not the idle-poll delay A19 is intended to detect.
+    using(var warmup=await ServiceTestEnvironment.CreateAsync("a19-warmup"))
+    {
+        var warmupEvents=new ConcurrentQueue<string>();
+        var warmupTransport=new CoordinatorTransport(warmup.CreateClaimItem(2919),warmupEvents);
+        var warmupService=warmup.CreateService(warmupTransport,true,new CountingNoStartFactory(warmupEvents),destinations:[ServiceTestEnvironment.TestDestination]);
+        await InvokePrivateAsync(warmupService,"RunCoordinatorWorkAsync");
+    }
+
     using var env=await ServiceTestEnvironment.CreateAsync("a19-no-post-claim-delay");
     var events=new ConcurrentQueue<string>();
     var claim=env.CreateClaimItem(3019);
