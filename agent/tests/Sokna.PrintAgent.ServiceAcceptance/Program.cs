@@ -475,6 +475,11 @@ async Task RunA30()
     var quarantineRaw=await env.Store.GetMetaAsync("pending_claim_state_v2");
     Check(quarantineRaw?.Contains("quarantined",StringComparison.OrdinalIgnoreCase)==true,"identity conflict is durably quarantined before any repair request");
     Check(processFactory.StartCount==0,"conflicting numeric attempt never reaches worker");
+    Check(quarantineRaw is not null&&quarantineRaw.Contains("\"version\": 3",StringComparison.Ordinal),"new quarantine uses pending-state v3");
+    var legacyState=JsonSerializer.Deserialize<Dictionary<string,JsonElement>>(quarantineRaw!,AgentOptions.JsonOptions())??throw new InvalidOperationException("A30 quarantine JSON missing.");
+    legacyState["version"]=JsonSerializer.SerializeToElement(2);
+    legacyState.Remove("resolution_request_id");
+    await env.Store.SetMetaAsync("pending_claim_state_v2",JsonSerializer.Serialize(legacyState,AgentOptions.JsonOptions()));
 
     await InvokePrivateAsync(service,"RunCoordinatorWorkAsync");
     Check(transport.ReconciliationCount==1,"same durable conflict invokes one proof-bounded reconciliation mutation");
@@ -484,6 +489,25 @@ async Task RunA30()
     Check((await env.Store.GetByAttemptAsync(3030))?.State==LocalJobState.Resolved,"old durable attempt remains unchanged");
     Check((await env.Store.GetByAttemptAsync(4030)) is not null,"replacement attempt receives a distinct durable local row");
     Check(processFactory.StartCount==1,"only the distinct replacement attempt may reach the worker path");
+
+    using var unsafeEnv=await ServiceTestEnvironment.CreateAsync("a30-local-submitted-proof");
+    var submittedOld=unsafeEnv.CreateClaimItem(3031);
+    await unsafeEnv.Store.PersistReservedAsync(submittedOld,"receipt-a30-submitted","server-a");
+    var submittedLocal=await unsafeEnv.Store.GetByAttemptAsync(submittedOld.Attempt.Id)??throw new InvalidOperationException("A30 submitted local attempt missing.");
+    var submittedOutcome=new AttemptOutcomeDraft(PrintOutcomeStatus.Submitted,"spooler-a30",false,null,null,"a30:submitted-proof");
+    var submittedReport=new ReportRequestEnvelope(CryptoUtil.NewRequestId(),AgentVersionInfo.Current,4,submittedLocal.AttemptId,submittedLocal.LocalReceiptId,"submitted","spooler-a30",false,null,null);
+    var submittedOutbox=await unsafeEnv.Store.CommitOutcomeAndReportAsync(submittedLocal,submittedOutcome,submittedReport);
+    await unsafeEnv.Store.MarkReportSentAsync(submittedOutbox.Id,submittedLocal.AttemptId);
+    var submittedConflict=submittedOld with{Job=submittedOld.Job with{Id=9901},Attempt=submittedOld.Attempt with{AttemptNo=2,LeaseToken="lease-submitted-conflict"}};
+    var submittedReplacement=submittedConflict with{Attempt=submittedConflict.Attempt with{Id=4031,AttemptNo=3,LeaseToken="lease-submitted-replacement"}};
+    var unsafeTransport=new ClaimReconciliationTransport(submittedConflict,submittedReplacement);
+    var unsafeProcessFactory=new CountingNoStartFactory();
+    var unsafeService=unsafeEnv.CreateService(unsafeTransport,true,unsafeProcessFactory,claimConflictRekeySupported:true);
+    await InvokePrivateAsync(unsafeService,"RunCoordinatorWorkAsync");
+    await InvokePrivateAsync(unsafeService,"RunCoordinatorWorkAsync");
+    Check(unsafeTransport.ReconciliationCount==0,"submitted local outcome forbids automatic rekey");
+    Check(await unsafeEnv.Store.GetMetaAsync("pending_claim_state_v2") is not null,"unsafe local evidence keeps durable quarantine");
+    Check(unsafeProcessFactory.StartCount==0,"unsafe local evidence never reaches replacement worker path");
 }
 
 static bool IsAccept(CapturedHttpRequest request)

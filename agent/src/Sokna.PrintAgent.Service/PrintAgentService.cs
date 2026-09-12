@@ -626,7 +626,7 @@ public sealed class PrintAgentService : BackgroundService
             };
             await SavePendingClaimStateAsync(pendingState,ct);
             ApplyClaimQuarantineHealth(pendingState);
-            _fileLog.Error("claim_reconciliation_required",new InvalidDataException($"attempt={item.Attempt.Id}; fields={string.Join(',',conflictFields)}; scope={ScopeLabel(_serverScope)}"));
+            _fileLog.Error("claim_reconciliation_required",new InvalidDataException($"attempt={item.Attempt.Id}; fields={SafeConflictFieldList(conflictFields)}; scope={ScopeLabel(_serverScope)}"));
             return false;
         }
 
@@ -714,6 +714,18 @@ public sealed class PrintAgentService : BackgroundService
         if(!_claimConflictRekeySupported||_api is null||state.AttemptId is null)return false;
         var local=await _store.GetByAttemptAsync(state.AttemptId.Value,ct);
         if(local is null)return false;
+        var localOutcome=await _store.GetOutcomeAsync(local.AttemptId,ct);
+        var hasAmbiguousWorkerEvidence=File.Exists(FencePath(local))||File.Exists(ResultPath(local));
+        var locallyProvenNeverSubmitted=localOutcome is null
+            && string.IsNullOrWhiteSpace(local.SpoolerJobId)
+            && !hasAmbiguousWorkerEvidence
+            && local.State is LocalJobState.Reserved or LocalJobState.Resolved;
+        if(!locallyProvenNeverSubmitted)
+        {
+            _lastCoordinatorErrorCode="claim_reconciliation_local_evidence_unsafe";
+            _fileLog.Info("claim_reconciliation_held",$"attempt={local.AttemptId}; state={local.State}; evidence=local_ambiguous");
+            return false;
+        }
         var resolutionId=state.ResolutionRequestId;
         if(string.IsNullOrWhiteSpace(resolutionId))
         {
@@ -731,16 +743,32 @@ public sealed class PrintAgentService : BackgroundService
             await _store.GetMaxAttemptIdAsync(ct),
             state.ConflictFields??[]);
         var result=await RunApiAsync("claim_reconcile",()=>_api.ResolveClaimConflictAsync(request,ct));
-        if(!result.Success||!string.Equals(result.Status,"replacement_reserved",StringComparison.Ordinal)||result.OldAttemptId!=state.AttemptId||result.ReplacementAttemptId is null||result.ReplacementAttemptId<=request.LocalMaxAttemptId)
+        if(!result.Success
+            ||!string.Equals(result.Status,"replacement_reserved",StringComparison.Ordinal)
+            ||!string.Equals(result.ClaimRequestId,state.Request.RequestId,StringComparison.Ordinal)
+            ||result.OldAttemptId!=state.AttemptId
+            ||result.ReplacementAttemptId is null
+            ||result.ReplacementAttemptId<=request.LocalMaxAttemptId
+            ||!HasExplicitOffset(result.ServerTime??""))
             throw new InvalidDataException("پاسخ claim_reconcile معتبر نیست؛ quarantine حفظ شد.");
         var active=PendingClaimState.Active(state.Request);
         await SavePendingClaimStateAsync(active,ct);
         _claimReconciliationRequired=false;
         _lastCoordinatorErrorCode=null;
         _claimConflictAttemptId=null;_claimConflictServerJobId=null;_claimConflictFields=null;_claimConflictServerScope=null;
-        _fileLog.Info("claim_reconciliation_completed",$"old_attempt={state.AttemptId}; replacement_attempt={result.ReplacementAttemptId}; fields={string.Join(',',state.ConflictFields??[])}");
+        _claimConflictCount=0;_oldestClaimConflictAt=null;
+        _fileLog.Info("claim_reconciliation_completed",$"old_attempt={state.AttemptId}; replacement_attempt={result.ReplacementAttemptId}; fields={SafeConflictFieldList(state.ConflictFields??[])}");
         return true;
     }
+
+    private static string SafeConflictFieldList(IEnumerable<string> fields)
+        =>string.Join(',',fields.Select(field=>field switch
+        {
+            "payload_json"=>"payload",
+            "content_sha256"=>"content_hash",
+            "server_scope"=>"server_identity",
+            _=>field
+        }));
 
     private async Task AcceptAnyReservedAsync(CancellationToken ct)
     {
