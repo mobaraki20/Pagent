@@ -21,6 +21,55 @@ Check(SafeLogText.Sanitize("Authorization: Bearer abc-raw-secret")=="[redacted-s
 Check(SafeLogText.Sanitize("{\"payload_json\":\"full-order\"}")=="[redacted-sensitive-text]","payload_log_redacted");
 Check(SafeLogText.Sanitize("network timeout",7)=="network","safe_log_bounded");
 
+// G01/G02/G03: heartbeat wire omission/completeness and API field preservation.
+var heartbeatHandler=new CaptureHttpHandler(HttpStatusCode.OK,"{\"success\":true}");
+using(var heartbeatHttp=new HttpClient(heartbeatHandler))
+{
+    var heartbeatTransport=new HttpPrintTransport(heartbeatHttp,"https://example.test","test-token",new TestLeaseProtector());
+    var heartbeat=new HeartbeatPayload(
+        "request-heartbeat-1","HOST","6.2.3","Windows",120,null,0,0,null,"ok",1024,true,true,true,[],
+        LastSuccessfulAction:null,LastApiSuccessAt:null,LastApiErrorCode:null,ConsecutiveApiFailures:0,LastApiLatencyMs:null,
+        PrinterDiscoveryAt:"2026-09-12T06:00:00+00:00",BridgeProtocolVersion:1,BridgePort:17653,BridgePairingId:null,BridgeOrigin:null,
+        PendingReportCount:2,AuthBlockedReportCount:1,ReconciliationReportCount:3,
+        PrinterDiscoveryLastFailureAt:"2026-09-12T05:00:00+00:00",PrinterDiscoveryError:"spooler_unavailable",
+        PrinterDiscoveryAgeMilliseconds:250,PrinterDiscoveryFresh:true,PrinterDiscoveryGeneration:7);
+    await heartbeatTransport.HeartbeatAsync(heartbeat,CancellationToken.None);
+    using var heartbeatJson=JsonDocument.Parse(heartbeatHandler.LastBody??"{}");
+    var heartbeatRoot=heartbeatJson.RootElement;
+    Check(!heartbeatRoot.TryGetProperty("last_poll_success_at",out _)&&!heartbeatRoot.TryGetProperty("bridge_origin",out _)&&!heartbeatRoot.TryGetProperty("bridge_pairing_id",out _),"heartbeat_null_optional_fields_omitted");
+    Check(heartbeatRoot.TryGetProperty("printer_discovery_last_failure_at",out _)&&heartbeatRoot.TryGetProperty("printer_discovery_error",out _)&&heartbeatRoot.TryGetProperty("printer_discovery_age_milliseconds",out _)&&heartbeatRoot.TryGetProperty("printer_discovery_fresh",out _)&&heartbeatRoot.TryGetProperty("printer_discovery_generation",out _),"heartbeat_all_discovery_diagnostics_serialized");
+    Check(heartbeatRoot.GetProperty("pending_report_count").GetInt32()==2&&heartbeatRoot.GetProperty("auth_blocked_report_count").GetInt32()==1&&heartbeatRoot.GetProperty("reconciliation_report_count").GetInt32()==3,"heartbeat_report_counters_serialized");
+}
+
+var reconciliationHandler=new CaptureHttpHandler(HttpStatusCode.OK,"{\"success\":true,\"status\":\"replacement_reserved\",\"claim_request_id\":\"claim-original-0001\",\"old_attempt_id\":42,\"replacement_attempt_id\":1042,\"idempotent\":false,\"server_time\":\"2026-09-12T10:00:00Z\"}");
+using(var reconciliationHttp=new HttpClient(reconciliationHandler))
+{
+    var reconciliationTransport=new HttpPrintTransport(reconciliationHttp,"https://example.test","test-token",new TestLeaseProtector());
+    var result=await reconciliationTransport.ResolveClaimConflictAsync(new ClaimConflictResolutionRequest(
+        "reconcile-request-0001","claim-original-0001",42,77,new string('a',64),"prep_shared",1000,["payload_json","content_sha256"]),CancellationToken.None);
+    using var wire=JsonDocument.Parse(reconciliationHandler.LastBody??"{}");
+    var body=wire.RootElement;
+    Check(result.Success&&result.ReplacementAttemptId==1042,"claim_reconciliation_response_parsed");
+    Check(body.GetProperty("claim_request_id").GetString()=="claim-original-0001"&&body.GetProperty("local_max_attempt_id").GetInt64()==1000,"claim_reconciliation_identity_serialized");
+    Check(body.GetProperty("mismatch_fields").GetArrayLength()==2&&!body.TryGetProperty("payload_json",out _)&&!body.TryGetProperty("lease_token",out _),"claim_reconciliation_wire_is_evidence_only");
+}
+
+var errorHandler=new CaptureHttpHandler(HttpStatusCode.UnprocessableEntity,"{\"code\":\"invalid_field_type\",\"field\":\"bridge_origin\",\"message\":\"invalid field type\"}");
+using(var errorHttp=new HttpClient(errorHandler))
+{
+    var errorTransport=new HttpPrintTransport(errorHttp,"https://example.test","test-token",new TestLeaseProtector());
+    try
+    {
+        await errorTransport.HeartbeatAsync(new HeartbeatPayload("request-heartbeat-2","HOST","6.2.3","Windows",1,null,0,0,null,"ok",1,true,true,true,[]),CancellationToken.None);
+        failures.Add("api_error_field_preserved");
+    }
+    catch(PrintApiException e)
+    {
+        Check(e.Code=="invalid_field_type"&&e.Field=="bridge_origin"&&e.Message.Contains("field=bridge_origin",StringComparison.Ordinal),"api_error_field_preserved");
+        Check(!e.Message.Contains("test-token",StringComparison.Ordinal),"api_error_log_sanitized");
+    }
+}
+
 var legacyEmptyDir=Path.Combine(Path.GetTempPath(),"sokna-agent-legacy-empty-"+Guid.NewGuid().ToString("N"));
 Directory.CreateDirectory(legacyEmptyDir);
 var legacyEmptyPath=Path.Combine(legacyEmptyDir,"queue.db");
@@ -82,9 +131,13 @@ Check(l1.AttemptId==1001&&l1.ServerJobId==77,"attempt_1_persist");
 Check(l1.ProtectedLeaseToken!="lease-a"&&protector.Unprotect(l1.ProtectedLeaseToken)=="lease-a","lease_not_plaintext_at_local_boundary");
 var l1Replay=await store.PersistReservedAsync(first,"receipt-should-not-replace","server-a");
 Check(l1Replay.AttemptId==1001&&l1Replay.LocalReceiptId=="receipt-0001","duplicate_claim_same_attempt_idempotent");
+var typedReplay=await store.PersistReservedResultAsync(first,"receipt-typed-replay","server-a");
+Check(typedReplay.Disposition==ClaimPersistenceDisposition.ExactReplay&&typedReplay.ExistingOrCreated.LocalReceiptId=="receipt-0001","typed_exact_duplicate_claim_is_idempotent");
 Check(await store.CountOpenAsync()==1,"duplicate_claim_does_not_duplicate_open_job");
 var alteredPayload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"DIFFERENT\"}";
 var altered=first with{Job=first.Job with{PayloadJson=alteredPayload,ContentSha256=CryptoUtil.Sha256Hex(alteredPayload)}};
+var typedConflict=await store.PersistReservedResultAsync(altered,"receipt-conflict-typed","server-a");
+Check(typedConflict.Disposition==ClaimPersistenceDisposition.ReconciliationRequired&&typedConflict.MismatchedFields.Contains("payload_json")&&typedConflict.MismatchedFields.Contains("content_sha256"),"typed_claim_conflict_requires_reconciliation_without_overwrite");
 await ExpectThrowsAsync(()=>store.PersistReservedAsync(altered,"receipt-conflict","server-a"),"duplicate_attempt_different_payload_rejected");
 var alteredDestination=first with{Destination=destination with{DestinationKey="other"}};
 await ExpectThrowsAsync(()=>store.PersistReservedAsync(alteredDestination,"receipt-conflict","server-a"),"duplicate_attempt_different_destination_rejected");
@@ -97,6 +150,7 @@ await store.SetStateAsync(1001,LocalJobState.Resolved);
 var second=MakeClaim(1002,2,"lease-b");
 var l2=await store.PersistReservedAsync(second,"receipt-0002","server-a");
 Check(l2.AttemptId==1002&&l2.ServerJobId==77,"same_job_new_attempt_persist");
+Check(await store.GetMaxAttemptIdAsync()==1002,"local_attempt_ceiling_is_durable");
 Check((await store.GetByAttemptAsync(1001)) is not null&&(await store.GetByAttemptAsync(1002)) is not null,"attempt_history_preserved");
 Check(await store.CountOpenAsync()==1,"only_new_attempt_open");
 
@@ -214,6 +268,19 @@ sealed class TestLeaseProtector:ILeaseTokenProtector
 {
     public string Protect(string value)=>"test:"+Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(value));
     public string Unprotect(string value)=>System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(value[5..]));
+}
+
+sealed class CaptureHttpHandler:System.Net.Http.HttpMessageHandler
+{
+    private readonly HttpStatusCode _status;
+    private readonly string _body;
+    public string? LastBody{get;private set;}
+    public CaptureHttpHandler(HttpStatusCode status,string body){_status=status;_body=body;}
+    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request,CancellationToken cancellationToken)
+    {
+        LastBody=request.Content is null?null:await request.Content.ReadAsStringAsync(cancellationToken);
+        return new HttpResponseMessage(_status){Content=new StringContent(_body,System.Text.Encoding.UTF8,"application/json")};
+    }
 }
 
 enum FakeReportMode{Success,Unauthorized}

@@ -61,3 +61,26 @@ Evidence معتبر باید source SHA، زمان اجرا، environment، exit
 ## مرز تأیید
 
 سبز بودن CI معمول Agent، Loopback tests، A25–A29 یا Windows installer به معنی `Integration verified` نیست. این سطح فقط پس از PASS واقعی A49 روی محیط acceptance تعریف‌شده و بررسی evidence قابل ارتقا است. UAT فیزیکی چاپگر نیز جداست و تا اجرای Caseهای سخت‌افزاری مربوط، `Operationally accepted=false` باقی می‌ماند.
+
+## A53 — Real Heartbeat Contract
+
+A53 فقط با `tests/Sokna.PrintAgent.HeartbeatRealApiIntegration` و endpoint واقعی acceptance اجرا می‌شود. این Case هیچ print job نمی‌سازد و mutation چاپی ندارد، اما باید با token واقعی همان acceptance server اجرا شود.
+
+موارد بررسی:
+
+1. Probe واقعی protocol v4.
+2. Heartbeat production Agent با optional nullهای omit شده.
+3. Payload خام heartbeat با explicit JSON null برای optionalهای allowlisted.
+4. Bridge-disabled heartbeat.
+5. Printer discovery diagnostics.
+6. negative wrong-type مانند `bridge_origin: 123` با انتظار HTTP 422، `code=invalid_field_type` و `field=bridge_origin`.
+
+اجرا:
+
+```powershell
+$env:SOKNA_ACCEPTANCE_SERVER_URL='https://acceptance.example'
+$env:SOKNA_ACCEPTANCE_TOKEN_FILE='C:\secure\agent-token.txt'
+./scripts/Test-Agent-Acceptance.ps1 -CaseId A53 -ResultsDirectory ./artifacts/A53
+```
+
+Loopback/mock نمی‌تواند A53 را PASS کند. نبود server/token باید `NOT_RUN` تولید کند.

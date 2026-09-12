@@ -16,6 +16,25 @@ public sealed record ClaimAttempt(long Id,int AttemptNo,string LeaseToken,string
 public sealed record ClaimItem(ClaimedJob Job,ClaimAttempt Attempt,DestinationConfig Destination);
 public sealed record ClaimResponse(bool Success,string RequestId,List<ClaimItem> Jobs,string ServerTime,bool Idempotent);
 
+public sealed record ClaimConflictResolutionRequest(
+    string RequestId,
+    string ClaimRequestId,
+    long AttemptId,
+    long LocalServerJobId,
+    string LocalContentSha256,
+    string LocalDestinationKey,
+    long LocalMaxAttemptId,
+    string[] MismatchFields);
+
+public sealed record ClaimConflictResolutionResult(
+    bool Success,
+    string? Status=null,
+    string? ClaimRequestId=null,
+    long? OldAttemptId=null,
+    long? ReplacementAttemptId=null,
+    bool Idempotent=false,
+    string? ServerTime=null);
+
 public sealed record ApiResult(
     bool Success,
     string? Status=null,
@@ -41,6 +60,27 @@ public enum LocalJobState
     Unknown,
     RecoveryHold,
     Resolved
+}
+
+
+public enum ClaimPersistenceDisposition
+{
+    Created,
+    ExactReplay,
+    ReconciliationRequired
+}
+
+public sealed record ClaimPersistenceResult(
+    ClaimPersistenceDisposition Disposition,
+    LocalJob ExistingOrCreated,
+    IReadOnlyList<string> MismatchedFields);
+
+public sealed class ClaimReconciliationRequiredException : Exception
+{
+    public IReadOnlyList<string> MismatchedFields { get; }
+    public ClaimReconciliationRequiredException(IReadOnlyList<string> mismatchedFields)
+        : base("Claim تکراری نیازمند reconciliation است؛ identity/payload/destination/server برای همان attempt_id یکسان نیست.")
+        => MismatchedFields=mismatchedFields;
 }
 
 public enum PrintOutcomeStatus
@@ -164,4 +204,18 @@ public sealed record LocalHealthSnapshot(
     string? PrinterDiscoveryError=null,
     long? PrinterDiscoveryAgeMilliseconds=null,
     bool PrinterDiscoveryFresh=false,
-    long PrinterDiscoveryGeneration=0);
+    long PrinterDiscoveryGeneration=0,
+    string TransportState="unknown",
+    string? LastTransportSuccessAt=null,
+    string? LastTransportErrorCode=null,
+    int ConsecutiveTransportFailures=0,
+    string CoordinatorState="unknown",
+    string? LastCoordinatorSuccessAt=null,
+    string? LastCoordinatorErrorCode=null,
+    bool ClaimReconciliationRequired=false,
+    int ClaimConflictCount=0,
+    long? OldestClaimConflictAgeSeconds=null,
+    long? ClaimConflictAttemptId=null,
+    long? ClaimConflictServerJobId=null,
+    string[]? ClaimConflictFields=null,
+    string? ClaimConflictServerScope=null);

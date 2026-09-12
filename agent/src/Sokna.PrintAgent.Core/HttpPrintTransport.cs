@@ -75,6 +75,7 @@ public sealed class HttpPrintTransport : IPrintTransport
         string? current=null;
         string? message=null;
         string? nextAction=null;
+        string? field=null;
         var terminal=false;
         var human=false;
         try
@@ -85,17 +86,77 @@ public sealed class HttpPrintTransport : IPrintTransport
             if(root.TryGetProperty("current_state",out var s)&&s.ValueKind==JsonValueKind.String)current=s.GetString();
             if(root.TryGetProperty("message",out var m)&&m.ValueKind==JsonValueKind.String)message=m.GetString();
             if(root.TryGetProperty("next_action",out var n)&&n.ValueKind==JsonValueKind.String)nextAction=n.GetString();
+            if(root.TryGetProperty("field",out var f)&&f.ValueKind==JsonValueKind.String)field=SafeField(f.GetString());
             terminal=root.TryGetProperty("terminal",out var t)&&t.ValueKind==JsonValueKind.True;
             human=root.TryGetProperty("requires_human_resolution",out var h)&&h.ValueKind==JsonValueKind.True;
         }
         catch(JsonException){}
         message=string.IsNullOrWhiteSpace(message)?$"Print API {action} HTTP {(int)status}: {Safe(text)}":message;
-        return new PrintApiException(status,Safe(message!),code,current,terminal,human,nextAction,retryAfter);
+        var safeMessage=Safe(message!);
+        if(!string.IsNullOrWhiteSpace(field)&&!safeMessage.Contains($"field={field}",StringComparison.OrdinalIgnoreCase))safeMessage+=$" field={field}";
+        return new PrintApiException(status,safeMessage,code,current,terminal,human,nextAction,retryAfter,field);
     }
 
     private static string Safe(string text)=>SafeLogText.Sanitize(text,400);
+    private static string? SafeField(string? field)
+    {
+        if(string.IsNullOrWhiteSpace(field))return null;
+        var trimmed=field.Trim();
+        if(trimmed.Length>100)return null;
+        return trimmed.All(ch=>char.IsLetterOrDigit(ch)||ch is '_' or '-' or '.')?trimmed:null;
+    }
+
+    internal static IReadOnlyDictionary<string,object> BuildHeartbeatWireBody(HeartbeatPayload p)
+    {
+        var body=new Dictionary<string,object>(StringComparer.Ordinal)
+        {
+            ["request_id"]=p.RequestId,
+            ["agent_version"]=AgentVersionInfo.Current,
+            ["protocol_version"]=4,
+            ["hostname"]=p.Hostname,
+            ["os_version"]=p.OsVersion,
+            ["uptime_seconds"]=p.UptimeSeconds,
+            ["local_backlog_count"]=p.LocalBacklogCount,
+            ["local_unknown_count"]=p.LocalUnknownCount,
+            ["sqlite_health"]=p.SqliteHealth,
+            ["disk_free_mb"]=p.DiskFreeMb,
+            ["worker_ok"]=p.WorkerOk,
+            ["config_ok"]=p.ConfigOk,
+            ["instance_lock_ok"]=p.InstanceLockOk,
+            ["printers"]=p.Printers,
+            ["consecutive_api_failures"]=p.ConsecutiveApiFailures,
+            ["bridge_protocol_version"]=p.BridgeProtocolVersion,
+            ["bridge_port"]=p.BridgePort,
+            ["pending_report_count"]=p.PendingReportCount,
+            ["auth_blocked_report_count"]=p.AuthBlockedReportCount,
+            ["reconciliation_report_count"]=p.ReconciliationReportCount,
+            ["printer_discovery_fresh"]=p.PrinterDiscoveryFresh,
+            ["printer_discovery_generation"]=p.PrinterDiscoveryGeneration
+        };
+        AddIfNotNull(body,"last_poll_success_at",p.LastPollSuccessAt);
+        AddIfNotNull(body,"last_submission_at",p.LastSubmissionAt);
+        AddIfNotNull(body,"last_successful_action",p.LastSuccessfulAction);
+        AddIfNotNull(body,"last_api_success_at",p.LastApiSuccessAt);
+        AddIfNotNull(body,"last_api_error_code",p.LastApiErrorCode);
+        AddIfNotNull(body,"last_api_latency_ms",p.LastApiLatencyMs);
+        AddIfNotNull(body,"printer_discovery_at",p.PrinterDiscoveryAt);
+        AddIfNotNull(body,"printer_discovery_last_failure_at",p.PrinterDiscoveryLastFailureAt);
+        AddIfNotNull(body,"printer_discovery_error",p.PrinterDiscoveryError);
+        AddIfNotNull(body,"printer_discovery_age_milliseconds",p.PrinterDiscoveryAgeMilliseconds);
+        AddIfNotNull(body,"bridge_pairing_id",p.BridgePairingId);
+        AddIfNotNull(body,"bridge_origin",p.BridgeOrigin);
+        return body;
+    }
+
+    private static void AddIfNotNull(Dictionary<string,object> body,string key,object? value)
+    {
+        if(value is not null)body[key]=value;
+    }
 
     public Task<ClaimResponse> ClaimAsync(ClaimRequestEnvelope request,CancellationToken ct)=>PostAsync<ClaimResponse>("claim",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,limit=request.Limit,ready_destination_keys=request.ReadyDestinationKeys},ct);
+
+    public Task<ClaimConflictResolutionResult> ResolveClaimConflictAsync(ClaimConflictResolutionRequest request,CancellationToken ct)
+        =>PostAsync<ClaimConflictResolutionResult>("claim_reconcile",new{request_id=request.RequestId,agent_version=AgentVersionInfo.Current,protocol_version=4,claim_request_id=request.ClaimRequestId,attempt_id=request.AttemptId,local_server_job_id=request.LocalServerJobId,local_content_sha256=request.LocalContentSha256,local_destination_key=request.LocalDestinationKey,local_max_attempt_id=request.LocalMaxAttemptId,mismatch_fields=request.MismatchFields},ct);
 
     // Compatibility wrappers preserve the pre-remediation interface for existing harnesses/adapters.
     // Production service code persists and calls the envelope overloads below.
@@ -123,7 +184,7 @@ public sealed class HttpPrintTransport : IPrintTransport
 
     public Task<ApiResult> ReportAsync(LocalJob job,ReportRequestEnvelope request,CancellationToken ct)=>PostAsync<ApiResult>("report",new{request_id=request.RequestId,agent_version=request.AgentVersion,protocol_version=request.ProtocolVersion,attempt_id=request.AttemptId,lease_token=UnprotectLease(job.ProtectedLeaseToken),local_receipt_id=request.LocalReceiptId,status=request.Status,spooler_job_id=request.SpoolerJobId,retryable=request.Retryable,error_code=request.ErrorCode,error_message=request.ErrorMessage},ct);
 
-    public Task<ApiResult> HeartbeatAsync(HeartbeatPayload p,CancellationToken ct)=>PostAsync<ApiResult>("heartbeat",new{request_id=p.RequestId,agent_version=AgentVersionInfo.Current,protocol_version=4,hostname=p.Hostname,os_version=p.OsVersion,uptime_seconds=p.UptimeSeconds,last_poll_success_at=p.LastPollSuccessAt,local_backlog_count=p.LocalBacklogCount,local_unknown_count=p.LocalUnknownCount,last_submission_at=p.LastSubmissionAt,sqlite_health=p.SqliteHealth,disk_free_mb=p.DiskFreeMb,worker_ok=p.WorkerOk,config_ok=p.ConfigOk,instance_lock_ok=p.InstanceLockOk,printers=p.Printers,last_successful_action=p.LastSuccessfulAction,last_api_success_at=p.LastApiSuccessAt,last_api_error_code=p.LastApiErrorCode,consecutive_api_failures=p.ConsecutiveApiFailures,last_api_latency_ms=p.LastApiLatencyMs,printer_discovery_at=p.PrinterDiscoveryAt,bridge_protocol_version=p.BridgeProtocolVersion,bridge_port=p.BridgePort,bridge_pairing_id=p.BridgePairingId,bridge_origin=p.BridgeOrigin,pending_report_count=p.PendingReportCount,auth_blocked_report_count=p.AuthBlockedReportCount,reconciliation_report_count=p.ReconciliationReportCount},ct);
+    public Task<ApiResult> HeartbeatAsync(HeartbeatPayload p,CancellationToken ct)=>PostAsync<ApiResult>("heartbeat",BuildHeartbeatWireBody(p),ct);
 
     public Task<ProbeResponse> ProbeAsync(CancellationToken ct)=>PostAsync<ProbeResponse>("probe",new{agent_version=AgentVersionInfo.Current,protocol_version=4},ct);
 

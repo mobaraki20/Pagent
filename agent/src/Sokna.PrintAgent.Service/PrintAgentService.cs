@@ -10,7 +10,8 @@ namespace Sokna.PrintAgent.Service;
 public sealed class PrintAgentService : BackgroundService
 {
     private static readonly string AgentVersion=AgentVersionInfo.Current;
-    private const string PendingClaimMetaKey="pending_claim_v1";
+    private const string PendingClaimMetaKey="pending_claim_v1"; // legacy read-only migration key
+    private const string PendingClaimStateMetaKey="pending_claim_state_v2";
     private const string ServerScopeBindingMetaKey="server_scope_binding_v1";
     private const string LegacyServerScope="legacy-unbound";
 
@@ -49,6 +50,15 @@ public sealed class PrintAgentService : BackgroundService
     private string? _lastApiErrorCode;
     private int _consecutiveApiFailures;
     private long? _lastApiLatencyMs;
+    private DateTimeOffset? _lastCoordinatorSuccess;
+    private string? _lastCoordinatorErrorCode;
+    private bool _claimReconciliationRequired;
+    private int _claimConflictCount;
+    private DateTimeOffset? _oldestClaimConflictAt;
+    private long? _claimConflictAttemptId;
+    private long? _claimConflictServerJobId;
+    private string[]? _claimConflictFields;
+    private string? _claimConflictServerScope;
     private DateTimeOffset _nextReportDispatch=DateTimeOffset.MinValue;
     private DateTimeOffset _nextHeartbeat=DateTimeOffset.MinValue;
     private DateTimeOffset _nextDestinationRefresh=DateTimeOffset.MinValue;
@@ -56,6 +66,7 @@ public sealed class PrintAgentService : BackgroundService
     private string _serverScope=LegacyServerScope;
     private string _boundServerScope=LegacyServerScope;
     private bool _attemptStatusSupported;
+    private bool _claimConflictRekeySupported;
     private long _configurationGeneration;
     private long _reportWorkGeneration;
     private long _heartbeatWorkGeneration;
@@ -109,7 +120,7 @@ public sealed class PrintAgentService : BackgroundService
 
                     var cycle=await RunCoordinatorWorkAsync(stoppingToken);
                     await WriteLocalHealthAsync(
-                        _consecutiveApiFailures>0?"degraded":"running",
+                        _claimReconciliationRequired?"reconciliation_required":_consecutiveApiFailures>0?"degraded":"running",
                         true,
                         true,
                         null,
@@ -186,7 +197,17 @@ public sealed class PrintAgentService : BackgroundService
             }
 
             _lastPoll=DateTimeOffset.UtcNow;
+            if(!_claimReconciliationRequired)
+            {
+                _lastCoordinatorSuccess=DateTimeOffset.UtcNow;
+                _lastCoordinatorErrorCode=null;
+            }
             return new(true,processed,claimed);
+        }
+        catch(Exception e)
+        {
+            if(!_claimReconciliationRequired)_lastCoordinatorErrorCode=e.GetType().Name;
+            throw;
         }
         finally
         {
@@ -234,6 +255,7 @@ public sealed class PrintAgentService : BackgroundService
             _boundServerScope=boundScope;
             _serverScope=legacyBacklog?LegacyServerScope:boundScope;
             _attemptStatusSupported=ServerScopeResolver.Supports(probe,"attempt_status");
+            _claimConflictRekeySupported=ServerScopeResolver.Supports(probe,"claim_conflict_rekey_v1");
             _configStampUtc=configStamp;
             _secretStampUtc=secretStamp;
             _configurationGeneration++;
@@ -348,6 +370,7 @@ public sealed class PrintAgentService : BackgroundService
                         throw new InvalidDataException("هویت server در probe_refresh تغییر کرده است؛ ادامه خودکار متوقف شد.");
                     _destinations=probe.Destinations;
                     _attemptStatusSupported=ServerScopeResolver.Supports(probe,"attempt_status");
+                    _claimConflictRekeySupported=ServerScopeResolver.Supports(probe,"claim_conflict_rekey_v1");
                     RecordSideSuccess("probe_refresh",refreshResult.ElapsedMilliseconds);
                     _nextDestinationRefresh=DateTimeOffset.UtcNow.AddSeconds(30);
                 }
@@ -550,8 +573,14 @@ public sealed class PrintAgentService : BackgroundService
     private async Task<bool> ClaimAsync(CancellationToken ct)
     {
         if(_api is null||_destinations.Count==0)return false;
-        var pending=await LoadPendingClaimAsync(ct);
-        if(pending is null)
+        var pendingState=await LoadPendingClaimStateAsync(ct);
+        if(pendingState?.IsQuarantined==true)
+        {
+            if(!await TryResolveClaimQuarantineAsync(pendingState,ct))return false;
+            pendingState=await LoadPendingClaimStateAsync(ct);
+        }
+
+        if(pendingState is null)
         {
             var health=ReadyQueues();
             var ready=_destinations
@@ -561,22 +590,50 @@ public sealed class PrintAgentService : BackgroundService
                 .ToArray();
             if(ready.Length==0)return false;
 
-            pending=new ClaimRequestEnvelope(
+            var request=new ClaimRequestEnvelope(
                 CryptoUtil.NewRequestId(),
                 AgentVersion,
                 4,
                 ready,
                 _options.ClaimBatchSize,
                 DateTimeOffset.UtcNow.ToString("O"));
-            await _store.SetMetaAsync(PendingClaimMetaKey,JsonSerializer.Serialize(pending,AgentOptions.JsonOptions()),ct);
+            pendingState=PendingClaimState.Active(request);
+            await SavePendingClaimStateAsync(pendingState,ct);
         }
 
+        var pending=pendingState.Request;
         _fileLog.Info("claim_started",$"request={ShortId(pending.RequestId)}; destinations={pending.ReadyDestinationKeys.Length}");
         var response=await RunApiAsync("claim",()=>_api.ClaimAsync(pending,ct));
         ValidateClaimResponse(response,pending);
         foreach(var item in response.Jobs)
-            await _store.PersistReservedAsync(item,CryptoUtil.NewLocalReceiptId(),_serverScope,ct);
+        {
+            var persistence=await _store.PersistReservedResultAsync(item,CryptoUtil.NewLocalReceiptId(),_serverScope,ct);
+            if(persistence.Disposition!=ClaimPersistenceDisposition.ReconciliationRequired)continue;
+
+            var now=DateTimeOffset.UtcNow;
+            var conflictFields=persistence.MismatchedFields.Distinct(StringComparer.Ordinal).OrderBy(x=>x,StringComparer.Ordinal).ToArray();
+            pendingState=pendingState with
+            {
+                State="quarantined",
+                QuarantinedAt=pendingState.QuarantinedAt??now.ToString("O"),
+                AttemptId=item.Attempt.Id,
+                ServerJobId=item.Job.Id,
+                ConflictFields=conflictFields,
+                ConflictCount=Math.Max(1,pendingState.ConflictCount+1),
+                LastConflictAt=now.ToString("O"),
+                ServerScopeLabel=ScopeLabel(_serverScope),
+                ResolutionRequestId=pendingState.ResolutionRequestId??CryptoUtil.NewRequestId()
+            };
+            await SavePendingClaimStateAsync(pendingState,ct);
+            ApplyClaimQuarantineHealth(pendingState);
+            _fileLog.Error("claim_reconciliation_required",new InvalidDataException($"attempt={item.Attempt.Id}; fields={SafeConflictFieldList(conflictFields)}; scope={ScopeLabel(_serverScope)}"));
+            return false;
+        }
+
+        await _store.DeleteMetaAsync(PendingClaimStateMetaKey,ct);
         await _store.DeleteMetaAsync(PendingClaimMetaKey,ct);
+        _claimReconciliationRequired=false;
+        _lastCoordinatorErrorCode=null;
         _fileLog.Info("claim_completed",$"request={ShortId(pending.RequestId)}; jobs={response.Jobs.Count}");
         return response.Jobs.Count>0;
     }
@@ -588,24 +645,130 @@ public sealed class PrintAgentService : BackgroundService
         if(!HasExplicitOffset(response.ServerTime))throw new InvalidDataException("Claim server_time باید offset صریح داشته باشد.");
     }
 
-    private async Task<ClaimRequestEnvelope?> LoadPendingClaimAsync(CancellationToken ct)
+    private async Task<PendingClaimState?> LoadPendingClaimStateAsync(CancellationToken ct)
     {
-        var raw=await _store.GetMetaAsync(PendingClaimMetaKey,ct);
-        if(string.IsNullOrWhiteSpace(raw))return null;
+        var raw=await _store.GetMetaAsync(PendingClaimStateMetaKey,ct);
+        if(!string.IsNullOrWhiteSpace(raw))
+        {
+            var state=JsonSerializer.Deserialize<PendingClaimState>(raw,AgentOptions.JsonOptions())
+                ?? throw new InvalidDataException("Pending claim state نامعتبر است.");
+            if(state.Version==2){state=state with{Version=PendingClaimState.CurrentVersion};await SavePendingClaimStateAsync(state,ct);}
+            ValidatePendingClaimState(state);
+            return state;
+        }
+
+        var legacy=await _store.GetMetaAsync(PendingClaimMetaKey,ct);
+        if(string.IsNullOrWhiteSpace(legacy))return null;
         try
         {
-            var pending=JsonSerializer.Deserialize<ClaimRequestEnvelope>(raw,AgentOptions.JsonOptions());
-            if(pending is null||string.IsNullOrWhiteSpace(pending.RequestId)||pending.ProtocolVersion!=4||pending.ReadyDestinationKeys.Length==0||pending.Limit is <1 or >5||!HasExplicitOffset(pending.CreatedAt))
-                throw new InvalidDataException("Pending claim metadata نامعتبر است.");
-            return pending;
+            var request=JsonSerializer.Deserialize<ClaimRequestEnvelope>(legacy,AgentOptions.JsonOptions())
+                ?? throw new InvalidDataException("Pending claim metadata نامعتبر است.");
+            ValidatePendingClaimRequest(request);
+            var migrated=PendingClaimState.Active(request);
+            await SavePendingClaimStateAsync(migrated,ct);
+            await _store.DeleteMetaAsync(PendingClaimMetaKey,ct);
+            return migrated;
         }
         catch(Exception e)
         {
+            _lastCoordinatorErrorCode="pending_claim_metadata_invalid";
             LogSafe("claim_replay_metadata",e);
-            await _store.DeleteMetaAsync(PendingClaimMetaKey,ct);
-            return null;
+            throw; // fail closed: preserve durable evidence instead of inventing a new request_id
         }
     }
+
+    private async Task SavePendingClaimStateAsync(PendingClaimState state,CancellationToken ct)
+        =>await _store.SetMetaAsync(PendingClaimStateMetaKey,JsonSerializer.Serialize(state,AgentOptions.JsonOptions()),ct);
+
+    private static void ValidatePendingClaimState(PendingClaimState state)
+    {
+        if(state.Version!=PendingClaimState.CurrentVersion||state.State is not ("active" or "quarantined"))
+            throw new InvalidDataException("Pending claim state version/state نامعتبر است.");
+        ValidatePendingClaimRequest(state.Request);
+        if(state.IsQuarantined&&(state.AttemptId is null||state.ConflictFields is null||state.ConflictFields.Length==0||!HasExplicitOffset(state.QuarantinedAt??"")))
+            throw new InvalidDataException("Quarantined claim metadata ناقص است.");
+    }
+
+    private static void ValidatePendingClaimRequest(ClaimRequestEnvelope pending)
+    {
+        if(string.IsNullOrWhiteSpace(pending.RequestId)||pending.ProtocolVersion!=4||pending.ReadyDestinationKeys.Length==0||pending.Limit is <1 or >5||!HasExplicitOffset(pending.CreatedAt))
+            throw new InvalidDataException("Pending claim metadata نامعتبر است.");
+    }
+
+    private void ApplyClaimQuarantineHealth(PendingClaimState state)
+    {
+        _claimReconciliationRequired=true;
+        _lastCoordinatorErrorCode="claim_reconciliation_required";
+        _claimConflictCount=Math.Max(_claimConflictCount,state.ConflictCount);
+        _claimConflictAttemptId=state.AttemptId;
+        _claimConflictServerJobId=state.ServerJobId;
+        _claimConflictFields=state.ConflictFields;
+        _claimConflictServerScope=state.ServerScopeLabel;
+        if(DateTimeOffset.TryParse(state.QuarantinedAt,out var quarantinedAt))
+            _oldestClaimConflictAt=_oldestClaimConflictAt is null||quarantinedAt<_oldestClaimConflictAt?quarantinedAt:_oldestClaimConflictAt;
+    }
+
+    private async Task<bool> TryResolveClaimQuarantineAsync(PendingClaimState state,CancellationToken ct)
+    {
+        ApplyClaimQuarantineHealth(state);
+        if(!_claimConflictRekeySupported||_api is null||state.AttemptId is null)return false;
+        var local=await _store.GetByAttemptAsync(state.AttemptId.Value,ct);
+        if(local is null)return false;
+        var localOutcome=await _store.GetOutcomeAsync(local.AttemptId,ct);
+        var hasAmbiguousWorkerEvidence=File.Exists(FencePath(local))||File.Exists(ResultPath(local));
+        var locallyProvenNeverSubmitted=localOutcome is null
+            && string.IsNullOrWhiteSpace(local.SpoolerJobId)
+            && !hasAmbiguousWorkerEvidence
+            && local.State is LocalJobState.Reserved or LocalJobState.Resolved;
+        if(!locallyProvenNeverSubmitted)
+        {
+            _lastCoordinatorErrorCode="claim_reconciliation_local_evidence_unsafe";
+            _fileLog.Info("claim_reconciliation_held",$"attempt={local.AttemptId}; state={local.State}; evidence=local_ambiguous");
+            return false;
+        }
+        var resolutionId=state.ResolutionRequestId;
+        if(string.IsNullOrWhiteSpace(resolutionId))
+        {
+            resolutionId=CryptoUtil.NewRequestId();
+            state=state with{ResolutionRequestId=resolutionId};
+            await SavePendingClaimStateAsync(state,ct);
+        }
+        var request=new ClaimConflictResolutionRequest(
+            resolutionId,
+            state.Request.RequestId,
+            state.AttemptId.Value,
+            local.ServerJobId,
+            local.ContentSha256,
+            local.DestinationKey,
+            await _store.GetMaxAttemptIdAsync(ct),
+            state.ConflictFields??[]);
+        var result=await RunApiAsync("claim_reconcile",()=>_api.ResolveClaimConflictAsync(request,ct));
+        if(!result.Success
+            ||!string.Equals(result.Status,"replacement_reserved",StringComparison.Ordinal)
+            ||!string.Equals(result.ClaimRequestId,state.Request.RequestId,StringComparison.Ordinal)
+            ||result.OldAttemptId!=state.AttemptId
+            ||result.ReplacementAttemptId is null
+            ||result.ReplacementAttemptId<=request.LocalMaxAttemptId
+            ||!HasExplicitOffset(result.ServerTime??""))
+            throw new InvalidDataException("پاسخ claim_reconcile معتبر نیست؛ quarantine حفظ شد.");
+        var active=PendingClaimState.Active(state.Request);
+        await SavePendingClaimStateAsync(active,ct);
+        _claimReconciliationRequired=false;
+        _lastCoordinatorErrorCode=null;
+        _claimConflictAttemptId=null;_claimConflictServerJobId=null;_claimConflictFields=null;_claimConflictServerScope=null;
+        _claimConflictCount=0;_oldestClaimConflictAt=null;
+        _fileLog.Info("claim_reconciliation_completed",$"old_attempt={state.AttemptId}; replacement_attempt={result.ReplacementAttemptId}; fields={SafeConflictFieldList(state.ConflictFields??[])}");
+        return true;
+    }
+
+    private static string SafeConflictFieldList(IEnumerable<string> fields)
+        =>string.Join(',',fields.Select(field=>field switch
+        {
+            "payload_json"=>"payload",
+            "content_sha256"=>"content_hash",
+            "server_scope"=>"server_identity",
+            _=>field
+        }));
 
     private async Task AcceptAnyReservedAsync(CancellationToken ct)
     {
@@ -965,7 +1128,21 @@ public sealed class PrintAgentService : BackgroundService
                 printerHealth.LastError,
                 printerHealth.AgeMilliseconds,
                 printerHealth.IsFresh,
-                printerHealth.Generation);
+                printerHealth.Generation,
+                _consecutiveApiFailures>0?"degraded":_lastApiSuccess is null?"unknown":"healthy",
+                _lastApiSuccess?.ToString("O"),
+                _lastApiErrorCode,
+                _consecutiveApiFailures,
+                _claimReconciliationRequired?"reconciliation_required":_lastCoordinatorErrorCode is null?(_lastCoordinatorSuccess is null?"unknown":"healthy"):"degraded",
+                _lastCoordinatorSuccess?.ToString("O"),
+                _lastCoordinatorErrorCode,
+                _claimReconciliationRequired,
+                _claimConflictCount,
+                _oldestClaimConflictAt is null?null:(long)Math.Max(0,(DateTimeOffset.UtcNow-_oldestClaimConflictAt.Value).TotalSeconds),
+                _claimConflictAttemptId,
+                _claimConflictServerJobId,
+                _claimConflictFields,
+                _claimConflictServerScope);
             await DurableFile.WriteJsonAtomicAsync(_paths.HealthPath,snapshot,ct);
         }
         catch(Exception e)

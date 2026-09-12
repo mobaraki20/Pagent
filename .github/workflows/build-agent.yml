@@ -2,6 +2,10 @@ name: Build Sokna Print Agent
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'agent/**'
+      - '.github/workflows/build-agent.yml'
   push:
     paths:
       - 'agent/**'
@@ -163,7 +167,7 @@ jobs:
           if([double]$size.hybrid_final.zip_reduction_percent_vs_baseline -le 0){throw 'Hybrid payload ZIP did not reduce size versus baseline.'}
           if([double]$size.hybrid_final.setup_compression_gain_percent_vs_hybrid_uncompressed -le 0){throw 'Single-file compression did not improve Hybrid Setup size.'}
           $acceptance=Get-ChildItem 'agent/artifacts/acceptance-smoke' -Recurse -Filter '*.result.json' -ErrorAction Stop
-          if($acceptance.Count -lt 37){throw "Acceptance smoke evidence incomplete: expected at least 37 result files, found $($acceptance.Count)."}
+          if($acceptance.Count -lt 38){throw "Acceptance smoke evidence incomplete: expected at least 38 result files, found $($acceptance.Count)."}
           foreach($id in @('A35','A37','A38','A47')){
             $result=Get-ChildItem "agent/artifacts/acceptance-smoke/$id" -Filter "$id.result.json" -ErrorAction Stop | Select-Object -First 1
             if($null -eq $result){throw "Required preview acceptance evidence missing: $id"}

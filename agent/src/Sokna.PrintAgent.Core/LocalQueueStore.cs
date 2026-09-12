@@ -183,10 +183,24 @@ public sealed class LocalQueueStore
         await command.ExecuteNonQueryAsync(ct);
     }
 
-    public Task<LocalJob> PersistReservedAsync(ClaimItem item,string proposedLocalReceiptId,CancellationToken ct=default)
-        => PersistReservedAsync(item,proposedLocalReceiptId,LegacyServerScope,ct);
+    public async Task<LocalJob> PersistReservedAsync(ClaimItem item,string proposedLocalReceiptId,CancellationToken ct=default)
+    {
+        var result=await PersistReservedResultAsync(item,proposedLocalReceiptId,LegacyServerScope,ct);
+        if(result.Disposition==ClaimPersistenceDisposition.ReconciliationRequired)throw new ClaimReconciliationRequiredException(result.MismatchedFields);
+        return result.ExistingOrCreated;
+    }
 
     public async Task<LocalJob> PersistReservedAsync(ClaimItem item,string proposedLocalReceiptId,string serverScope,CancellationToken ct=default)
+    {
+        var result=await PersistReservedResultAsync(item,proposedLocalReceiptId,serverScope,ct);
+        if(result.Disposition==ClaimPersistenceDisposition.ReconciliationRequired)throw new ClaimReconciliationRequiredException(result.MismatchedFields);
+        return result.ExistingOrCreated;
+    }
+
+    public Task<ClaimPersistenceResult> PersistReservedResultAsync(ClaimItem item,string proposedLocalReceiptId,CancellationToken ct=default)
+        => PersistReservedResultAsync(item,proposedLocalReceiptId,LegacyServerScope,ct);
+
+    public async Task<ClaimPersistenceResult> PersistReservedResultAsync(ClaimItem item,string proposedLocalReceiptId,string serverScope,CancellationToken ct=default)
     {
         if(!string.Equals(CryptoUtil.Sha256Hex(item.Job.PayloadJson),item.Job.ContentSha256,StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("content_sha256 با Payload دریافتی تطابق ندارد.");
@@ -196,6 +210,7 @@ public sealed class LocalQueueStore
 
         await using var db=await OpenAsync(ct);
         await using var tx=(SqliteTransaction)await db.BeginTransactionAsync(ct);
+        var inserted=0;
         await using(var command=db.CreateCommand())
         {
             command.Transaction=tx;
@@ -222,7 +237,7 @@ public sealed class LocalQueueStore
             command.Parameters.AddWithValue("$lease_expires",leaseExpiry.ToUniversalTime().ToString("O"));
             command.Parameters.AddWithValue("$now",DateTimeOffset.UtcNow.ToString("O"));
             command.Parameters.AddWithValue("$scope",serverScope);
-            await command.ExecuteNonQueryAsync(ct);
+            inserted=await command.ExecuteNonQueryAsync(ct);
         }
 
         LocalJob? row;
@@ -235,17 +250,18 @@ public sealed class LocalQueueStore
             row=await reader.ReadAsync(ct)?ReadJob(reader):null;
         }
         if(row is null)throw new InvalidOperationException("Attempt پس از ذخیره محلی پیدا نشد.");
-        if(row.ServerJobId!=item.Job.Id||
-           !string.Equals(row.ContentSha256,item.Job.ContentSha256,StringComparison.OrdinalIgnoreCase)||
-           !string.Equals(row.PayloadJson,item.Job.PayloadJson,StringComparison.Ordinal)||
-           !string.Equals(row.DestinationKey,item.Destination.DestinationKey,StringComparison.OrdinalIgnoreCase)||
-           !string.Equals(row.QueueName,item.Destination.WindowsQueueName,StringComparison.OrdinalIgnoreCase)||
-           !string.Equals(row.ServerScope,serverScope,StringComparison.Ordinal))
-        {
-            throw new InvalidDataException("Claim تکراری با identity/payload/destination/server متفاوت برای همان attempt_id دریافت شد.");
-        }
+
+        var mismatches=new List<string>();
+        if(row.ServerJobId!=item.Job.Id)mismatches.Add("server_job_id");
+        if(!string.Equals(row.ContentSha256,item.Job.ContentSha256,StringComparison.OrdinalIgnoreCase))mismatches.Add("content_sha256");
+        if(!string.Equals(row.PayloadJson,item.Job.PayloadJson,StringComparison.Ordinal))mismatches.Add("payload_json");
+        if(!string.Equals(row.DestinationKey,item.Destination.DestinationKey,StringComparison.OrdinalIgnoreCase))mismatches.Add("destination_key");
+        if(!string.Equals(row.QueueName,item.Destination.WindowsQueueName,StringComparison.OrdinalIgnoreCase))mismatches.Add("queue_name");
+        if(!string.Equals(row.ServerScope,serverScope,StringComparison.Ordinal))mismatches.Add("server_scope");
+
         await tx.CommitAsync(ct);
-        return row;
+        if(mismatches.Count>0)return new(ClaimPersistenceDisposition.ReconciliationRequired,row,mismatches);
+        return new(inserted==1?ClaimPersistenceDisposition.Created:ClaimPersistenceDisposition.ExactReplay,row,Array.Empty<string>());
     }
 
     public async Task SetStateAsync(long attemptId,LocalJobState state,string? spoolerJobId=null,string? error=null,bool markWorkerLaunching=false,CancellationToken ct=default)
@@ -278,6 +294,14 @@ public sealed class LocalQueueStore
         command.Parameters.AddWithValue("$attempt",attemptId);
         await using var reader=await command.ExecuteReaderAsync(ct);
         return await reader.ReadAsync(ct)?ReadJob(reader):null;
+    }
+
+    public async Task<long> GetMaxAttemptIdAsync(CancellationToken ct=default)
+    {
+        await using var db=await OpenAsync(ct);
+        await using var command=db.CreateCommand();
+        command.CommandText="SELECT COALESCE(MAX(attempt_id),0) FROM local_jobs";
+        return Convert.ToInt64(await command.ExecuteScalarAsync(ct));
     }
 
     public async Task<List<LocalJob>> GetRecoverableAsync(CancellationToken ct=default)
