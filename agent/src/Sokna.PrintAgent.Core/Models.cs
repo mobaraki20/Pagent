@@ -56,7 +56,7 @@ public sealed record ClaimPersistenceResult(
     LocalJob ExistingOrCreated,
     IReadOnlyList<string> MismatchedFields);
 
-public sealed class ClaimReconciliationRequiredException : InvalidDataException
+public sealed class ClaimReconciliationRequiredException : Exception
 {
     public IReadOnlyList<string> MismatchedFields { get; }
     public ClaimReconciliationRequiredException(IReadOnlyList<string> mismatchedFields)
