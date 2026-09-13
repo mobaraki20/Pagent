@@ -181,6 +181,7 @@ public sealed class PrintAgentService : BackgroundService
         {
             await AcceptAnyReservedAsync(ct);
             await PromoteServerScopeWhenLegacyBacklogClearsAsync(ct);
+            await ReconcileOneAmbiguousAsync(ct);
 
             var processed=await ProcessOneAsync(ct);
             var claimed=false;
@@ -583,8 +584,11 @@ public sealed class PrintAgentService : BackgroundService
         if(pendingState is null)
         {
             var health=ReadyQueues();
+            var blocked=(await _store.GetUnresolvedAmbiguousAsync(ct))
+                .Select(x=>x.DestinationKey)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var ready=_destinations
-                .Where(d=>health.Any(p=>QueueReady(p,d.WindowsQueueName)))
+                .Where(d=>!blocked.Contains(d.DestinationKey)&&health.Any(p=>QueueReady(p,d.WindowsQueueName)))
                 .Select(d=>d.DestinationKey)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
@@ -854,6 +858,40 @@ public sealed class PrintAgentService : BackgroundService
         return true;
     }
 
+    private async Task ReconcileOneAmbiguousAsync(CancellationToken ct)
+    {
+        if(_api is null||!_attemptStatusSupported)return;
+        var job=(await _store.GetUnresolvedAmbiguousAsync(ct)).FirstOrDefault();
+        if(job is null)return;
+        AttemptStatusResult status;
+        try{status=await RunApiAsync("attempt_status_reconcile",()=>_api.AttemptStatusAsync(job,ct));}
+        catch(ApiOperationException){return;}
+        if(!ValidateStatusIdentity(status,job,out var error))
+        {
+            _lastCoordinatorErrorCode="attempt_status_reconciliation_mismatch";
+            _fileLog.Info("attempt_status_reconciliation_held",$"attempt={job.AttemptId}; reason={Safe(error)}");
+            return;
+        }
+        if(status.Terminal&&!status.RequiresHumanResolution&&string.Equals(status.NextAction,"none",StringComparison.Ordinal))
+        {
+            await _store.SettleByServerResolutionAsync(job.AttemptId,status.JobState,ct);
+            await _mutationRequests.CompleteAcceptAsync(job.AttemptId,ct);
+            await _mutationRequests.CompleteStartAsync(job.AttemptId,ct);
+            _fileLog.Info("human_resolution_consumed",$"job={job.ServerJobId}; attempt={job.AttemptId}; server_state={Safe(status.JobState)}");
+        }
+    }
+
+    private static bool ValidateStatusIdentity(AttemptStatusResult result,LocalJob local,out string error)
+    {
+        error="Attempt status reconciliation نامعتبر است.";
+        if(!result.Success){error="success=false";return false;}
+        if(result.AttemptId!=local.AttemptId||result.JobId!=local.ServerJobId){error="identity mismatch";return false;}
+        if(!result.ReceiptMatches){error="receipt mismatch";return false;}
+        if(!HasExplicitOffset(result.ServerTime)){error="server_time invalid";return false;}
+        if(string.IsNullOrWhiteSpace(result.NextAction)||string.IsNullOrWhiteSpace(result.JobState)){error="state/action missing";return false;}
+        return true;
+    }
+
     private static bool ValidateMutationResponse(ApiResult result,LocalJob local,string action)
     {
         if(!result.Success||result.RequiresHumanResolution)return false;
@@ -876,9 +914,39 @@ public sealed class PrintAgentService : BackgroundService
             .OrderBy(x=>x.ServerJobId)
             .ThenBy(x=>x.AttemptNo)
             .FirstOrDefault(candidate=>
-                queues.Any(q=>QueueReady(q,candidate.QueueName))&&
+                queues.Any(q=>QueueWindowsReady(q,candidate.QueueName))&&
                 !open.Any(older=>string.Equals(older.DestinationKey,candidate.DestinationKey,StringComparison.OrdinalIgnoreCase)&&older.ServerJobId<candidate.ServerJobId));
         if(job is null)return false;
+
+        if(_attemptStatusSupported)
+        {
+            AttemptStatusResult status;
+            try{status=await RunApiAsync("attempt_status_before_worker",()=>_api.AttemptStatusAsync(job,ct));}
+            catch(ApiOperationException){return false;}
+            if(!ValidateStatusIdentity(status,job,out var statusError))
+            {
+                await _store.SetStateAsync(job.AttemptId,LocalJobState.RecoveryHold,error:statusError,ct:ct);
+                return true;
+            }
+            if(status.Terminal&&!status.RequiresHumanResolution&&string.Equals(status.NextAction,"none",StringComparison.Ordinal))
+            {
+                await _store.SettleByServerResolutionAsync(job.AttemptId,status.JobState,ct);
+                await _mutationRequests.CompleteStartAsync(job.AttemptId,ct);
+                return true;
+            }
+            if(status.RequiresHumanResolution||status.Terminal||status.AttemptState!="claimed"||status.NextAction!="start")
+            {
+                await _store.SetStateAsync(job.AttemptId,LocalJobState.RecoveryHold,error:"Server attempt برای Worker launch مجوز claimed/start معتبر نداد.",ct:ct);
+                return true;
+            }
+        }
+
+        var selectedQueue=queues.First(q=>string.Equals(q.Name,job.QueueName,StringComparison.OrdinalIgnoreCase));
+        if(!PrinterAutomationPolicy.IsCapable(selectedQueue))
+        {
+            await PersistOutcomeAndReportAsync(job,PrintOutcomeStatus.Failed,null,false,"printer_not_automation_capable","Queue انتخاب‌شده برای چاپ unattended تحت LocalSystem مناسب نیست.","agent:automation-policy",ct);
+            return true;
+        }
 
         var startRequest=await _mutationRequests.GetOrCreateStartAsync(job,ct);
         try
@@ -1168,6 +1236,9 @@ public sealed class PrintAgentService : BackgroundService
     }
 
     private static bool QueueReady(PrinterQueueHealth printer,string queue)
+        =>string.Equals(printer.Name,queue,StringComparison.OrdinalIgnoreCase)&&PrinterAutomationPolicy.IsReady(printer);
+
+    private static bool QueueWindowsReady(PrinterQueueHealth printer,string queue)
         =>string.Equals(printer.Name,queue,StringComparison.OrdinalIgnoreCase)&&!printer.Offline&&!printer.Paused&&!printer.PaperOut&&!printer.Error;
 
     private long DiskFreeMb()

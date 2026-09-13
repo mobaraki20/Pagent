@@ -336,8 +336,45 @@ public sealed class LocalQueueStore
     {
         await using var db=await OpenAsync(ct);
         await using var command=db.CreateCommand();
-        command.CommandText="SELECT COUNT(*) FROM attempt_outcomes WHERE status IN ('Unknown','RecoveryHold')";
+        command.CommandText="SELECT COUNT(*) FROM local_jobs WHERE state IN ('Unknown','RecoveryHold')";
         return Convert.ToInt32(await command.ExecuteScalarAsync(ct));
+    }
+
+    public async Task<List<LocalJob>> GetUnresolvedAmbiguousAsync(CancellationToken ct=default)
+    {
+        await using var db=await OpenAsync(ct);
+        await using var command=db.CreateCommand();
+        command.CommandText="SELECT * FROM local_jobs WHERE state IN ('Unknown','RecoveryHold') ORDER BY updated_at,attempt_id";
+        await using var reader=await command.ExecuteReaderAsync(ct);
+        var rows=new List<LocalJob>();
+        while(await reader.ReadAsync(ct))rows.Add(ReadJob(reader));
+        return rows;
+    }
+
+    public async Task SettleByServerResolutionAsync(long attemptId,string serverState,CancellationToken ct=default)
+    {
+        var now=DateTimeOffset.UtcNow.ToString("O");
+        await using var db=await OpenAsync(ct);
+        await using var tx=(SqliteTransaction)await db.BeginTransactionAsync(ct);
+        await using(var job=db.CreateCommand())
+        {
+            job.Transaction=tx;
+            job.CommandText="UPDATE local_jobs SET state='Resolved',last_error=$reason,updated_at=$now WHERE attempt_id=$attempt AND state IN ('Unknown','RecoveryHold','Claimed','Reserved')";
+            job.Parameters.AddWithValue("$reason",Bound($"Settled by authoritative server terminal resolution ({serverState}).",500));
+            job.Parameters.AddWithValue("$now",now);
+            job.Parameters.AddWithValue("$attempt",attemptId);
+            await job.ExecuteNonQueryAsync(ct);
+        }
+        await using(var report=db.CreateCommand())
+        {
+            report.Transaction=tx;
+            report.CommandText="UPDATE report_outbox SET delivery_state='SettledByServerResolution',permanent_error=0,next_attempt_at=NULL,last_error=$reason,last_error_code='server_terminal_resolution',updated_at=$now WHERE attempt_id=$attempt AND sent_at IS NULL";
+            report.Parameters.AddWithValue("$reason",Bound($"Authoritative server terminal resolution ({serverState}); local outcome audit preserved.",500));
+            report.Parameters.AddWithValue("$now",now);
+            report.Parameters.AddWithValue("$attempt",attemptId);
+            await report.ExecuteNonQueryAsync(ct);
+        }
+        await tx.CommitAsync(ct);
     }
 
     public async Task<AttemptOutcome?> GetOutcomeAsync(long attemptId,CancellationToken ct=default)

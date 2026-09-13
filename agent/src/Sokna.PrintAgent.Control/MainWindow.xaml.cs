@@ -594,7 +594,7 @@ public partial class MainWindow : Window
     }
 
     private static bool IsPhysicalPrinter(PrinterQueueHealth p) => !VirtualPrinterQueues.IsPdfTestQueue(p.Name);
-    private static bool IsReady(PrinterQueueHealth p) => !p.Offline && !p.Paused && !p.PaperOut && !p.Error;
+    private static bool IsReady(PrinterQueueHealth p) => PrinterAutomationPolicy.IsReady(p);
 
     private static string? GetServiceStatus(string serviceName)
     {
@@ -689,7 +689,7 @@ public partial class MainWindow : Window
     {
         public PrinterRow(PrinterQueueHealth p) : this(
             p.Name,
-            VirtualPrinterQueues.IsPdfTestQueue(p.Name) ? (IsReady(p) ? "Test Ready" : "Test Error") : p.Offline ? "Offline" : p.PaperOut ? "Paper Out" : p.Paused ? "Paused" : p.Error ? "Error" : "Ready",
+            VirtualPrinterQueues.IsPdfTestQueue(p.Name) ? (IsReady(p) ? "Test Ready" : "Test Error") : !p.AutomationCapable ? "Interactive / Auto-print unavailable" : p.Offline ? "Offline" : p.PaperOut ? "Paper Out" : p.Paused ? "Paused" : p.Error ? "Error" : "Auto-print Ready",
             p.Jobs,
             p.Driver,
             p.Port) { }

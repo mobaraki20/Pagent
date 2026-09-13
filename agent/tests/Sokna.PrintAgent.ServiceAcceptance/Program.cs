@@ -11,7 +11,7 @@ var parsed=ParseArgs(args);
 if(!parsed.TryGetValue("case",out var caseId)||string.IsNullOrWhiteSpace(caseId) ||
    !parsed.TryGetValue("results",out var resultsDirectory)||string.IsNullOrWhiteSpace(resultsDirectory))
 {
-    Console.Error.WriteLine("Usage: --case A12|A13|A14|A15|A16|A19|A20|A21|A22|A23|A30 --results <directory>");
+    Console.Error.WriteLine("Usage: --case A12|A13|A14|A15|A16|A19|A20|A21|A22|A23|A30|A48|A49|A50|A51 --results <directory>");
     return 64;
 }
 
@@ -39,6 +39,10 @@ try
         case "A22": await RunA22(); break;
         case "A23": await RunA23(); break;
         case "A30": await RunA30(); break;
+        case "A48": await RunA48(); break;
+        case "A49": await RunA49(); break;
+        case "A50": await RunA50(); break;
+        case "A51": await RunA51(); break;
         default:
             await WriteResult("NOT_RUN",3,$"Service acceptance case {caseId} is not implemented.");
             return 3;
@@ -59,6 +63,76 @@ catch(Exception e)
     Log($"FAIL {e.GetType().Name}: {SafeLogText.Sanitize(e.Message,400)}");
     await WriteResult("FAIL",1,$"{e.GetType().Name}: {SafeLogText.Sanitize(e.Message,400)}");
     return 1;
+}
+
+async Task RunA48()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a31-human-resolution");
+    var job=await env.CreateJobAsync(3031,"receipt-a31",DateTimeOffset.UtcNow.AddMinutes(5));
+    var report=new ReportRequestEnvelope("request-a31","6.2.5",4,job.AttemptId,job.LocalReceiptId,"unknown",null,false,"worker_timeout","ambiguous");
+    await env.Store.CommitOutcomeAndReportAsync(job,new(PrintOutcomeStatus.Unknown,null,false,"worker_timeout","ambiguous","test:a31"),report);
+    var outbox=await env.Store.GetOutboxForAttemptAsync(job.AttemptId);
+    await env.Store.MarkReportDeliveryAsync(outbox!.Id,ReportDeliveryState.ReconciliationRequired,"human",409,"requires_human_resolution",null);
+    var transport=new CoordinatorTransport(null,new ConcurrentQueue<string>())
+    {
+        AttemptStatus=new(true,job.AttemptId,job.ServerJobId,"unknown","resolved",true,"none",true,false,null,DateTimeOffset.UtcNow.ToString("O"))
+    };
+    var processFactory=new CountingNoStartFactory();
+    var service=env.CreateService(transport,true,processFactory);
+    await InvokePrivateAsync(service,"ReconcileOneAmbiguousAsync");
+    await InvokePrivateAsync(service,"ReconcileOneAmbiguousAsync");
+    Check((await env.Store.GetByAttemptAsync(job.AttemptId))?.State==LocalJobState.Resolved,"human resolution settles local blocker");
+    Check((await env.Store.GetOutcomeAsync(job.AttemptId))?.Status==PrintOutcomeStatus.Unknown,"unknown audit evidence is preserved");
+    Check((await env.Store.GetOutboxForAttemptAsync(job.AttemptId))?.DeliveryState==ReportDeliveryState.SettledByServerResolution,"old report is settled without resend");
+    Check(await env.Store.CountAmbiguousAsync()==0,"resolved unknown leaves unresolved counter");
+    Check(transport.AttemptStatusCount==1&&transport.ReportCount==0&&processFactory.StartCount==0,"reconciliation is idempotent and never reports or prints");
+}
+
+async Task RunA49()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a32-destination-block");
+    var blocker=await env.CreateJobAsync(3032,"receipt-a32",DateTimeOffset.UtcNow.AddMinutes(5));
+    await env.Store.SetStateAsync(blocker.AttemptId,LocalJobState.Unknown,error:"ambiguous");
+    var transport=new CoordinatorTransport(env.CreateClaimItem(4032),new ConcurrentQueue<string>());
+    var service=env.CreateService(transport,true,new CountingNoStartFactory());
+    await InvokePrivateAsync(service,"ClaimAsync");
+    Check(transport.ClaimCount==0,"blocked destination omitted before claim");
+    await env.Store.SettleByServerResolutionAsync(blocker.AttemptId,"resolved");
+    await InvokePrivateAsync(service,"ClaimAsync");
+    Check(transport.ClaimCount==1,"destination becomes claimable after authoritative settlement");
+}
+
+async Task RunA50()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a33-interactive-printer");
+    var destination=ServiceTestEnvironment.TestDestination with{WindowsQueueName="Microsoft Print to PDF"};
+    var claim=env.CreateClaimItem(3033) with{Destination=destination};
+    var job=await env.Store.PersistReservedAsync(claim,"receipt-a33","server-a");
+    await env.Store.SetStateAsync(job.AttemptId,LocalJobState.Claimed);
+    var queue=new PrinterQueueHealth("Microsoft Print to PDF",false,false,false,false,0,"Microsoft Print To PDF","PORTPROMPT:");
+    var transport=new CoordinatorTransport(null,new ConcurrentQueue<string>());
+    var processFactory=new CountingNoStartFactory();
+    var service=env.CreateService(transport,false,processFactory,health:new MutablePrinterHealthReader(PrinterHealthSnapshots.Fresh(queue)),destinations:[destination]);
+    await InvokePrivateAsync(service,"ProcessOneAsync");
+    var outcome=await env.Store.GetOutcomeAsync(job.AttemptId);
+    Check(outcome is {Status:PrintOutcomeStatus.Failed,ErrorCode:"printer_not_automation_capable"},"interactive queue fails deterministically before submit");
+    Check(transport.StartCount==0&&processFactory.StartCount==0,"interactive queue never reaches server start or worker");
+}
+
+async Task RunA51()
+{
+    using var env=await ServiceTestEnvironment.CreateAsync("a34-terminal-accepted");
+    var job=await env.CreateJobAsync(3034,"receipt-a34",DateTimeOffset.UtcNow.AddMinutes(5));
+    await env.Store.SetStateAsync(job.AttemptId,LocalJobState.Claimed);
+    var transport=new CoordinatorTransport(null,new ConcurrentQueue<string>())
+    {
+        AttemptStatus=new(true,job.AttemptId,job.ServerJobId,"claimed","resolved",true,"none",true,false,null,DateTimeOffset.UtcNow.ToString("O"))
+    };
+    var processFactory=new CountingNoStartFactory();
+    var service=env.CreateService(transport,true,processFactory);
+    await InvokePrivateAsync(service,"ProcessOneAsync");
+    Check((await env.Store.GetByAttemptAsync(job.AttemptId))?.State==LocalJobState.Resolved,"accepted job terminal on server settles without launch");
+    Check(transport.StartCount==0&&processFactory.StartCount==0,"terminal accepted job never prints");
 }
 
 async Task RunA12()
@@ -770,7 +844,7 @@ sealed class CoordinatorTransport:IPrintTransport
     private readonly ClaimItem? _claim;
     private readonly ConcurrentQueue<string> _events;
     private int _claimDelivered;
-    private int _claimCount,_acceptCount,_startCount,_reportCount,_heartbeatCount,_probeCount;
+    private int _claimCount,_acceptCount,_startCount,_reportCount,_heartbeatCount,_probeCount,_attemptStatusCount;
 
     public CoordinatorTransport(ClaimItem? claim,ConcurrentQueue<string> events){_claim=claim;_events=events;}
     public int ClaimCount=>Volatile.Read(ref _claimCount);
@@ -779,6 +853,8 @@ sealed class CoordinatorTransport:IPrintTransport
     public int ReportCount=>Volatile.Read(ref _reportCount);
     public int HeartbeatCount=>Volatile.Read(ref _heartbeatCount);
     public int ProbeCount=>Volatile.Read(ref _probeCount);
+    public int AttemptStatusCount=>Volatile.Read(ref _attemptStatusCount);
+    public AttemptStatusResult? AttemptStatus{get;set;}
 
     public TaskCompletionSource<bool> StartEntered{get;}=new(TaskCreationOptions.RunContinuationsAsynchronously);
     public TaskCompletionSource<bool> HeartbeatEntered{get;}=new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -807,7 +883,10 @@ sealed class CoordinatorTransport:IPrintTransport
         =>Task.FromResult(new ApiResult(true,"claimed",AttemptId:item.Attempt.Id,JobId:item.Job.Id,ServerTime:DateTimeOffset.UtcNow.ToString("O")));
 
     public Task<AttemptStatusResult> AttemptStatusAsync(LocalJob job,CancellationToken ct)
-        =>Task.FromResult(new AttemptStatusResult(true,job.AttemptId,job.ServerJobId,"claimed","open",true,"start",false,false,job.LeaseExpiresAt.ToString("O"),DateTimeOffset.UtcNow.ToString("O")));
+    {
+        Interlocked.Increment(ref _attemptStatusCount);
+        return Task.FromResult(AttemptStatus??new AttemptStatusResult(true,job.AttemptId,job.ServerJobId,"claimed","open",true,"start",false,false,job.LeaseExpiresAt.ToString("O"),DateTimeOffset.UtcNow.ToString("O")));
+    }
 
     public async Task<ApiResult> StartAsync(LocalJob job,string requestId,CancellationToken ct)
     {

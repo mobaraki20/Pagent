@@ -20,6 +20,13 @@ Check(!string.IsNullOrWhiteSpace(AgentVersionInfo.Current),"agent_version_source
 Check(SafeLogText.Sanitize("Authorization: Bearer abc-raw-secret")=="[redacted-sensitive-text]","authorization_log_redacted");
 Check(SafeLogText.Sanitize("{\"payload_json\":\"full-order\"}")=="[redacted-sensitive-text]","payload_log_redacted");
 Check(SafeLogText.Sanitize("network timeout",7)=="network","safe_log_bounded");
+Check(!PrinterAutomationPolicy.IsCapable(new("Microsoft Print to PDF",false,false,false,false,0,"Microsoft Print To PDF","PORTPROMPT:")),"portprompt_pdf_not_automation_capable");
+Check(!PrinterAutomationPolicy.IsCapable(new("Fax",false,false,false,false,0,"Fax","SHRFAX:")),"shared_fax_not_automation_capable");
+Check(!PrinterAutomationPolicy.IsCapable(new("File Printer",false,false,false,false,0,"Driver","FILE:")),"file_port_not_automation_capable");
+Check(!PrinterAutomationPolicy.IsCapable(new("Null Printer",false,false,false,false,0,"Driver","nul:")),"nul_port_not_automation_capable_case_insensitive");
+Check(!PrinterAutomationPolicy.IsCapable(new("PDFCreator",false,false,false,false,0,"PDFCreator","pdfcmon")),"third_party_virtual_printer_not_blanket_safe");
+Check(PrinterAutomationPolicy.IsCapable(new("Thermal",false,false,false,false,0,"Thermal Driver","USB001")),"physical_usb_queue_automation_capable");
+Check(PrinterAutomationPolicy.IsCapable(VirtualPrinterQueues.PdfTestHealth()),"sokna_pdf_test_sink_remains_capable");
 
 // G01/G02/G03: heartbeat wire omission/completeness and API field preservation.
 var heartbeatHandler=new CaptureHttpHandler(HttpStatusCode.OK,"{\"success\":true}");
@@ -128,12 +135,21 @@ ClaimItem MakeClaim(long attemptId,int attemptNo,string lease="lease-a",string? 
 var first=MakeClaim(1001,1);
 var l1=await store.PersistReservedAsync(first,"receipt-0001","server-a");
 Check(l1.AttemptId==1001&&l1.ServerJobId==77,"attempt_1_persist");
+var unknownReport=new ReportRequestEnvelope("request-unknown-1001","6.2.5",4,l1.AttemptId,l1.LocalReceiptId,"unknown",null,false,"ambiguous","ambiguous");
+await store.CommitOutcomeAndReportAsync(l1,new(PrintOutcomeStatus.Unknown,null,false,"ambiguous","ambiguous","test:unknown"),unknownReport);
+var unknownOutbox=await store.GetOutboxForAttemptAsync(l1.AttemptId);
+await store.MarkReportDeliveryAsync(unknownOutbox!.Id,ReportDeliveryState.ReconciliationRequired,"human resolution required",409,"requires_human_resolution",null);
+await store.SettleByServerResolutionAsync(l1.AttemptId,"resolved");
+Check((await store.GetByAttemptAsync(l1.AttemptId))?.State==LocalJobState.Resolved,"authoritative_resolution_settles_local_blocker");
+Check((await store.GetOutcomeAsync(l1.AttemptId))?.Status==PrintOutcomeStatus.Unknown,"authoritative_resolution_preserves_unknown_audit_outcome");
+Check((await store.GetOutboxForAttemptAsync(l1.AttemptId))?.DeliveryState==ReportDeliveryState.SettledByServerResolution,"authoritative_resolution_settles_outbox_without_resend");
+Check(await store.CountAmbiguousAsync()==0,"settled_unknown_not_counted_as_unresolved");
 Check(l1.ProtectedLeaseToken!="lease-a"&&protector.Unprotect(l1.ProtectedLeaseToken)=="lease-a","lease_not_plaintext_at_local_boundary");
 var l1Replay=await store.PersistReservedAsync(first,"receipt-should-not-replace","server-a");
 Check(l1Replay.AttemptId==1001&&l1Replay.LocalReceiptId=="receipt-0001","duplicate_claim_same_attempt_idempotent");
 var typedReplay=await store.PersistReservedResultAsync(first,"receipt-typed-replay","server-a");
 Check(typedReplay.Disposition==ClaimPersistenceDisposition.ExactReplay&&typedReplay.ExistingOrCreated.LocalReceiptId=="receipt-0001","typed_exact_duplicate_claim_is_idempotent");
-Check(await store.CountOpenAsync()==1,"duplicate_claim_does_not_duplicate_open_job");
+Check(await store.CountOpenAsync()==0,"duplicate_claim_does_not_reopen_server_resolved_job");
 var alteredPayload="{\"schema\":\"sokna-print-document-v2\",\"title\":\"DIFFERENT\"}";
 var altered=first with{Job=first.Job with{PayloadJson=alteredPayload,ContentSha256=CryptoUtil.Sha256Hex(alteredPayload)}};
 var typedConflict=await store.PersistReservedResultAsync(altered,"receipt-conflict-typed","server-a");
