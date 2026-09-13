@@ -124,6 +124,7 @@ async Task RunA51()
     using var env=await ServiceTestEnvironment.CreateAsync("a34-terminal-accepted");
     var job=await env.CreateJobAsync(3034,"receipt-a34",DateTimeOffset.UtcNow.AddMinutes(5));
     await env.Store.SetStateAsync(job.AttemptId,LocalJobState.Claimed);
+    await env.Store.SetMetaAsync($"prelaunch_validation_required_v1:{job.AttemptId}","1");
     var transport=new CoordinatorTransport(null,new ConcurrentQueue<string>())
     {
         AttemptStatus=new(true,job.AttemptId,job.ServerJobId,"claimed","resolved",true,"none",true,false,null,DateTimeOffset.UtcNow.ToString("O"))

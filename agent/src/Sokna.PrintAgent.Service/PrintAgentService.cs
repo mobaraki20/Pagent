@@ -13,6 +13,7 @@ public sealed class PrintAgentService : BackgroundService
     private const string PendingClaimMetaKey="pending_claim_v1"; // legacy read-only migration key
     private const string PendingClaimStateMetaKey="pending_claim_state_v2";
     private const string ServerScopeBindingMetaKey="server_scope_binding_v1";
+    private const string PrelaunchValidationMetaPrefix="prelaunch_validation_required_v1:";
     private const string LegacyServerScope="legacy-unbound";
 
     private static readonly TimeSpan ReportIoBudget=TimeSpan.FromSeconds(5);
@@ -874,6 +875,10 @@ public sealed class PrintAgentService : BackgroundService
         }
         if(status.Terminal&&!status.RequiresHumanResolution&&string.Equals(status.NextAction,"none",StringComparison.Ordinal))
         {
+            foreach(var waiting in (await _store.GetRecoverableAsync(ct)).Where(x=>
+                x.State==LocalJobState.Claimed&&
+                string.Equals(x.DestinationKey,job.DestinationKey,StringComparison.OrdinalIgnoreCase)))
+                await _store.SetMetaAsync(PrelaunchValidationKey(waiting.AttemptId),"1",ct);
             await _store.SettleByServerResolutionAsync(job.AttemptId,status.JobState,ct);
             await _mutationRequests.CompleteAcceptAsync(job.AttemptId,ct);
             await _mutationRequests.CompleteStartAsync(job.AttemptId,ct);
@@ -918,8 +923,10 @@ public sealed class PrintAgentService : BackgroundService
                 !open.Any(older=>string.Equals(older.DestinationKey,candidate.DestinationKey,StringComparison.OrdinalIgnoreCase)&&older.ServerJobId<candidate.ServerJobId));
         if(job is null)return false;
 
-        if(_attemptStatusSupported)
+        var requiresPrelaunchValidation=await _store.GetMetaAsync(PrelaunchValidationKey(job.AttemptId),ct) is not null;
+        if(requiresPrelaunchValidation)
         {
+            if(!_attemptStatusSupported)return false;
             AttemptStatusResult status;
             try{status=await RunApiAsync("attempt_status_before_worker",()=>_api.AttemptStatusAsync(job,ct));}
             catch(ApiOperationException){return false;}
@@ -932,6 +939,7 @@ public sealed class PrintAgentService : BackgroundService
             {
                 await _store.SettleByServerResolutionAsync(job.AttemptId,status.JobState,ct);
                 await _mutationRequests.CompleteStartAsync(job.AttemptId,ct);
+                await _store.DeleteMetaAsync(PrelaunchValidationKey(job.AttemptId),ct);
                 return true;
             }
             if(status.RequiresHumanResolution||status.Terminal||status.AttemptState!="claimed"||status.NextAction!="start")
@@ -982,6 +990,7 @@ public sealed class PrintAgentService : BackgroundService
         await DurableFile.WriteJsonAtomicAsync(InputPath(job),input,ct);
         await _store.SetStateAsync(job.AttemptId,LocalJobState.WorkerLaunching,markWorkerLaunching:true,ct:ct);
         await _mutationRequests.CompleteStartAsync(job.AttemptId,ct);
+        if(requiresPrelaunchValidation)await _store.DeleteMetaAsync(PrelaunchValidationKey(job.AttemptId),ct);
 
         var worker=Path.GetFullPath(Path.Combine(AppContext.BaseDirectory,"..","Worker","Sokna.PrintAgent.Worker.exe"));
         var spec=new WorkerLaunchSpec(
@@ -1240,6 +1249,8 @@ public sealed class PrintAgentService : BackgroundService
 
     private static bool QueueWindowsReady(PrinterQueueHealth printer,string queue)
         =>string.Equals(printer.Name,queue,StringComparison.OrdinalIgnoreCase)&&!printer.Offline&&!printer.Paused&&!printer.PaperOut&&!printer.Error;
+
+    private static string PrelaunchValidationKey(long attemptId)=>PrelaunchValidationMetaPrefix+attemptId;
 
     private long DiskFreeMb()
     {

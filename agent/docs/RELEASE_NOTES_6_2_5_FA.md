@@ -13,7 +13,7 @@
 - outcome اصلی حذف یا به `submitted` تبدیل نمی‌شود؛ report محلی با state جدید `SettledByServerResolution` از ارسال مجدد خارج می‌شود.
 - `local_unknown_count` اکنون فقط رکوردهای محلی واقعاً unresolved را می‌شمارد.
 - destination دارای blocker از `ready_destination_keys` حذف می‌شود.
-- Jobهای Claimed قبل از Worker launch با Server اعتبارسنجی می‌شوند؛ terminal/reconcile چاپ نمی‌شود.
+- Jobهای Claimed که پشت blocker بوده‌اند با marker پایدار مشخص و قبل از Worker launch با Server اعتبارسنجی می‌شوند؛ terminal/reconcile چاپ نمی‌شود و مسیر عادی Start replay تغییر نمی‌کند.
 - `PORTPROMPT:`, `FILE:`, `SHRFAX:` و `NUL:` و همچنین Microsoft Print to PDF/XPS برای unattended printing نامعتبرند.
 - Queue داخلی `Sokna PDF Test` برای UAT بدون تغییر باقی مانده است.
 - mapping قدیمی تعاملی قبل از `start` و Worker با خطای `printer_not_automation_capable` متوقف می‌شود.
