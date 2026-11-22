@@ -175,7 +175,7 @@ internal static class ReceiptRenderer
         private void DrawCustomerItems(JsonElement root)
         {
             var items=new List<JsonElement>();if(root.TryGetProperty("sections",out var sections)&&sections.ValueKind==JsonValueKind.Array)foreach(var section in sections.EnumerateArray())if(section.TryGetProperty("items",out var array)&&array.ValueKind==JsonValueKind.Array)items.AddRange(array.EnumerateArray());
-            var layout=_layout=="responsive-receipt"?(_paperWidth<=60?"two-line":"columnar"):_layout;if(!_showPrices)layout="two-line";if(layout is "columnar" or "columnar-compact")DrawCustomerColumns(items,layout=="columnar");else foreach(var item in items)DrawCustomerTwoLine(item);
+            var layout=_layout=="responsive-receipt"?(_paperWidth<=60?"two-line":"columnar"):_layout;if(!_showPrices)layout="two-line";if(layout is "columnar" or "columnar-compact")DrawCustomerColumns(items,layout=="columnar");else if(layout=="single-line")foreach(var item in items)DrawCustomerSingleLine(item);else foreach(var item in items)DrawCustomerTwoLine(item);
         }
         private void DrawSummary(JsonElement root)
         {
@@ -204,6 +204,32 @@ internal static class ReceiptRenderer
         private int MeasureCellHeight(string text,int width,Font font,StringAlignment alignment)
         {
             using var format=Rtl(alignment);return (int)Math.Ceiling(_g.MeasureString(text,font,new SizeF(Math.Max(1,width),Py(1000)),format).Height)+Py(8);
+        }
+        private void DrawCustomerSingleLine(JsonElement item)
+        {
+            var name=Get(item,"name","—");
+            var quantity=FaDigits(Get(item,"quantity","1"));
+            var note=Get(item,"note","");
+            var label=quantity+" × "+name;
+            if(_showPrices)
+            {
+                var unit=Money(GetLong(item,"unit_price",0));
+                var line=Money(GetLong(item,"line_total",0));
+                var amountWidth=(int)((_width-_marginX*2)*.29);
+                var descriptionWidth=_width-_marginX*2-amountWidth;
+                label+=" · فی "+unit;
+                using var descriptionFont=MakeFont(Math.Max(_base,_table-4),true);
+                using var amountFont=MakeFont(Math.Max(_base,_table-4),true);
+                var height=Math.Max(Py(_density=="comfortable"?48:38),Math.Max(
+                    MeasureCellHeight(label,descriptionWidth,descriptionFont,StringAlignment.Far),
+                    MeasureCellHeight(line,amountWidth,amountFont,StringAlignment.Near)));
+                DrawCell(label,_marginX+amountWidth,Y,descriptionWidth,descriptionFont,StringAlignment.Far,height);
+                DrawCell(line,_marginX,Y,amountWidth,amountFont,StringAlignment.Near,height);
+                Y+=height;
+            }
+            else Text(label,Math.Max(19,_table),true,StringAlignment.Far,2);
+            if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,_notesFont,true);
+            Hairline();
         }
         private void DrawCustomerTwoLine(JsonElement item)
         {
