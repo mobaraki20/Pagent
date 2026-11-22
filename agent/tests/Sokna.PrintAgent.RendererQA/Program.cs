@@ -139,6 +139,10 @@ try
     unpaid["badge"]="حساب باز · تسویه نشده";
     unpaid["invoice_number"]="";
     Changed(customer,unpaid,80,"unpaid_account_is_visually_distinct");
+    var alternativeUnpaidBadge=Clone(unpaid);
+    alternativeUnpaidBadge["badge"]="پیش‌حساب · وجه هنوز پرداخت نشده";
+    Changed(unpaid,alternativeUnpaidBadge,58,"unpaid_status_badge_is_rendered_on_narrow_receipt");
+    Changed(unpaid,alternativeUnpaidBadge,80,"unpaid_status_badge_is_rendered_on_wide_receipt");
     var noSettlement=Clone(unpaid);
     Template(noSettlement)["show_settlement_label"]=false;
     // Explicit unpaid status stays visible, independent from the optional
