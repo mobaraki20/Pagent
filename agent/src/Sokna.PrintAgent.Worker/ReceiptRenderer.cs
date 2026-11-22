@@ -101,18 +101,75 @@ internal static class ReceiptRenderer
         }
         private void DrawPreparationItems(JsonElement root)
         {
-            if(root.TryGetProperty("sections",out var sections)&&sections.ValueKind==JsonValueKind.Array)foreach(var section in sections.EnumerateArray())
+            var entries=new List<(JsonElement Item,string Title,int Sequence)>();
+            if(root.TryGetProperty("sections",out var sections)&&sections.ValueKind==JsonValueKind.Array)
+            foreach(var section in sections.EnumerateArray())
             {
-                var sectionTitle=Get(section,"title","");if(_showSectionTitles&&sectionTitle.Length>0)Text(sectionTitle,Math.Max(20,_base),true,StringAlignment.Center,2);
                 if(!section.TryGetProperty("items",out var items)||items.ValueKind!=JsonValueKind.Array)continue;
-                foreach(var item in items.EnumerateArray())
-                {
-                    var quantity=FaDigits(Get(item,"quantity","1"));var name=Get(item,"name","—");Text(quantity+" × "+name,Math.Max(28,_table),true,StringAlignment.Far,_density=="comfortable"?3:2);
-                    if(item.TryGetProperty("previous_quantity",out var previous)&&previous.ValueKind!=JsonValueKind.Null){var oldQuantity=FaDigits(previous.ToString());BoxText($"{Label("adjustment","اصلاح")}: قبلی {oldQuantity} ← جدید {quantity}",Math.Max(17,_base-3),true);}
-                    var mode=Get(item,"fulfillment_mode","");if(mode=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),Math.Max(18,_base-2),true);
-                    var note=Get(item,"note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,Math.Max(18,_base-2),true);Hairline();
-                }
+                var title=Get(section,"title","");
+                foreach(var item in items.EnumerateArray())entries.Add((item,title,entries.Count));
             }
+            var stationOrder=Get(_design,"preparation_station_order","default");
+            IEnumerable<(JsonElement Item,string Title,int Sequence)> ordered=entries;
+            if(stationOrder=="as_ordered")
+                ordered=entries.OrderBy(x=>GetInt(x.Item,"order_index",x.Sequence)).ThenBy(x=>x.Sequence);
+            else if(stationOrder is "bar_first" or "kitchen_first")
+                ordered=entries.OrderBy(x=>PreparationStationRank(Get(x.Item,"station","other"),stationOrder)).ThenBy(x=>x.Sequence);
+            var layout=_layout=="responsive-receipt"?(_paperWidth<=60?"columnar-compact":"columnar"):_layout;
+            var columns=layout is "columnar" or "columnar-compact" or "columnar-notes";
+            var threeColumns=columns&&layout=="columnar-notes"&&_paperWidth>60;
+            var usable=_width-_marginX*2;
+            var nameWidth=threeColumns?(int)(usable*.49):(int)(usable*.77);
+            var quantityWidth=threeColumns?(int)(usable*.16):usable-nameWidth;
+            var noteWidth=usable-nameWidth-quantityWidth;
+            if(columns&&entries.Count>0)
+            {
+                using var headerFont=MakeFont(Math.Max(14,_base-5),true);
+                DrawCell("شرح",_marginX+noteWidth+quantityWidth,Y,nameWidth,headerFont,StringAlignment.Far);
+                DrawCell("تعداد",_marginX+noteWidth,Y,quantityWidth,headerFont,StringAlignment.Center);
+                if(threeColumns)DrawCell(Label("note","یادداشت"),_marginX,Y,noteWidth,headerFont,StringAlignment.Far);
+                Y+=Math.Max(Py(28),(int)headerFont.GetHeight(_g)+Py(8));Hairline();
+            }
+            string lastTitle="";
+            foreach(var entry in ordered)
+            {
+                var item=entry.Item;
+                if(_showSectionTitles&&entry.Title.Length>0&&entry.Title!=lastTitle)
+                    Text(entry.Title,Math.Max(20,_base),true,StringAlignment.Center,2);
+                lastTitle=entry.Title;
+                var quantity=FaDigits(Get(item,"quantity","1"));
+                var name=Get(item,"name","—");
+                var note=Get(item,"note","");
+                if(columns)
+                {
+                    using var nameFont=MakeFont(_table,true);
+                    using var quantityFont=MakeFont(Math.Max(18,_table-5),true);
+                    using var noteFont=MakeFont(_notesFont,false);
+                    var rowHeight=Math.Max(Py(_density=="comfortable"?46:34),Math.Max(MeasureCellHeight(name,nameWidth,nameFont,StringAlignment.Far),MeasureCellHeight(quantity,quantityWidth,quantityFont,StringAlignment.Center)));
+                    if(threeColumns)rowHeight=Math.Max(rowHeight,MeasureCellHeight(note,noteWidth,noteFont,StringAlignment.Far));
+                    DrawCell(name,_marginX+noteWidth+quantityWidth,Y,nameWidth,nameFont,StringAlignment.Far,rowHeight);
+                    DrawCell(quantity,_marginX+noteWidth,Y,quantityWidth,quantityFont,StringAlignment.Center,rowHeight);
+                    if(threeColumns&&note.Length>0)DrawCell(note,_marginX,Y,noteWidth,noteFont,StringAlignment.Far,rowHeight);
+                    Y+=rowHeight;
+                }
+                else Text(quantity+" × "+name,Math.Max(28,_table),true,StringAlignment.Far,_density=="comfortable"?3:2);
+                if(item.TryGetProperty("previous_quantity",out var previous)&&previous.ValueKind!=JsonValueKind.Null)
+                {
+                    var oldQuantity=FaDigits(previous.ToString());
+                    BoxText(Label("adjustment","اصلاح")+": قبلی "+oldQuantity+" ← جدید "+quantity,Math.Max(17,_base-3),true);
+                }
+                if(Get(item,"fulfillment_mode","")=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),Math.Max(18,_base-2),true);
+                // Keep the note with the matching item in the two-column or narrow
+                // paper layout; the 80mm three-column variant prints it in a cell.
+                if(note.Length>0&&!threeColumns)BoxText(Label("note","یادداشت")+": "+note,_notesFont,true);
+                Hairline();
+            }
+        }
+        private static int PreparationStationRank(string station,string order)
+        {
+            var kitchen=station=="kitchen";
+            var bar=station is "bar" or "hot_bar" or "cold_bar";
+            return order=="bar_first"?(bar?0:kitchen?1:2):(kitchen?0:bar?1:2);
         }
         private void DrawCustomerNote(JsonElement root){var note=Get(root,"customer_note","");if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,_notesFont,true);}
         private void DrawCustomerItems(JsonElement root)
