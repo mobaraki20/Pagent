@@ -74,7 +74,7 @@ internal static class ReceiptRenderer
                     case "notes" when prep:DrawCustomerNote(root);break;
                     case "summary" when !prep:Rule();DrawSummary(root);break;
                     case "settlement" when !prep:DrawSettlement(root);break;
-                    case "footer":var footer=Get(_template,"footer",Get(root,"footer",""));if(footer.Length>0){Rule();Text(footer,_footerFont,false,StringAlignment.Center,3);}break;
+                    case "footer":DrawFooter(root,prep);break;
                 }
             }
         }
@@ -86,6 +86,21 @@ internal static class ReceiptRenderer
             var subtitle=Get(_template,"header_subtitle","");
             if(subtitle.Length>0)Text(subtitle,_subtitleFont,false,alignment,2);
             if(GetBool(root,"is_reprint",GetBool(root,"reprint",false)))BoxText(Label("reprint","چاپ مجدد"),Math.Max(_title,32),true);
+            // A provisional, unpaid open account must never resemble a completed
+            // payment receipt even if the optional settlement section is hidden.
+            if(Get(root,"document_role","")=="account_preview")
+                BoxText(Get(root,"badge",Label("pre_invoice","حساب باز · تسویه نشده")),_base,true);
+        }
+        private void DrawFooter(JsonElement root,bool preparation)
+        {
+            var card=Get(_template,"merchant_card_number","");
+            if(!preparation&&card.Length==16&&card.All(char.IsAsciiDigit))
+            {
+                var grouped=string.Join(" ",Enumerable.Range(0,4).Select(i=>card.Substring(i*4,4)));
+                Rule();Text(Label("payment_card","شماره کارت مجموعه")+": "+FaDigits(grouped),_footerFont,true,StringAlignment.Center,2);
+            }
+            var footer=Get(_template,"footer",Get(root,"footer",""));
+            if(footer.Length>0){Rule();Text(footer,_footerFont,false,StringAlignment.Center,3);}
         }
         private void DrawStatus(JsonElement root)
         {
@@ -95,9 +110,9 @@ internal static class ReceiptRenderer
         private void DrawMeta(JsonElement root,bool prep)
         {
             var parts=new List<string>();var table=Get(root,"table_name","");if(table.Length>0)parts.Add(table);
-            var number=prep?Get(root,"order_number",""):Get(root,"invoice_number",Get(root,"badge",""));if(number.Length>0&&(prep?_showOrder:true))parts.Add((prep?"سفارش ":"")+FaDigits(number));
+            var number=prep?Get(root,"order_number",""):Get(root,"invoice_number",Get(root,"badge",""));if(number.Length>0&&(prep?_showOrder:true))parts.Add((prep?Label("order","سفارش")+" ":"")+FaDigits(number));
             if(_showTime){var date=Get(root,"display_date",Get(root,"created_at",""));if(date.Length>0)parts.Add(FaDigits(date));}if(parts.Count>0)Text(string.Join(" · ",parts),_metaFont,true,StringAlignment.Center,3);
-            if(_showActor){var actor=Get(root,"actor_name","");if(actor.Length>0)Text("ثبت‌کننده: "+actor,_metaFont,false,StringAlignment.Center,2);}
+            if(_showActor){var actor=Get(root,"actor_name","");if(actor.Length>0)Text(Label("actor","ثبت‌کننده")+": "+actor,_metaFont,false,StringAlignment.Center,2);}
         }
         private void DrawPreparationItems(JsonElement root)
         {
@@ -125,8 +140,8 @@ internal static class ReceiptRenderer
             if(columns&&entries.Count>0)
             {
                 using var headerFont=MakeFont(Math.Max(14,_base-5),true);
-                DrawCell("شرح",_marginX+noteWidth+quantityWidth,Y,nameWidth,headerFont,StringAlignment.Far);
-                DrawCell("تعداد",_marginX+noteWidth,Y,quantityWidth,headerFont,StringAlignment.Center);
+                DrawCell(Label("description","شرح"),_marginX+noteWidth+quantityWidth,Y,nameWidth,headerFont,StringAlignment.Far);
+                DrawCell(Label("quantity","تعداد"),_marginX+noteWidth,Y,quantityWidth,headerFont,StringAlignment.Center);
                 if(threeColumns)DrawCell(Label("note","یادداشت"),_marginX,Y,noteWidth,headerFont,StringAlignment.Far);
                 Y+=Math.Max(Py(28),(int)headerFont.GetHeight(_g)+Py(8));Hairline();
             }
@@ -156,7 +171,7 @@ internal static class ReceiptRenderer
                 if(item.TryGetProperty("previous_quantity",out var previous)&&previous.ValueKind!=JsonValueKind.Null)
                 {
                     var oldQuantity=FaDigits(previous.ToString());
-                    BoxText(Label("adjustment","اصلاح")+": قبلی "+oldQuantity+" ← جدید "+quantity,Math.Max(17,_base-3),true);
+                    BoxText(Label("adjustment","اصلاح")+": "+Label("previous","قبلی")+" "+oldQuantity+" ← "+Label("new","جدید")+" "+quantity,Math.Max(17,_base-3),true);
                 }
                 if(Get(item,"fulfillment_mode","")=="takeaway")BoxText(Label("takeaway","بیرون‌بر"),Math.Max(18,_base-2),true);
                 // Keep the note with the matching item in the two-column or narrow
@@ -186,9 +201,9 @@ internal static class ReceiptRenderer
         private void DrawCustomerColumns(List<JsonElement> items,bool full)
         {
             var usable=_width-_marginX*2;var totalWidth=(int)(usable*.23);var quantityWidth=full?(int)(usable*.12):(int)(usable*.28);var unitWidth=full?(int)(usable*.22):0;var nameWidth=usable-totalWidth-quantityWidth-unitWidth;
-            using var headerFont=MakeFont(Math.Max(18,_base-2),true);var headerY=Y;DrawCell("شرح",_marginX+totalWidth+quantityWidth+unitWidth,headerY,nameWidth,headerFont,StringAlignment.Far);
-            if(full){DrawCell("فی",_marginX+totalWidth,headerY,unitWidth,headerFont,StringAlignment.Center);DrawCell("تعداد",_marginX+totalWidth+unitWidth,headerY,quantityWidth,headerFont,StringAlignment.Center);}else DrawCell("تعداد × فی",_marginX+totalWidth,headerY,quantityWidth,headerFont,StringAlignment.Center);
-            DrawCell("مبلغ",_marginX,headerY,totalWidth,headerFont,StringAlignment.Near);Y+=Math.Max(Py(28),(int)headerFont.GetHeight(_g)+Py(8));Hairline();
+            using var headerFont=MakeFont(Math.Max(18,_base-2),true);var headerY=Y;DrawCell(Label("description","شرح"),_marginX+totalWidth+quantityWidth+unitWidth,headerY,nameWidth,headerFont,StringAlignment.Far);
+            if(full){DrawCell(Label("unit_price","فی"),_marginX+totalWidth,headerY,unitWidth,headerFont,StringAlignment.Center);DrawCell(Label("quantity","تعداد"),_marginX+totalWidth+unitWidth,headerY,quantityWidth,headerFont,StringAlignment.Center);}else DrawCell(Label("quantity","تعداد")+" × "+Label("unit_price","فی"),_marginX+totalWidth,headerY,quantityWidth,headerFont,StringAlignment.Center);
+            DrawCell(Label("amount","مبلغ"),_marginX,headerY,totalWidth,headerFont,StringAlignment.Near);Y+=Math.Max(Py(28),(int)headerFont.GetHeight(_g)+Py(8));Hairline();
             foreach(var item in items)
             {
                 var name=Get(item,"name","—");var quantity=FaDigits(Get(item,"quantity","1"));var unit=Money(GetLong(item,"unit_price",0));var line=Money(GetLong(item,"line_total",0));using var font=MakeFont(Math.Max(_base,_table-2),false);using var boldFont=MakeFont(_table,true);
@@ -217,7 +232,7 @@ internal static class ReceiptRenderer
                 var line=Money(GetLong(item,"line_total",0));
                 var amountWidth=(int)((_width-_marginX*2)*.29);
                 var descriptionWidth=_width-_marginX*2-amountWidth;
-                label+=" · فی "+unit;
+                label+=" · "+Label("unit_price","فی")+" "+unit;
                 using var descriptionFont=MakeFont(Math.Max(_base,_table-4),true);
                 using var amountFont=MakeFont(Math.Max(_base,_table-4),true);
                 var height=Math.Max(Py(_density=="comfortable"?48:38),Math.Max(
