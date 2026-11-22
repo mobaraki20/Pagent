@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Link the actual Worker renderer source, not a mock implementation. -->
+    <Compile Include="../../src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs" Link="ReceiptRenderer.cs" />
+    <Content Include="../../assets/fonts/Vazirmatn-Regular.ttf" Link="Fonts/Vazirmatn-Regular.ttf" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../assets/fonts/Vazirmatn-Bold.ttf" Link="Fonts/Vazirmatn-Bold.ttf" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
