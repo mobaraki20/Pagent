@@ -97,6 +97,20 @@ try
     using(var a=Render(p9,80)){Check(a.Height>300,"missing_required_items_restored");}
     var p10=Clone(prep);Template(p10)["meta_font_size"]=40;
     Changed(prep,p10,80,"meta_font_effective");
+    // Verify true single-line mode is distinct from the existing two-line layout
+    // and remains readable on both narrow and wide thermal rolls.
+    var oneLine=Clone(customer);Design(oneLine)["item_layout"]="single-line";
+    var twoLine=Clone(customer);Design(twoLine)["item_layout"]="two-line";
+    Changed(oneLine,twoLine,58,"58mm_single_line_distinct_from_two_line");
+    Changed(oneLine,twoLine,80,"80mm_single_line_distinct_from_two_line");
+    using(var a=Render(oneLine,58)){Check(a.Width>200&&a.Height>200,"58mm_single_line_items_rendered");}
+    using(var a=Render(oneLine,80)){Check(a.Width>400&&a.Height>200,"80mm_single_line_items_rendered");}
+    var prepSingle=Clone(prep);Design(prepSingle)["item_layout"]="single-line";
+    var prepTwoLine=Clone(prep);Design(prepTwoLine)["item_layout"]="two-line";
+    using(var a=Render(prepSingle,58)){Check(a.Width>200&&a.Height>200,"58mm_preparation_single_line_rendered");}
+    // Also cover customer notes on the same item and their independent typography.
+    var oneLineNote=Clone(oneLine);Template(oneLineNote)["notes_font_size"]=45;
+    Changed(oneLine,oneLineNote,80,"single_line_item_notes_font_effective");
     var c1=Clone(customer);Template(c1)["totals_font_size"]=45;
     Changed(customer,c1,80,"customer_totals_font_effective");
     var c2=Clone(customer);Template(c2)["settlement_font_size"]=42;
