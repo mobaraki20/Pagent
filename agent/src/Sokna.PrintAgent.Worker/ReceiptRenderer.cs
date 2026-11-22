@@ -193,7 +193,12 @@ internal static class ReceiptRenderer
             {
                 var name=Get(item,"name","—");var quantity=FaDigits(Get(item,"quantity","1"));var unit=Money(GetLong(item,"unit_price",0));var line=Money(GetLong(item,"line_total",0));using var font=MakeFont(Math.Max(_base,_table-2),false);using var boldFont=MakeFont(_table,true);
                 var nameHeight=MeasureCellHeight(name,nameWidth,boldFont,StringAlignment.Far);var lineHeight=MeasureCellHeight(line,totalWidth,boldFont,StringAlignment.Near);var quantityText=full?quantity:quantity+" × "+unit;var quantityHeight=MeasureCellHeight(quantityText,quantityWidth,font,StringAlignment.Center);var unitHeight=full?MeasureCellHeight(unit,unitWidth,font,StringAlignment.Center):0;var rowHeight=Math.Max(Py(_density=="comfortable"?46:34),Math.Max(Math.Max(nameHeight,lineHeight),Math.Max(quantityHeight,unitHeight)));
-                DrawCell(name,_marginX+totalWidth+quantityWidth+unitWidth,Y,nameWidth,boldFont,StringAlignment.Far,rowHeight);if(full){DrawCell(unit,_marginX+totalWidth,Y,unitWidth,font,StringAlignment.Center,rowHeight);DrawCell(quantity,_marginX+totalWidth+unitWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);}else DrawCell(quantityText,_marginX+totalWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);DrawCell(line,_marginX,Y,totalWidth,boldFont,StringAlignment.Near,rowHeight);Y+=rowHeight;Hairline();
+                DrawCell(name,_marginX+totalWidth+quantityWidth+unitWidth,Y,nameWidth,boldFont,StringAlignment.Far,rowHeight);if(full){DrawCell(unit,_marginX+totalWidth,Y,unitWidth,font,StringAlignment.Center,rowHeight);DrawCell(quantity,_marginX+totalWidth+unitWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);}else DrawCell(quantityText,_marginX+totalWidth,Y,quantityWidth,font,StringAlignment.Center,rowHeight);DrawCell(line,_marginX,Y,totalWidth,boldFont,StringAlignment.Near,rowHeight);Y+=rowHeight;
+                // Columnar receipts must preserve the note for every item,
+                // just like two-line receipts (not only show its monetary columns).
+                var note=Get(item,"note","");
+                if(note.Length>0)BoxText(Label("note","یادداشت")+": "+note,_notesFont,true);
+                Hairline();
             }
         }
         private int MeasureCellHeight(string text,int width,Font font,StringAlignment alignment)
