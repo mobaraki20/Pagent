@@ -20,6 +20,8 @@ concurrency:
 
 jobs:
   build-windows:
+    # QA source changes never invoke the packaging or Windows installation gate.
+    if: ${{ !startsWith(github.ref, 'refs/heads/qa/') }}
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
