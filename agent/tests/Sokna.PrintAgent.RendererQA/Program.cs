@@ -123,6 +123,27 @@ try
     Changed(customer,c5,80,"footer_font_effective");
     var c6=Clone(customer);Design(c6)["section_order"]=new JsonArray("brand","meta","settlement","footer");
     using(var a=Render(c6,80)){Check(a.Height>200,"customer_required_items_totals_restored");}
+    // Merchant bank card number belongs to the café, never to a customer
+    // payment instrument, and is optional on the customer receipt.
+    var card=Clone(customer);Template(card)["merchant_card_number"]="6037991234567890";
+    Changed(customer,card,80,"merchant_card_number_affects_footer");
+    Changed(customer,card,58,"merchant_card_number_58mm");
+    var customLabels=Clone(customer);
+    Design(customLabels)["labels"]=JsonNode.Parse("""{"description":"کالا","quantity":"تعداد خرید","unit_price":"قیمت پایه","amount":"جمع قلم","settlement":"روش دریافت"}""");
+    Changed(customer,customLabels,80,"custom_system_labels_affect_renderer");
+    var customPrepLabels=Clone(prep);
+    Design(customPrepLabels)["labels"]=JsonNode.Parse("""{"description":"عنوان محصول","quantity":"چند عدد","order":"نوبت","previous":"تعداد پیشین","new":"تعداد تازه"}""");
+    Changed(prep,customPrepLabels,58,"preparation_custom_system_labels");
+    var unpaid=Clone(customer);
+    unpaid["document_role"]="account_preview";
+    unpaid["badge"]="حساب باز · تسویه نشده";
+    unpaid["invoice_number"]="";
+    Changed(customer,unpaid,80,"unpaid_account_is_visually_distinct");
+    var noSettlement=Clone(unpaid);
+    Template(noSettlement)["show_settlement_label"]=false;
+    // Explicit unpaid status stays visible, independent from the optional
+    // settlement-row toggle; the two images still differ in settlement content.
+    Changed(unpaid,noSettlement,80,"unpaid_status_preserved_without_settlement_row");
     using var repeat1=Render(prep,58);
     using var repeat2=Render(prep,58);
     Check(Fingerprint(repeat1)==Fingerprint(repeat2),"render_is_deterministic");
