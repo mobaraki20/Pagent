@@ -1,0 +1,50 @@
+name: QA — Print Renderer Template Parity (No Packaging)
+
+on:
+  push:
+    branches:
+      - qa/renderer-template-parity-20261122
+    paths:
+      - 'agent/src/Sokna.PrintAgent.Worker/ReceiptRenderer.cs'
+      - 'agent/tests/Sokna.PrintAgent.RendererQA/**'
+      - '.github/workflows/renderer-template-parity-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  renderer-qa:
+    name: Windows real raster QA / no installer or service
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout QA source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: agent/global.json
+
+      - name: Compile actual production Worker source
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet restore agent/src/Sokna.PrintAgent.Worker/Sokna.PrintAgent.Worker.csproj
+          if($LASTEXITCODE -ne 0){throw 'Worker restore failed'}
+          dotnet build agent/src/Sokna.PrintAgent.Worker/Sokna.PrintAgent.Worker.csproj -c Release --no-restore
+          if($LASTEXITCODE -ne 0){throw 'Worker compile failed'}
+
+      - name: Execute linked real renderer 58 and 80 mm fixtures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          dotnet run --project agent/tests/Sokna.PrintAgent.RendererQA/Sokna.PrintAgent.RendererQA.csproj -c Release
+          if($LASTEXITCODE -ne 0){throw 'Renderer parity tests failed'}
+
+      - name: Verify no installer or release output
+        shell: pwsh
+        run: |
+          if(Test-Path agent/artifacts){throw 'QA must not package or install the Agent'}
+          Write-Host 'QA source only: no installer, no service, no spooler submission.'
