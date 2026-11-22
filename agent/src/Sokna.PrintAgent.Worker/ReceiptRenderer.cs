@@ -89,7 +89,11 @@ internal static class ReceiptRenderer
             // A provisional, unpaid open account must never resemble a completed
             // payment receipt even if the optional settlement section is hidden.
             if(Get(root,"document_role","")=="account_preview")
-                BoxText(Get(root,"badge",Label("pre_invoice","حساب باز · تسویه نشده")),_base,true);
+            {
+                var unpaidBadge=Get(root,"badge","");
+                if(string.IsNullOrWhiteSpace(unpaidBadge))unpaidBadge=Label("pre_invoice","حساب باز · تسویه نشده");
+                BoxText(unpaidBadge,_base,true);
+            }
         }
         private void DrawFooter(JsonElement root,bool preparation)
         {
